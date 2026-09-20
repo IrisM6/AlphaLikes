@@ -27,8 +27,13 @@ pref("requestTimeoutMs", 15000);
 pref("cacheTtlDays", 0);
 
 // --- Appearance -----------------------------------------------------------
+//
+// plain | minimal | badge | glass | ring | bookmark | morandi | academic |
+// elegant | fresh | playful | outline | split | dot
+//
+// The first five are shape-only and tint with the colours below; the rest
+// carry their own palette for every band.
 
-// plain | badge | glass | ring
 pref("likeStyle", "glass");
 
 // --- Colours --------------------------------------------------------------
@@ -69,20 +74,15 @@ pref("quantileLowPercent", 40);
 pref("quantileHighPercent", 80);
 
 // --- Citations -------------------------------------------------------------
+//
+// Counts come from three providers. Google Scholar has no API, so its public
+// results page is read; it can be switched off on its own because Google may
+// answer with a captcha or a rate limit.
 
 pref("citationsEnabled", true);
 // 0 keeps whatever was read once.
 pref("citationCacheTtlDays", 7);
-
-// --- Summary note ----------------------------------------------------------
-
-pref("noteIncludeCitations", true);
-pref("noteIncludeTrend", true);
-pref("noteIncludeArxivLink", true);
-
-// --- Export ----------------------------------------------------------------
-//
-// likes | citations | title | none. Exporting sorted by like count is the
-// default because that is what the column is used for.
-
-pref("exportSort", "likes");
+pref("useGoogleScholar", true);
+// auto | googleScholar | openAlex | semanticScholar. `auto` walks the
+// providers from the broadest index to the narrowest.
+pref("citationSourcePreference", "auto");

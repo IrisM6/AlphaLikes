@@ -14,6 +14,12 @@ export const MIN_REQUEST_INTERVAL_MS = 1_500;
  */
 export const ARXIV_API_INTERVAL_MS = 3_000;
 
+/**
+ * Google Scholar has no API and answers automated reads with a captcha once
+ * they look too dense, so its calls are spaced further apart than the rest.
+ */
+export const GOOGLE_SCHOLAR_INTERVAL_MS = 5_000;
+
 /** How long a failed lookup is remembered before it is retried. */
 export const ERROR_RETRY_DELAY_MS = 5 * 60_000;
 

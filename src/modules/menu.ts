@@ -4,18 +4,9 @@
  */
 
 import { config } from "../../package.json";
-import pkg from "../../package.json";
 import { extractIDFromLooseText } from "./arxiv-id";
 import { getService } from "./column";
-import {
-  exportFileName,
-  sortRows,
-  toCsv,
-  toJson,
-  type ExportRow,
-} from "./export";
 import { t, pickerStrings } from "./l10n";
-import { getExportSort } from "./prefs";
 import type { ArxivCandidate, PaperMetadata } from "./resolver";
 import { shortAuthorList } from "./similarity";
 
@@ -24,10 +15,6 @@ const FIND_ID = "alphalikes-find-arxiv";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const CLEAR_ID = "alphalikes-clear-data";
 const BATCH_FIND_ID = "alphalikes-batch-find-arxiv";
-const EXPORT_CSV_ID = "alphalikes-export-csv";
-const EXPORT_JSON_ID = "alphalikes-export-json";
-const NOTE_ID = "alphalikes-summary-note";
-const HIGH_ONLY_ID = "alphalikes-high-only";
 
 const PICKER_URL = `chrome://${config.addonRef}/content/arxiv-picker.xhtml`;
 const PICKER_WINDOW_NAME = "alphalikes-arxiv-picker";
@@ -251,168 +238,6 @@ function describe(error: unknown): string {
 }
 
 // ---------------------------------------------------------------------------
-// Export
-// ---------------------------------------------------------------------------
-
-/** Structural type for Zotero's own `filePicker.mjs` wrapper. */
-interface ZoteroFilePicker {
-  init(win: Window, title: string, mode: number): void;
-  appendFilter(name: string, patterns: string): void;
-  show(): Promise<number>;
-  file: { path: string } | null;
-  modeSave: number;
-  returnOK: number;
-}
-
-type FilePickerConstructor = new () => ZoteroFilePicker;
-
-/**
- * Loads Zotero's file-picker wrapper.
- *
- * The module is imported dynamically because it lives in Zotero's chrome, not
- * in the plugin bundle, and because a missing picker must degrade into an
- * error message rather than a failed import at load time.
- */
-function getFilePickerConstructor(): FilePickerConstructor | null {
-  try {
-    const chromeUtils = (
-      globalThis as unknown as {
-        ChromeUtils?: { importESModule(url: string): Record<string, unknown> };
-      }
-    ).ChromeUtils;
-    const module = chromeUtils?.importESModule(
-      "chrome://zotero/content/modules/filePicker.mjs",
-    );
-    const ctor = module?.FilePicker;
-    return typeof ctor === "function" ? (ctor as FilePickerConstructor) : null;
-  } catch (error) {
-    Zotero.debug(`[AlphaLikes] filePicker is unavailable: ${error}`);
-    return null;
-  }
-}
-
-async function saveTextFile(
-  win: Window,
-  fileName: string,
-  extension: "csv" | "json",
-  contents: string,
-): Promise<string | null> {
-  const FilePicker = getFilePickerConstructor();
-  if (!FilePicker) throw new Error("the system file dialog is unavailable");
-
-  const picker = new FilePicker();
-  picker.init(win, t("menu-export-csv").replace("…", ""), picker.modeSave);
-  picker.appendFilter(extension.toUpperCase(), `*.${extension}`);
-
-  const withName = picker as ZoteroFilePicker & {
-    defaultString?: string;
-    defaultExtension?: string;
-  };
-  withName.defaultString = fileName;
-  withName.defaultExtension = extension;
-
-  if ((await picker.show()) !== picker.returnOK) return null;
-
-  const path = picker.file?.path;
-  if (!path) return null;
-
-  await Zotero.File.putContentsAsync(path, contents);
-  return path;
-}
-
-async function exportSelection(
-  win: Window,
-  format: "csv" | "json",
-): Promise<void> {
-  const items = selectedItems(win);
-  if (!items.length) {
-    notify(win, t("error-no-selection"));
-    return;
-  }
-
-  const service = getService();
-  const sortedBy = getExportSort();
-  const rows: ExportRow[] = sortRows(service.buildExportRows(items), sortedBy);
-
-  if (!rows.length) {
-    notify(win, t("export-empty"));
-    return;
-  }
-
-  notify(win, t("export-writing", { count: rows.length }));
-
-  try {
-    const contents =
-      format === "csv"
-        ? toCsv(rows)
-        : toJson(rows, { version: pkg.version, sortedBy });
-
-    const path = await saveTextFile(
-      win,
-      exportFileName(format),
-      format,
-      contents,
-    );
-    if (path) notify(win, t("export-done", { count: rows.length, path }));
-  } catch (error) {
-    notify(win, t("export-failed", { message: describe(error) }));
-  }
-}
-
-async function insertSummaryNotes(win: Window): Promise<void> {
-  const items = selectedItems(win);
-  if (!items.length) {
-    notify(win, t("error-no-selection"));
-    return;
-  }
-
-  try {
-    const result = await getService().insertSummaryNotes(items, {
-      heading: t("note-heading"),
-      likes: t("note-likes"),
-      citations: t("note-citations"),
-      influential: t("note-influential"),
-      highImpact: t("note-high-impact"),
-      trendToday: t("note-trend-today"),
-      trendWindow: t("note-trend-window"),
-      generated: t("note-generated"),
-      arxivLink: t("note-arxiv-link"),
-    });
-
-    if (result.inserted === 0 && result.failed > 0) {
-      notify(win, t("note-failed", { failed: result.failed }));
-      return;
-    }
-
-    notify(
-      win,
-      t("note-done", { inserted: result.inserted, skipped: result.skipped }),
-    );
-  } catch (error) {
-    notify(win, t("progress-error") + " " + describe(error));
-  }
-}
-
-/**
- * The one-click "high likes only" switch.
- *
- * It reuses the like-count range filter so the item tree hides everything
- * below the same cut-off the column colours as "high".
- */
-function toggleHighOnly(win: Window, menuItem: Element): void {
-  const service = getService();
-  const target = !service.isHighOnly();
-
-  const bound = service.setHighOnly(target);
-  if (menuItem.hasAttribute("checked") !== target) {
-    if (target) menuItem.setAttribute("checked", "true");
-    else menuItem.removeAttribute("checked");
-  }
-
-  notify(win, target ? t("high-only-on", { bound }) : t("high-only-off"));
-}
-
-// ---------------------------------------------------------------------------
 // Registration
 // ---------------------------------------------------------------------------
 
@@ -436,48 +261,15 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
         void batchFindArxiv(win);
       },
     );
-    const exportCsv = createMenuItem(
-      doc,
-      EXPORT_CSV_ID,
-      t("menu-export-csv"),
-      () => {
-        void exportSelection(win, "csv");
-      },
-    );
-    const exportJson = createMenuItem(
-      doc,
-      EXPORT_JSON_ID,
-      t("menu-export-json"),
-      () => {
-        void exportSelection(win, "json");
-      },
-    );
-    const note = createMenuItem(doc, NOTE_ID, t("menu-note"), () => {
-      void insertSummaryNotes(win);
-    });
     const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
       void clearSelectedItems(win);
     });
-
-    const highOnly = createMenuItem(
-      doc,
-      HIGH_ONLY_ID,
-      t("menu-high-only"),
-      () => toggleHighOnly(win, highOnly),
-    );
-    // A checkmark on a XUL menuitem needs the `type` attribute, otherwise the
-    // "checked" state would not be drawn.
-    highOnly.setAttribute("type", "checkbox");
 
     popup.append(
       createSeparator(doc, SEPARATOR_ID),
       find,
       batchFind,
       refresh,
-      highOnly,
-      exportCsv,
-      exportJson,
-      note,
       clear,
     );
 
@@ -490,14 +282,7 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       // the per-item ones are hidden instead of the batch action.
       (batchFind as HTMLElement).hidden = count < 2;
       (refresh as HTMLElement).hidden = count === 0;
-      (exportCsv as HTMLElement).hidden = count === 0;
-      (exportJson as HTMLElement).hidden = count === 0;
-      (note as HTMLElement).hidden = count === 0;
       (clear as HTMLElement).hidden = count === 0;
-
-      const on = getService().isHighOnly();
-      if (on) highOnly.setAttribute("checked", "true");
-      else highOnly.removeAttribute("checked");
     });
   } catch (error) {
     Zotero.debug(`[AlphaLikes] Could not register the item menu: ${error}`);
@@ -512,10 +297,6 @@ export function unregisterItemMenu(win: Window): void {
       FIND_ID,
       REFRESH_ID,
       BATCH_FIND_ID,
-      EXPORT_CSV_ID,
-      EXPORT_JSON_ID,
-      NOTE_ID,
-      HIGH_ONLY_ID,
       CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();

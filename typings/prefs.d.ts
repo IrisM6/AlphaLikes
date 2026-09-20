@@ -40,10 +40,8 @@ declare namespace _ZoteroTypes {
       "quantileHighPercent": number;
       "citationsEnabled": boolean;
       "citationCacheTtlDays": number;
-      "noteIncludeCitations": boolean;
-      "noteIncludeTrend": boolean;
-      "noteIncludeArxivLink": boolean;
-      "exportSort": string;
+      "useGoogleScholar": boolean;
+      "citationSourcePreference": string;
     };
   }
 }

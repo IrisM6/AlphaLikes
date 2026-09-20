@@ -1,9 +1,14 @@
 import { assert } from "chai";
 import {
   CITATIONS_KEY,
+  CITATION_AUTHORITY_ORDER,
   CITATIONS_UPDATED_KEY,
   citationCountsFromSemanticScholar,
   citationSources,
+  googleScholarCitationCount,
+  googleScholarCitationSearchURL,
+  googleScholarResultBlocks,
+  googleScholarResultTitle,
   isHighImpact,
   openAlexCitationSearchURL,
   openAlexCitationURL,
@@ -11,6 +16,7 @@ import {
   openAlexWorkInfo,
   parseCitationsLine,
   primaryCitationCount,
+  primaryCitationSource,
   readCitations,
   readCitationsUpdatedAt,
   semanticScholarCitationURL,
@@ -24,10 +30,11 @@ describe("AlphaLikes citations", function () {
   describe("cache line", function () {
     it("reads every field", function () {
       const counts = parseCitationsLine(
-        `${CITATIONS_KEY}: oa=1300,s2=1234,infl=56,top10=1,top1=0`,
+        `${CITATIONS_KEY}: gs=8012,oa=1300,s2=1234,infl=56,top10=1,top1=0`,
       );
 
       assert.deepEqual(counts, {
+        googleScholar: 8012,
         openAlex: 1300,
         semanticScholar: 1234,
         influential: 56,
@@ -115,14 +122,56 @@ describe("AlphaLikes citations", function () {
   });
 
   describe("provider selection", function () {
-    it("prefers OpenAlex, which covers more of the literature", function () {
+    it("prefers the broadest index by default", function () {
       assert.equal(
         primaryCitationCount({ openAlex: 5, semanticScholar: 9 }),
         5,
       );
-      assert.equal(primaryCitationCount({ semanticScholar: 9 }), 9);
+      assert.equal(
+        primaryCitationCount({
+          googleScholar: 800,
+          openAlex: 500,
+          semanticScholar: 400,
+        }),
+        800,
+      );
       assert.isNull(primaryCitationCount(null));
       assert.isNull(primaryCitationCount({ influential: 3 }));
+    });
+
+    it("falls through to the next provider when one is missing", function () {
+      // Google Scholar blocked, so OpenAlex answers.
+      assert.equal(
+        primaryCitationCount({ openAlex: 500, semanticScholar: 400 }),
+        500,
+      );
+      assert.equal(primaryCitationCount({ semanticScholar: 400 }), 400);
+    });
+
+    it("honours an explicit order", function () {
+      const counts = {
+        googleScholar: 800,
+        openAlex: 500,
+        semanticScholar: 400,
+      };
+      assert.equal(primaryCitationCount(counts, ["semanticScholar"]), 400);
+      // Providers outside the list are ignored, not guessed at.
+      assert.isNull(
+        primaryCitationCount({ influential: 2 }, ["googleScholar"]),
+      );
+      assert.deepEqual(
+        [...CITATION_AUTHORITY_ORDER],
+        ["googleScholar", "openAlex", "semanticScholar"],
+      );
+    });
+
+    it("names the provider that produced the displayed count", function () {
+      assert.equal(
+        primaryCitationSource({ googleScholar: 1, openAlex: 2 }),
+        "googleScholar",
+      );
+      assert.equal(primaryCitationSource({ openAlex: 2 }), "openAlex");
+      assert.isNull(primaryCitationSource({ infl: 1 }));
     });
 
     it("treats only the field-normalised percentile as high impact", function () {
@@ -132,11 +181,11 @@ describe("AlphaLikes citations", function () {
       assert.isFalse(isHighImpact(null));
     });
 
-    it("lists which providers answered", function () {
-      assert.deepEqual(citationSources({ openAlex: 1, semanticScholar: 2 }), [
-        "OpenAlex",
-        "Semantic Scholar",
-      ]);
+    it("lists which providers answered, broadest first", function () {
+      assert.deepEqual(
+        citationSources({ openAlex: 1, semanticScholar: 2, googleScholar: 3 }),
+        ["Google Scholar", "OpenAlex", "Semantic Scholar"],
+      );
       assert.deepEqual(citationSources({}), []);
     });
   });
@@ -229,6 +278,65 @@ describe("AlphaLikes citations", function () {
     it("returns nothing for a payload that is not a work", function () {
       assert.deepEqual(openAlexSearchResults(null), []);
       assert.isNull(openAlexWorkInfo("nope"));
+    });
+  });
+
+  describe("Google Scholar", function () {
+    it("quotes the title so Scholar matches the whole phrase", function () {
+      const url = googleScholarCitationSearchURL("Attention is all you need");
+      assert.include(url, "scholar.google.com/scholar");
+      assert.include(url, "q=%22Attention%20is%20all%20you%20need%22");
+      // Pinning the interface language keeps the "Cited by" label stable.
+      assert.include(url, "hl=en");
+    });
+
+    it("reads the count out of a results page", function () {
+      const html = `
+        <div class="gs_r gs_or gs_scl">
+          <div class="gs_ri">
+            <h3 class="gs_rt"><a href="#">Attention Is All You Need</a></h3>
+            <div class="gs_fl gs_flb">
+              <a href="/scholar?cites=123">Cited by 8012</a>
+            </div>
+          </div>
+        </div>`;
+      assert.equal(googleScholarCitationCount(html), 8012);
+    });
+
+    it("reads a thousands separator", function () {
+      const html =
+        '<div id="gs_res_ccl_mid"><a href="#">Cited by 12,345</a></div>';
+      assert.equal(googleScholarCitationCount(html), 12345);
+    });
+
+    it("reports a block page instead of a miss", function () {
+      const html = "<html><body>Our systems have detected unusual traffic";
+      assert.equal(googleScholarCitationCount(html), -1);
+    });
+
+    it("reports no result as a miss, not as a block", function () {
+      assert.isNull(googleScholarCitationCount("<html><body>nothing here"));
+      assert.isNull(googleScholarCitationCount(""));
+    });
+
+    it("splits results and reads their titles", function () {
+      const html = `
+        <div class="gs_r gs_or gs_scl"><div class="gs_ri">
+          <h3 class="gs_rt"><a href="#">First &amp; Foremost</a></h3>
+        </div></div>
+        <div class="gs_r gs_or gs_scl"><div class="gs_ri">
+          <h3 class="gs_rt"><span>[PDF]</span> <a href="#">Second Paper</a></h3>
+        </div></div>`;
+
+      const blocks = googleScholarResultBlocks(html);
+      assert.lengthOf(blocks, 2);
+      assert.equal(googleScholarResultTitle(blocks[0]), "First & Foremost");
+      assert.equal(googleScholarResultTitle(blocks[1]), "Second Paper");
+    });
+
+    it("handles the Chinese interface labels too", function () {
+      const html = '<div id="gs_res_ccl_mid">被引用次数：1234</div>';
+      assert.equal(googleScholarCitationCount(html), 1234);
     });
   });
 });

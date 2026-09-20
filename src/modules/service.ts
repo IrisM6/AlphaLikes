@@ -19,20 +19,29 @@ import {
 } from "./arxiv-id";
 import {
   citationCountsFromSemanticScholar,
+  googleScholarCitationCount,
+  googleScholarCitationSearchURL,
+  googleScholarResultBlocks,
+  googleScholarResultTitle,
   isHighImpact,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
   openAlexWorkInfo,
   primaryCitationCount,
+  primaryCitationSource,
   readCitations,
   readCitationsUpdatedAt,
   semanticScholarCitationURL,
   upsertCitations,
   type CitationCounts,
 } from "./citations";
+import {
+  CITATION_AUTHORITY_ORDER,
+  CITATION_SOURCE_LABELS,
+  type CitationSourceKey,
+} from "./citations";
 import { ERROR_RETRY_DELAY_MS, RESOLUTION_RETRY_DELAY_MS } from "./constants";
-import type { ExportRow } from "./export";
 import {
   latestTrend,
   readLikesHistory,
@@ -51,9 +60,9 @@ import {
   toSortableValue,
   withValueDecorations,
 } from "./likes";
-import { buildNoteHTML, type NoteLabels } from "./note";
 import {
   getCitationPrefs,
+  getCitationSourcePreference,
   getColorScheme,
   getPref,
   getRangeFilter,
@@ -62,7 +71,6 @@ import {
   getTrendPrefs,
   isWithinRange,
   observePrefs,
-  setPref,
 } from "./prefs";
 import { quantileThresholds } from "./quantile";
 import {
@@ -126,6 +134,8 @@ export interface CitationCellPlan {
   text: string;
   count: number | null;
   highImpact: boolean;
+  /** Display name of the provider whose count is shown, for the tooltip. */
+  source: string | null;
 }
 
 export interface EffectiveThresholds {
@@ -149,13 +159,6 @@ export interface BatchResolutionResult {
   notFound: number;
 }
 
-export interface NoteResult {
-  inserted: number;
-  /** Items with nothing worth writing into a note. */
-  skipped: number;
-  failed: number;
-}
-
 export interface ItemTrend {
   /** Day-over-day change, when two snapshots exist. */
   latest: TrendDelta | null;
@@ -164,6 +167,20 @@ export interface ItemTrend {
   history: LikesSnapshot[];
   /** A day-over-day rise at or above the configured threshold. */
   hot: boolean;
+}
+
+/**
+ * Provider precedence for the displayed count.
+ *
+ * `auto` is the built-in authority order; an explicit choice is tried first and
+ * the rest of the order follows, so naming a provider never costs the fallback.
+ */
+function citationOrder(): CitationSourceKey[] {
+  const preference = getCitationSourcePreference();
+  if (preference === "auto") return [...CITATION_AUTHORITY_ORDER];
+
+  const rest = CITATION_AUTHORITY_ORDER.filter((key) => key !== preference);
+  return [preference, ...rest];
 }
 
 function isSameYearOrAdjacent(a: number | null, b: number | null): boolean {
@@ -389,7 +406,13 @@ export class AlphaLikesService {
   planCitationCell(item: Zotero.Item): CitationCellPlan {
     const prefs = getCitationPrefs();
     if (!prefs.enabled)
-      return { value: "", text: "", count: null, highImpact: false };
+      return {
+        value: "",
+        text: "",
+        count: null,
+        highImpact: false,
+        source: null,
+      };
 
     const extra = safeGetField(item, "extra");
     const cached = readCitations(extra);
@@ -411,10 +434,17 @@ export class AlphaLikesService {
           text: CELL_LOADING,
           count: null,
           highImpact: false,
+          source: null,
         };
       }
       if (state.retryAfter > Date.now()) {
-        return { value: "", text: "", count: null, highImpact: false };
+        return {
+          value: "",
+          text: "",
+          count: null,
+          highImpact: false,
+          source: null,
+        };
       }
     }
 
@@ -426,28 +456,46 @@ export class AlphaLikesService {
         text: CELL_LOADING,
         count: null,
         highImpact: false,
+        source: null,
       };
     }
 
-    return { value: "", text: "", count: null, highImpact: false };
+    return {
+      value: "",
+      text: "",
+      count: null,
+      highImpact: false,
+      source: null,
+    };
   }
 
   private citationPlanFrom(counts: CitationCounts): CitationCellPlan {
-    const count = primaryCitationCount(counts);
+    const order = citationOrder();
+    const count = primaryCitationCount(counts, order);
     if (count === null) {
-      return { value: "", text: "", count: null, highImpact: false };
+      return {
+        value: "",
+        text: "",
+        count: null,
+        highImpact: false,
+        source: null,
+      };
     }
 
+    const primary = primaryCitationSource(counts, order);
     const highImpact = isHighImpact(counts);
+
     return {
-      // `1` asks the renderer for the high-impact marker.
-      value: withValueDecorations(
-        toSortableValue(count),
-        highImpact ? [1] : [],
-      ),
+      // `1` asks the renderer for the high-impact marker; the provider key that
+      // follows becomes the tooltip's "source" line.
+      value: withValueDecorations(toSortableValue(count), [
+        ...(highImpact ? [1] : []),
+        ...(primary ? [primary] : []),
+      ]),
       text: String(count),
       count,
       highImpact,
+      source: primary ? CITATION_SOURCE_LABELS[primary] : null,
     };
   }
 
@@ -535,8 +583,17 @@ export class AlphaLikesService {
     arxivID: string | null,
   ): Promise<CitationCounts | null> {
     const prefs = getResolverPrefs();
+    const citationPrefs = getCitationPrefs();
     let merged: CitationCounts = {};
     let answered = false;
+
+    if (citationPrefs.useGoogleScholar) {
+      const scholar = await this.collectGoogleScholarCitation(paper);
+      if (scholar !== null) {
+        merged = { ...merged, googleScholar: scholar };
+        answered = true;
+      }
+    }
 
     if (prefs.useSemanticScholar) {
       const url = semanticScholarCitationURL({
@@ -562,6 +619,53 @@ export class AlphaLikesService {
     }
 
     return answered ? merged : null;
+  }
+
+  /**
+   * Reads Google Scholar's "Cited by" count.
+   *
+   * Scholar has no API, so the public results page is fetched and the first
+   * result whose title resembles the item's is used. A block page (consent
+   * interstitial, captcha, rate limit) is reported as a miss and logged rather
+   * than retried: hammering Scholar is the fastest way to stay blocked, and the
+   * other providers still answer, so the column keeps a number either way.
+   *
+   * This is the one request the plugin makes that reads an interface meant for
+   * browsing rather than an API, which is why it can be switched off on its own
+   * in the settings.
+   */
+  private async collectGoogleScholarCitation(
+    paper: PaperMetadata,
+  ): Promise<number | null> {
+    if (!paper.title || paper.title.length < 10) return null;
+
+    const html = await this.safeText(
+      "Google Scholar citations",
+      googleScholarCitationSearchURL(paper.title),
+      "text/html,application/xhtml+xml",
+    );
+    if (!html) return null;
+
+    const verdict = googleScholarCitationCount(html);
+    if (verdict === -1) {
+      this.debug(
+        "Google Scholar answered with a block or consent page; skipping it",
+      );
+      return null;
+    }
+    if (verdict === null) return null;
+
+    // The count belongs to the first result, so the title has to agree before
+    // it is attributed to this item.
+    const titles = googleScholarResultBlocks(html)
+      .map((block) => googleScholarResultTitle(block))
+      .filter(Boolean);
+    if (!titles.length) return verdict;
+
+    const similarity = Math.max(
+      ...titles.map((title) => titleSimilarity(paper.title, title)),
+    );
+    return similarity >= CITATION_TITLE_MATCH_MIN ? verdict : null;
   }
 
   private async collectOpenAlexCitations(
@@ -599,6 +703,22 @@ export class AlphaLikesService {
     }
 
     return null;
+  }
+
+  /** Fetches a page as text, logging failures instead of aborting the merge. */
+  private async safeText(
+    label: string,
+    url: string,
+    accept?: string,
+  ): Promise<string | null> {
+    try {
+      return accept
+        ? await this.requester.requestText(url, accept)
+        : await this.requester.requestText(url);
+    } catch (error) {
+      this.debug(`${label} failed: ${error}`);
+      return null;
+    }
   }
 
   /** Runs a request, logging failures instead of letting them abort the merge. */
@@ -1052,115 +1172,6 @@ export class AlphaLikesService {
       result.total - result.alreadyKnown - result.applied - result.pending;
 
     return result;
-  }
-
-  /** Snapshot of a selected item for CSV/JSON export. */
-  buildExportRow(item: Zotero.Item): ExportRow {
-    const extra = safeGetField(item, "extra");
-    const cachedLikes = readCachedLikes(extra);
-    const citations = readCitations(extra);
-
-    return {
-      title: safeGetField(item, "title"),
-      doi: safeGetField(item, "DOI"),
-      arxivID: this.getItemArxivID(item) ?? "",
-      likes: cachedLikes,
-      citations: primaryCitationCount(citations),
-      influential: citations?.influential ?? null,
-      highImpact: isHighImpact(citations),
-      updated: readLikesUpdatedAt(extra)?.toISOString() ?? "",
-    };
-  }
-
-  buildExportRows(items: Zotero.Item[]): ExportRow[] {
-    return items.filter(Boolean).map((item) => this.buildExportRow(item));
-  }
-
-  /**
-   * Inserts one summary note per item, as a child note.
-   *
-   * Notes are only written for items that have something to say, and the
-   * library's editability is left to `saveTx`, which throws for read-only
-   * libraries.
-   */
-  async insertSummaryNotes(
-    items: Zotero.Item[],
-    labels: NoteLabels,
-  ): Promise<NoteResult> {
-    const result: NoteResult = { inserted: 0, skipped: 0, failed: 0 };
-
-    for (const item of items.filter(Boolean)) {
-      if (this.disposed) break;
-
-      const extra = safeGetField(item, "extra");
-      const cachedLikes = readCachedLikes(extra);
-      const html = buildNoteHTML(
-        {
-          likes: cachedLikes,
-          citations: readCitations(extra),
-          arxivID: this.getItemArxivID(item),
-          trend: cachedLikes === null ? null : this.readTrend(item),
-          updatedAt: readLikesUpdatedAt(extra),
-        },
-        {
-          includeCitations: getPref("noteIncludeCitations"),
-          includeTrend: getPref("noteIncludeTrend"),
-          includeArxivLink: getPref("noteIncludeArxivLink"),
-        },
-        labels,
-      );
-
-      if (!html) {
-        result.skipped += 1;
-        continue;
-      }
-
-      try {
-        const note = new Zotero.Item("note");
-        note.libraryID = item.libraryID;
-        note.parentID = item.id;
-        note.setNote(html);
-        await note.saveTx();
-        result.inserted += 1;
-      } catch (error) {
-        result.failed += 1;
-        this.debug(`could not add a summary note to item ${item.id}: ${error}`);
-      }
-    }
-
-    return result;
-  }
-
-  // -------------------------------------------------------------------------
-  // High-likes-only toggle
-  // -------------------------------------------------------------------------
-
-  /**
-   * Turns the like-count range filter into a single "high likes only" switch.
-   *
-   * The lower bound follows the same cut-off the column uses for its "high"
-   * colour, so the quick toggle and the colouring never disagree.
-   */
-  setHighOnly(enabled: boolean): number {
-    if (enabled) {
-      const thresholds = this.getEffectiveThresholds();
-      const bound = Math.max(
-        1,
-        thresholds.source === "quantile"
-          ? thresholds.high
-          : getColorScheme().highThreshold,
-      );
-      setPref("rangeFilterMin", bound);
-      setPref("rangeFilterEnabled", true);
-      return bound;
-    }
-
-    setPref("rangeFilterEnabled", false);
-    return 0;
-  }
-
-  isHighOnly(): boolean {
-    return getRangeFilter().enabled;
   }
 
   private async writeExtra(

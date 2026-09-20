@@ -1,7 +1,7 @@
 /**
  * Citation counts from Semantic Scholar and OpenAlex, cached in `Extra`:
  *
- *   alphaxiv_citations: oa=1300,s2=1234,infl=56,top10=1,top1=0
+ *   alphaxiv_citations: gs=8012,oa=1300,s2=1234,infl=56,top10=1,top1=0
  *   alphaxiv_citations_updated: 2026-09-20T10:00:00.000Z
  *
  * One compact line keeps `Extra` readable next to the like-count lines. The
@@ -35,6 +35,8 @@ const UPDATED_VALUE_RE = new RegExp(
 );
 
 export interface CitationCounts {
+  /** Google Scholar's "Cited by" count, read from the public results page. */
+  googleScholar?: number;
   /** OpenAlex `cited_by_count`. */
   openAlex?: number;
   /** Semantic Scholar `citationCount`. */
@@ -86,6 +88,7 @@ export function parseCitationsLine(raw: string): CitationCounts | null {
   }
 
   const counts: CitationCounts = {
+    googleScholar: readCount(fields, "gs"),
     openAlex: readCount(fields, "oa"),
     semanticScholar: readCount(fields, "s2"),
     influential: readCount(fields, "infl"),
@@ -99,7 +102,11 @@ export function parseCitationsLine(raw: string): CitationCounts | null {
 }
 
 function hasAnyCount(counts: CitationCounts): boolean {
-  return counts.openAlex !== undefined || counts.semanticScholar !== undefined;
+  return (
+    counts.googleScholar !== undefined ||
+    counts.openAlex !== undefined ||
+    counts.semanticScholar !== undefined
+  );
 }
 
 export function readCitations(extra: string): CitationCounts | null {
@@ -116,6 +123,9 @@ export function readCitationsUpdatedAt(extra: string): Date | null {
 
 export function serializeCitations(counts: CitationCounts): string {
   const parts: string[] = [];
+  if (counts.googleScholar !== undefined) {
+    parts.push(`gs=${counts.googleScholar}`);
+  }
   if (counts.openAlex !== undefined) parts.push(`oa=${counts.openAlex}`);
   if (counts.semanticScholar !== undefined) {
     parts.push(`s2=${counts.semanticScholar}`);
@@ -142,6 +152,7 @@ export function upsertCitations(
 ): string {
   const previous = parseCitationsLine(extra) ?? {};
   const merged: CitationCounts = {
+    googleScholar: counts.googleScholar ?? previous.googleScholar,
     openAlex: counts.openAlex ?? previous.openAlex,
     semanticScholar: counts.semanticScholar ?? previous.semanticScholar,
     influential: counts.influential ?? previous.influential,
@@ -180,16 +191,48 @@ export function stripCitations(extra: string): string {
     .replace(/^[\r\n]+|[\r\n]+$/g, "");
 }
 
+/** The providers whose counts can be displayed. */
+export type CitationSourceKey =
+  "googleScholar" | "openAlex" | "semanticScholar";
+
+/** Default precedence: broadest index first, narrowest last. */
+export const CITATION_AUTHORITY_ORDER: readonly CitationSourceKey[] = [
+  "googleScholar",
+  "openAlex",
+  "semanticScholar",
+];
+
 /**
- * The number shown in the column. OpenAlex covers more of the literature, so
- * it wins when both providers answered.
+ * The number shown in the column.
+ *
+ * `order` decides which provider wins when several answered. The default walks
+ * from the broadest index to the narrowest, so a count Google Scholar has and
+ * OpenAlex does not is still shown, and a provider that was blocked or
+ * rate-limited simply loses its turn instead of blanking the column.
  */
 export function primaryCitationCount(
   counts: CitationCounts | null,
+  order: readonly CitationSourceKey[] = CITATION_AUTHORITY_ORDER,
 ): number | null {
   if (!counts) return null;
-  if (counts.openAlex !== undefined) return counts.openAlex;
-  if (counts.semanticScholar !== undefined) return counts.semanticScholar;
+
+  for (const key of order) {
+    const value = counts[key];
+    if (value !== undefined) return value;
+  }
+  return null;
+}
+
+/** Which provider produced the displayed count, or `null`. */
+export function primaryCitationSource(
+  counts: CitationCounts | null,
+  order: readonly CitationSourceKey[] = CITATION_AUTHORITY_ORDER,
+): CitationSourceKey | null {
+  if (!counts) return null;
+
+  for (const key of order) {
+    if (counts[key] !== undefined) return key;
+  }
   return null;
 }
 
@@ -205,12 +248,18 @@ export function isHighImpact(counts: CitationCounts | null): boolean {
   return counts.top10Percent === true || counts.top1Percent === true;
 }
 
+/** Display names for the providers, in the authority order. */
+export const CITATION_SOURCE_LABELS: Record<CitationSourceKey, string> = {
+  googleScholar: "Google Scholar",
+  openAlex: "OpenAlex",
+  semanticScholar: "Semantic Scholar",
+};
+
 export function citationSources(counts: CitationCounts | null): string[] {
   if (!counts) return [];
-  const sources: string[] = [];
-  if (counts.openAlex !== undefined) sources.push("OpenAlex");
-  if (counts.semanticScholar !== undefined) sources.push("Semantic Scholar");
-  return sources;
+  return CITATION_AUTHORITY_ORDER.filter(
+    (key) => counts[key] !== undefined,
+  ).map((key) => CITATION_SOURCE_LABELS[key]);
 }
 
 // ---------------------------------------------------------------------------
@@ -285,6 +334,78 @@ export function openAlexCitationSearchURL(
     `?search=${encodeURIComponent(title)}` +
     `&per-page=${perPage}&select=${OPENALEX_SELECT}${mailto}`
   );
+}
+
+/**
+ * Google Scholar title search.
+ *
+ * Scholar has no API, so the public results page is read. `hl=en` pins the
+ * interface language, which keeps the "Cited by N" label stable regardless of
+ * the user's Google locale. Results are matched on the title afterwards, the
+ * same way the OpenAlex search path works.
+ */
+export function googleScholarCitationSearchURL(title: string): string {
+  const query = encodeURIComponent(`"${(title || "").trim()}"`);
+  return "https://scholar.google.com/scholar" + `?hl=en&as_sdt=0,5&q=${query}`;
+}
+
+/**
+ * Reads the first "Cited by N" count out of a Scholar results page.
+ *
+ * Returns `null` when the page holds no results, and `-1` when Google answered
+ * with something that is not a results page at all (a consent interstitial or
+ * a "sorry" block). The caller treats those two cases differently: no match is
+ * normal, a block should be logged.
+ */
+export function googleScholarCitationCount(html: string): number | null {
+  const page = html || "";
+
+  // A blocked or consent page carries neither a result container nor a count.
+  const hasResults = /class="gs_r|id="gs_res_ccl_mid"/.test(page);
+  const hasCount = /Cited by\s*[\d,]+|被引用次数[:：]\s*[\d,]+/.test(page);
+
+  if (!hasResults && !hasCount) {
+    return /sorry|consent|unusual traffic|captcha/i.test(page) ? -1 : null;
+  }
+
+  const match = page.match(/(?:Cited by\s*|被引用次数[:：]\s*)([\d,]+)/);
+  if (!match) return null;
+
+  const value = Number.parseInt(match[1].replace(/,/g, ""), 10);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Strips the markup out of a Scholar result block so the title can be compared
+ * with the item's own title.
+ */
+export function googleScholarResultTitle(block: string): string {
+  const match = block.match(
+    /<h3[^>]*class="[^"]*gs_rt[^"]*"[^>]*>([\s\S]*?)<\/h3>/i,
+  );
+  if (!match) return "";
+
+  return (
+    match[1]
+      .replace(/<[^>]*>/g, "")
+      // Scholar prefixes the format, e.g. "[PDF]", "[HTML]", "[BOOK]".
+      .replace(/^\s*(?:\[[A-Z]+\]\s*)+/, "")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+/** Splits a Scholar results page into its per-result blocks. */
+export function googleScholarResultBlocks(html: string): string[] {
+  return (html || "")
+    .split(/(?=<div[^>]*class="[^"]*\bgs_r\b)/i)
+    .slice(1)
+    .filter((block) => /gs_ri/.test(block));
 }
 
 // ---------------------------------------------------------------------------

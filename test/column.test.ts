@@ -1,5 +1,5 @@
 import { assert } from "chai";
-import { renderLikeCell } from "../src/modules/column";
+import { renderCitationCell, renderLikeCell } from "../src/modules/column";
 import { toSortableValue, withValueDecorations } from "../src/modules/likes";
 import {
   PREF_BRANCH,
@@ -48,6 +48,8 @@ function restore(): void {
   setPref("rangeFilterMode", "hide" as RangeFilterMode);
   setPref("colorMode", "threshold");
   setPref("trendHotDelta", 10);
+  setPref("useGoogleScholar", true);
+  setPref("citationSourcePreference", "auto");
 }
 
 describe("AlphaLikes column rendering", function () {
@@ -230,6 +232,188 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
       assert.lengthOf(cell.children, 1);
+    });
+  });
+
+  describe("appearance styles", function () {
+    /** Renders a high count and returns the styled element. */
+    function high(style: LikeStyle): HTMLElement {
+      setPref("colorEnabled", true);
+      setPref("highLikesThreshold", 100);
+      setPref("highLikesColor", "#1a7f37");
+      setPref("lowLikesThreshold", 10);
+      useStyle(style);
+      const cell = renderLikeCell(
+        toSortableValue(1000),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      return cell.firstElementChild as HTMLElement;
+    }
+
+    it("minimal keeps a bare number in the secondary colour", function () {
+      const visual = high("minimal");
+      assert.equal(visual.textContent, "1000");
+      assert.equal(visual.style.background, "");
+      assert.equal(visual.style.border, "");
+      assert.equal(visual.style.fontWeight, "500");
+    });
+
+    it("bookmark paints a cream fill with an accent left edge", function () {
+      const visual = high("bookmark");
+      assert.equal(visual.style.background, "rgb(253, 249, 232)");
+      assert.equal(visual.style.color, "rgb(166, 124, 0)");
+      assert.include(visual.style.borderLeftWidth, "3px");
+    });
+
+    it("morandi stays low saturation", function () {
+      const visual = high("morandi");
+      assert.equal(visual.style.background, "rgb(221, 227, 229)");
+      assert.equal(visual.style.color, "rgb(122, 139, 153)");
+      assert.equal(visual.style.borderRadius, "999px");
+    });
+
+    it("academic inverts to a solid navy for high counts", function () {
+      const visual = high("academic");
+      assert.equal(visual.style.background, "rgb(0, 51, 102)");
+      assert.equal(visual.style.color, "rgb(255, 255, 255)");
+      assert.equal(visual.style.borderRadius, "3px");
+    });
+
+    it("elegant uses the navy and gold pairing with a serif face", function () {
+      const visual = high("elegant");
+      assert.equal(visual.style.background, "rgb(26, 35, 50)");
+      assert.equal(visual.style.color, "rgb(212, 175, 55)");
+      assert.include(visual.style.fontFamily, "Georgia");
+    });
+
+    it("fresh paints a mint fill", function () {
+      const visual = high("fresh");
+      assert.equal(visual.style.background, "rgb(230, 247, 240)");
+      assert.equal(visual.style.color, "rgb(46, 139, 87)");
+      assert.include(visual.style.boxShadow, "0 2px 4px");
+    });
+
+    it("playful pairs yellow with a hard shadow", function () {
+      const visual = high("playful");
+      assert.equal(visual.style.background, "rgb(255, 215, 0)");
+      assert.equal(visual.style.color, "rgb(0, 0, 0)");
+      assert.include(visual.style.boxShadow, "2px 2px 0");
+    });
+
+    it("outline draws a hairline around a transparent fill", function () {
+      const visual = high("outline");
+      assert.equal(visual.style.background, "transparent");
+      assert.include(visual.style.border, "1px solid");
+    });
+
+    it("split shows a label half and a number half", function () {
+      const visual = high("split");
+      assert.equal(visual.style.display, "inline-flex");
+      const halves = visual.children;
+      assert.lengthOf(halves, 2);
+      assert.equal((halves[1] as HTMLElement).textContent, "1000");
+      assert.equal(
+        (halves[0] as HTMLElement).style.color,
+        "rgb(255, 255, 255)",
+      );
+      assert.equal((halves[1] as HTMLElement).style.color, "rgb(51, 51, 51)");
+    });
+
+    it("dot caps the number at 99+", function () {
+      const cell = renderLikeCell(
+        toSortableValue(1234),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      const visual = cell.firstElementChild as HTMLElement;
+      assert.equal(visual.textContent, "99+");
+      assert.equal(visual.style.borderRadius, "999px");
+    });
+
+    it("dot keeps a short number as a circle", function () {
+      setPref("colorEnabled", true);
+      useStyle("dot");
+      const cell = renderLikeCell(
+        toSortableValue(42),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      const visual = cell.firstElementChild as HTMLElement;
+      assert.equal(visual.textContent, "42");
+      assert.equal(visual.style.borderRadius, "50%");
+    });
+
+    it("palette styles fall back to their middle band when colouring is off", function () {
+      setPref("colorEnabled", false);
+      useStyle("morandi");
+      const cell = renderLikeCell(
+        toSortableValue(1000),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      const visual = cell.firstElementChild as HTMLElement;
+      // The muted band, not the "high" one.
+      assert.equal(visual.style.background, "rgb(232, 227, 225)");
+      assert.equal(visual.style.color, "rgb(154, 140, 137)");
+    });
+  });
+
+  describe("citation cells", function () {
+    const CITATION_COLUMN = { className: "col-alphaxiv_citations" };
+
+    function renderCitations(
+      count: number,
+      decorations: string[] = [],
+    ): HTMLElement {
+      return renderCitationCell(
+        withValueDecorations(toSortableValue(count), decorations),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+    }
+
+    it("shows the count and no marker for an ordinary work", function () {
+      const cell = renderCitations(500);
+      const visual = cell.firstElementChild as HTMLElement;
+      assert.equal(visual.textContent, "500");
+      assert.lengthOf(cell.children, 1);
+    });
+
+    it("marks a top-decile work and names the source", function () {
+      const cell = renderCitations(7608, ["1", "openAlex"]);
+      assert.lengthOf(cell.children, 2);
+      assert.include(cell.title, "OpenAlex");
+    });
+
+    it("names Google Scholar when it supplied the number", function () {
+      const cell = renderCitations(8012, ["googleScholar"]);
+      assert.include(cell.title, "Google Scholar");
+    });
+
+    it("treats a high-impact work as the style's high band", function () {
+      setPref("colorEnabled", true);
+      useStyle("academic");
+      const cell = renderCitations(7608, ["1", "openAlex"]);
+      const visual = cell.firstElementChild as HTMLElement;
+      assert.equal(visual.style.background, "rgb(0, 51, 102)");
+    });
+
+    it("uses the middle band for a work with no percentile", function () {
+      setPref("colorEnabled", true);
+      useStyle("academic");
+      const cell = renderCitations(12, ["openAlex"]);
+      const visual = cell.firstElementChild as HTMLElement;
+      assert.equal(visual.style.background, "rgb(245, 245, 245)");
+    });
+
+    it("still renders a status marker", function () {
+      const cell = renderCitationCell(
+        "N/A",
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
     });
   });
 });

@@ -166,19 +166,69 @@
             label="纯文本"
           />
           <menuitem
+            value="minimal"
+            data-l10n-id="pref-style-minimal"
+            label="纯文本极简（次级文本色、无底无框）"
+          />
+          <menuitem
             value="badge"
             data-l10n-id="pref-style-badge"
-            label="浅色标签"
+            label="浅色标签（圆角浅底）"
           />
           <menuitem
             value="glass"
             data-l10n-id="pref-style-glass"
-            label="玻璃胶囊"
+            label="玻璃胶囊（毛玻璃 + 高光）"
           />
           <menuitem
             value="ring"
             data-l10n-id="pref-style-ring"
-            label="玻璃圆形"
+            label="玻璃圆形（正圆角标）"
+          />
+          <menuitem
+            value="bookmark"
+            data-l10n-id="pref-style-bookmark"
+            label="侧边强调块（左侧金色竖块 + 米黄底）"
+          />
+          <menuitem
+            value="morandi"
+            data-l10n-id="pref-style-morandi"
+            label="莫兰迪低饱和（雾霾蓝灰 / 灰咖）"
+          />
+          <menuitem
+            value="academic"
+            data-l10n-id="pref-style-academic"
+            label="学术严谨（深蓝实底或细灰边）"
+          />
+          <menuitem
+            value="elegant"
+            data-l10n-id="pref-style-elegant"
+            label="典雅精致（深藏青底 + 细金线 + 衬线字）"
+          />
+          <menuitem
+            value="fresh"
+            data-l10n-id="pref-style-fresh"
+            label="淡雅清新（薄荷绿 / 浅粉 + 淡投影）"
+          />
+          <menuitem
+            value="playful"
+            data-l10n-id="pref-style-playful"
+            label="活泼明快（亮黄 + 黑色硬阴影）"
+          />
+          <menuitem
+            value="outline"
+            data-l10n-id="pref-style-outline"
+            label="细边框描边（透明底 + 1px 边框）"
+          />
+          <menuitem
+            value="split"
+            data-l10n-id="pref-style-split"
+            label="双色拼接（左深「赞」右浅数字）"
+          />
+          <menuitem
+            value="dot"
+            data-l10n-id="pref-style-dot"
+            label="数字角标（红色小圆，超过 99 显示 99+）"
           />
         </menupopup>
       </menulist>
@@ -359,38 +409,69 @@
       />
     </hbox>
 
+    <checkbox
+      id="alphalikes-pref-google-scholar"
+      preference="useGoogleScholar"
+      data-l10n-id="pref-citations-scholar"
+      label="启用 Google Scholar（无官方 API，读取公开结果页；可能被限流）"
+      native="true"
+    />
+
+    <description
+      data-l10n-id="pref-citations-scholar-note"
+      style="opacity: 0.8"
+    >
+      Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited
+      by」数字。Google
+      可能会要求人机验证或限流，这时会跳过它并使用下一个来源；读取过于频繁更容易被拦，因此请不要把刷新间隔调得太小。
+    </description>
+
+    <hbox align="center">
+      <label
+        id="alphalikes-pref-citation-source-label"
+        data-l10n-id="pref-citations-source"
+        control="alphalikes-pref-citation-source"
+        >显示哪一个来源的引用数</label
+      >
+      <menulist
+        id="alphalikes-pref-citation-source"
+        preference="citationSourcePreference"
+        native="true"
+      >
+        <menupopup>
+          <menuitem
+            value="auto"
+            data-l10n-id="pref-citations-source-auto"
+            label="自动（Google Scholar → OpenAlex → Semantic Scholar）"
+          />
+          <menuitem
+            value="googleScholar"
+            data-l10n-id="pref-citations-source-scholar"
+            label="只用 Google Scholar"
+          />
+          <menuitem
+            value="openAlex"
+            data-l10n-id="pref-citations-source-openalex"
+            label="只用 OpenAlex"
+          />
+          <menuitem
+            value="semanticScholar"
+            data-l10n-id="pref-citations-source-s2"
+            label="只用 Semantic Scholar"
+          />
+        </menupopup>
+      </menulist>
+    </hbox>
+
+    <description data-l10n-id="pref-citations-source-note" style="opacity: 0.8">
+      「自动」按来源覆盖范围排序：Google Scholar 收录最广，OpenAlex
+      次之且文档公开，Semantic Scholar
+      覆盖的期刊最少。某个来源没有数据（或本次被限流）时会自动顺延到下一个；列里悬停会显示当前数字的来源。
+    </description>
+
     <description data-l10n-id="pref-citations-s2-note" style="opacity: 0.8">
       Semantic Scholar 未提供 key 时会限流，遇到 429 会跳过并保留下次机会。
     </description>
-  </groupbox>
-
-  <groupbox>
-    <label><html:h2 data-l10n-id="pref-note-title">摘要笔记</html:h2></label>
-    <description data-l10n-id="pref-note-desc" style="opacity: 0.8">
-      右键「插入点赞摘要笔记」会为每个条目新建一条子笔记。
-    </description>
-
-    <checkbox
-      id="alphalikes-pref-note-citations"
-      preference="noteIncludeCitations"
-      data-l10n-id="pref-note-citations"
-      label="包含引用数"
-      native="true"
-    />
-    <checkbox
-      id="alphalikes-pref-note-trend"
-      preference="noteIncludeTrend"
-      data-l10n-id="pref-note-trend"
-      label="包含点赞变化"
-      native="true"
-    />
-    <checkbox
-      id="alphalikes-pref-note-arxiv"
-      preference="noteIncludeArxivLink"
-      data-l10n-id="pref-note-arxiv-link"
-      label="包含 arXiv 链接"
-      native="true"
-    />
   </groupbox>
 
   <groupbox>
@@ -497,54 +578,5 @@
         />
       </radiogroup>
     </hbox>
-  </groupbox>
-
-  <groupbox>
-    <label><html:h2 data-l10n-id="pref-export-title">导出</html:h2></label>
-    <description data-l10n-id="pref-export-desc" style="opacity: 0.8">
-      右键「导出为 CSV / JSON」会导出所选条目的标题、DOI、arXiv
-      ID、点赞数、引用数与更新时间。
-    </description>
-
-    <hbox align="center">
-      <label
-        id="alphalikes-pref-export-sort-label"
-        data-l10n-id="pref-export-sort"
-        control="alphalikes-pref-export-sort"
-        >导出排序</label
-      >
-      <menulist
-        id="alphalikes-pref-export-sort"
-        preference="exportSort"
-        native="true"
-      >
-        <menupopup>
-          <menuitem
-            value="likes"
-            data-l10n-id="pref-export-sort-likes"
-            label="按点赞数（从高到低）"
-          />
-          <menuitem
-            value="citations"
-            data-l10n-id="pref-export-sort-citations"
-            label="按引用数（从高到低）"
-          />
-          <menuitem
-            value="title"
-            data-l10n-id="pref-export-sort-title"
-            label="按标题"
-          />
-          <menuitem
-            value="none"
-            data-l10n-id="pref-export-sort-none"
-            label="按 Zotero 当前顺序"
-          />
-        </menupopup>
-      </menulist>
-    </hbox>
-
-    <description data-l10n-id="pref-export-hint" style="opacity: 0.8">
-      CSV 带 UTF-8 BOM，用 Excel 打开中文标题不会乱码。
-    </description>
   </groupbox>
 </vbox>

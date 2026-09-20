@@ -406,6 +406,110 @@ for name in locale_ids:
         )
 
 # ---------------------------------------------------------------------------
+# 8. Appearance styles declared in code must be offered by the pane
+# ---------------------------------------------------------------------------
+#
+# A style that exists in the union but has no menu entry is invisible to the
+# user; one that the pane offers but the code does not know is a blank cell.
+
+prefs_ts = read(ROOT / "src" / "modules" / "prefs.ts")
+styles_block = re.search(
+    r"export const LIKE_STYLES[^=]*=\s*\[(.*?)\];", prefs_ts, re.DOTALL
+)
+code_styles = (
+    set(re.findall(r'"([a-z]+)"', styles_block.group(1))) if styles_block else set()
+)
+check(bool(code_styles), "could not read LIKE_STYLES from src/modules/prefs.ts")
+
+pane_styles = set(re.findall(r'data-l10n-id="pref-style-([a-z]+)"', pane))
+check(bool(pane_styles), "the settings pane offers no display styles")
+check(
+    code_styles == pane_styles,
+    f"LIKE_STYLES and the pane disagree: only in code={sorted(code_styles - pane_styles)} "
+    f"only in pane={sorted(pane_styles - code_styles)}",
+)
+
+# Every palette style needs a palette entry, otherwise it falls through to the
+# generic fallback and silently loses its look.
+column_ts = read(ROOT / "src" / "modules" / "column.ts")
+palette_block = re.search(
+    r"const PALETTES[^=]*=\s*\{(.*?)\n\};", column_ts, re.DOTALL
+)
+palette_keys = (
+    set(re.findall(r"^\s{2}([a-z]+):\s*\{", palette_block.group(1), re.MULTILINE))
+    if palette_block
+    else set()
+)
+palette_styles = (
+    set(
+        re.findall(
+            r'"([a-z]+)"',
+            re.search(r"export const PALETTE_STYLES[^=]*=\s*\[(.*?)\];", prefs_ts, re.DOTALL).group(1),
+        )
+    )
+    if re.search(r"export const PALETTE_STYLES[^=]*=\s*\[(.*?)\];", prefs_ts, re.DOTALL)
+    else set()
+)
+check(bool(palette_keys), "could not read the PALETTES table from src/modules/column.ts")
+check(
+    palette_styles <= palette_keys,
+    f"palette styles without a palette: {sorted(palette_styles - palette_keys)}",
+)
+
+# Each palette needs all three bands, or a count would render unpainted.
+for style in sorted(palette_keys):
+    body = palette_block.group(1)
+    entry = re.search(rf"\n  {re.escape(style)}:\s*\{{(.*?)\n  \}},", body, re.DOTALL)
+    if not entry:
+        continue
+    bands = set(re.findall(r"^\s{4}(high|mid|low):", entry.group(1), re.MULTILINE))
+    check(
+        bands == {"high", "mid", "low"},
+        f"palette {style} does not define every band: {sorted(bands)}",
+    )
+
+# ---------------------------------------------------------------------------
+# 9. Citation providers: code, cache line and pane must agree
+# ---------------------------------------------------------------------------
+
+citations_ts = read(ROOT / "src" / "modules" / "citations.ts")
+code_sources = set(
+    re.findall(r'"([a-zA-Z]+)"', re.search(
+        r"export const CITATION_AUTHORITY_ORDER[^=]*=\s*\[(.*?)\];", citations_ts, re.DOTALL
+    ).group(1))
+)
+# The pane's menulist carries the preference values, which are the same
+# identifiers the code uses.
+source_menu = re.search(
+    r'id="alphalikes-pref-citation-source".*?</menulist>', pane, re.DOTALL
+)
+pane_sources = (
+    set(re.findall(r'value="([A-Za-z]+)"', source_menu.group(0)))
+    if source_menu
+    else set()
+)
+check(bool(pane_sources), "the pane has no citation-source chooser")
+check(
+    code_sources <= pane_sources,
+    f"citation sources missing from the pane: {sorted(code_sources - pane_sources)}",
+)
+check(
+    "auto" in pane_sources,
+    "the citation-source chooser has no automatic option",
+)
+
+# Each provider needs a serialise prefix, so its count survives the round trip.
+for key, prefix in (("googleScholar", "gs"), ("openAlex", "oa"), ("semanticScholar", "s2")):
+    check(
+        f"`{prefix}=" in citations_ts,
+        f"the citation cache line has no field for {key}",
+    )
+    check(
+        re.search(rf"readCount\(fields, \"{prefix}\"\)", citations_ts) is not None,
+        f"the citation cache line does not read the {prefix} field back",
+    )
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

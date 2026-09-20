@@ -19,22 +19,76 @@ export const PREF_BRANCH = config.prefsPrefix;
 
 export type RangeFilterMode = "hide" | "dim";
 
-/** How a like count is drawn inside its column cell. */
-export type LikeStyle = "plain" | "badge" | "glass" | "ring";
+/**
+ * How a like count is drawn inside its column cell.
+ *
+ * `plain`, `badge`, `glass` and `ring` are shape-only: they tint with the
+ * colours from the colour section. The palette styles below carry their own
+ * palette for the high/mid/low bands, because their look is the point.
+ */
+export type LikeStyle =
+  | "plain"
+  | "minimal"
+  | "badge"
+  | "glass"
+  | "ring"
+  | "bookmark"
+  | "morandi"
+  | "academic"
+  | "elegant"
+  | "fresh"
+  | "playful"
+  | "outline"
+  | "split"
+  | "dot";
 
-const LIKE_STYLES: readonly LikeStyle[] = ["plain", "badge", "glass", "ring"];
+export const LIKE_STYLES: readonly LikeStyle[] = [
+  "plain",
+  "minimal",
+  "badge",
+  "glass",
+  "ring",
+  "bookmark",
+  "morandi",
+  "academic",
+  "elegant",
+  "fresh",
+  "playful",
+  "outline",
+  "split",
+  "dot",
+];
+
+/** Styles that bring their own palette for every band. */
+export const PALETTE_STYLES: readonly LikeStyle[] = [
+  "bookmark",
+  "morandi",
+  "academic",
+  "elegant",
+  "fresh",
+  "playful",
+  "split",
+  "dot",
+];
 
 /** Fixed cut-offs, or rank within the loaded items. */
 export type ColorMode = "threshold" | "quantile";
 
-/** Ordering applied when exporting selected items. */
-export type ExportSort = "likes" | "citations" | "title" | "none";
+/**
+ * Which provider's count the Citations column shows.
+ *
+ * `auto` walks the providers in order of authority: Google Scholar indexes the
+ * widest body of literature, OpenAlex is the next broadest and is openly
+ * documented, and Semantic Scholar covers the fewest venues of the three.
+ */
+export type CitationSourcePreference =
+  "auto" | "googleScholar" | "openAlex" | "semanticScholar";
 
-const EXPORT_SORTS: readonly ExportSort[] = [
-  "likes",
-  "citations",
-  "title",
-  "none",
+const CITATION_SOURCE_PREFERENCES: readonly CitationSourcePreference[] = [
+  "auto",
+  "googleScholar",
+  "openAlex",
+  "semanticScholar",
 ];
 
 export const PREF_DEFAULTS = {
@@ -99,14 +153,10 @@ export const PREF_DEFAULTS = {
   citationsEnabled: true,
   /** Re-read citation counts after this many days (`0` disables). */
   citationCacheTtlDays: 7,
-
-  // --- Notes ---------------------------------------------------------------
-  noteIncludeCitations: true,
-  noteIncludeTrend: true,
-  noteIncludeArxivLink: true,
-
-  // --- Export --------------------------------------------------------------
-  exportSort: "likes" as ExportSort,
+  /** Read counts from Google Scholar. Best-effort: Google rate-limits reads. */
+  useGoogleScholar: true,
+  /** Which provider's count is displayed. */
+  citationSourcePreference: "auto" as CitationSourcePreference,
 } as const;
 
 export type PrefName = keyof typeof PREF_DEFAULTS;
@@ -219,12 +269,22 @@ export function getLikeStyle(): LikeStyle {
     : (PREF_DEFAULTS.likeStyle as LikeStyle);
 }
 
-/** Reads the export ordering, falling back to the default for junk values. */
-export function getExportSort(): ExportSort {
-  const raw = getPref("exportSort");
-  return EXPORT_SORTS.includes(raw as ExportSort)
-    ? (raw as ExportSort)
-    : (PREF_DEFAULTS.exportSort as ExportSort);
+/** The provider order used when the preference is `auto`. */
+export const AUTHORITY_ORDER: readonly CitationSource[] = [
+  "googleScholar",
+  "openAlex",
+  "semanticScholar",
+];
+
+/** Provider identifiers as they appear in the cache line and the tooltip. */
+export type CitationSource = "googleScholar" | "openAlex" | "semanticScholar";
+
+/** Reads which provider's count should be shown. */
+export function getCitationSourcePreference(): CitationSourcePreference {
+  const raw = getPref("citationSourcePreference");
+  return CITATION_SOURCE_PREFERENCES.includes(raw as CitationSourcePreference)
+    ? (raw as CitationSourcePreference)
+    : "auto";
 }
 
 export interface TrendPrefs {
@@ -271,12 +331,15 @@ export function getColorScheme(): ColorScheme {
 export interface CitationPrefs {
   enabled: boolean;
   cacheTtlDays: number;
+  /** Whether Google Scholar is asked for a count. */
+  useGoogleScholar: boolean;
 }
 
 export function getCitationPrefs(): CitationPrefs {
   return {
     enabled: getPref("citationsEnabled"),
     cacheTtlDays: Math.max(0, Math.floor(getPref("citationCacheTtlDays"))),
+    useGoogleScholar: getPref("useGoogleScholar"),
   };
 }
 

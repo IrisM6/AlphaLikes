@@ -28,40 +28,20 @@ cell-quantile-title = {label}——{high} 个赞以上为高，{low} 个赞及�
 
 # --- 批量操作 ---------------------------------------------------------------
 
+cell-dot-capped = 实际点赞数 {likes}
+cell-split-prefix = 赞
+cell-split-prefix-citations = 引
+cell-citation-source = 来源：{source}
 menu-batch-find = 批量查找 arXiv…
-menu-export-csv = 导出为 CSV…
-menu-export-json = 导出为 JSON…
-menu-note = 插入点赞摘要笔记
-menu-high-only = 只看高赞
-
 batch-finding = 正在为 {count} 个条目查找 arXiv…
 batch-done = 完成。自动匹配 {applied} 个，待确认 {pending} 个，无匹配 {notFound} 个，已有 ID {alreadyKnown} 个。
 batch-none-to-do = 所选条目都已经有 arXiv ID 了。
-export-writing = 正在整理 {count} 个条目…
-export-done = 已导出 {count} 个条目到 {path}
-export-failed = 导出失败：{message}
-export-empty = 所选条目中没有可导出的内容。
-note-done = 已插入 {inserted} 条笔记，跳过 {skipped} 条。
-note-failed = 无法插入笔记（{failed} 条失败）。
-high-only-on = 只显示 {bound} 个赞以上的条目。
-high-only-off = 已关闭「只看高赞」。
-
 progress-error = AlphaLikes 无法完成本次更新：{message}
 
 error-no-selection = 请先选择至少一个条目。
 error-single-selection = 该操作只能用于单个条目。
 
 # --- 摘要笔记正文 -----------------------------------------------------------
-
-note-heading = AlphaLikes 摘要
-note-likes = alphaXiv 点赞：
-note-citations = 引用数：
-note-influential = 有影响力引用
-note-high-impact = 该成果位于本领域同年份的前 10%。
-note-trend-today = 较上次快照
-note-trend-window = {days} 天内
-note-generated = 由 AlphaLikes 生成于
-note-arxiv-link = arXiv:{id}
 
 picker-title = 查找 arXiv
 picker-heading = 候选匹配结果
@@ -112,17 +92,36 @@ pref-match-use-unpaywall =
 pref-match-contact = OpenAlex / Unpaywall 联系邮箱
 
 pref-appearance-title = 外观
-pref-appearance-desc = 点赞数在列里的显示方式；颜色由下面的「颜色」一节决定。
+pref-appearance-desc = 点赞数与引用数在列里的显示方式。前四种样式使用「颜色」一节里的颜色；其余样式自带一套配色，高赞/低赞会切换它们各自的深浅版本。
 pref-appearance-style = 显示样式
 pref-style-plain =
     .label = 纯文本
+pref-style-minimal =
+    .label = 纯文本极简（次级文本色、无底无框）
 pref-style-badge =
-    .label = 浅色标签
+    .label = 浅色标签（圆角浅底）
 pref-style-glass =
-    .label = 玻璃胶囊
+    .label = 玻璃胶囊（毛玻璃 + 高光）
 pref-style-ring =
-    .label = 玻璃圆形
-
+    .label = 玻璃圆形（正圆角标）
+pref-style-bookmark =
+    .label = 侧边强调块（左侧金色竖块 + 米黄底）
+pref-style-morandi =
+    .label = 莫兰迪低饱和（雾霾蓝灰 / 灰咖）
+pref-style-academic =
+    .label = 学术严谨（深蓝实底或细灰边）
+pref-style-elegant =
+    .label = 典雅精致（深藏青底 + 细金线 + 衬线字）
+pref-style-fresh =
+    .label = 淡雅清新（薄荷绿 / 浅粉 + 淡投影）
+pref-style-playful =
+    .label = 活泼明快（亮黄 + 黑色硬阴影）
+pref-style-outline =
+    .label = 细边框描边（透明底 + 1px 边框）
+pref-style-split =
+    .label = 双色拼接（左深「赞」右浅数字）
+pref-style-dot =
+    .label = 数字角标（红色小圆，超过 99 显示 99+）
 pref-color-title = 颜色
 pref-color-enabled =
     .label = 为点赞数着色
@@ -149,29 +148,31 @@ pref-trend-hot = 每日增长达到该数值视为「近期热门」
 pref-trend-history = 保留最近多少天的快照（写入 Extra，最多 30）
 
 pref-citations-title = 引用数
-pref-citations-desc = 引用数据来自 Semantic Scholar 与 OpenAlex。被引次数变化很慢，所以缓存时间比点赞数长。
+pref-citations-desc = 引用数据来自 Google Scholar、OpenAlex 与 Semantic Scholar。被引次数变化很慢，所以缓存时间比点赞数长。
 pref-citations-enabled =
     .label = 显示「引用数」列并查询引用数据
 pref-citations-ttl = 缓存多少天后重新读取（0 = 只读一次）
+pref-citations-scholar =
+    .label = 启用 Google Scholar（无官方 API，读取公开结果页；可能被限流）
+pref-citations-scholar-note = Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited by」数字。Google 可能会要求人机验证或限流，这时会跳过它并使用下一个来源；读取过于频繁更容易被拦，因此请不要把刷新间隔调得太小。
+pref-citations-source = 显示哪一个来源的引用数
+pref-citations-source-auto = 自动（Google Scholar → OpenAlex → Semantic Scholar）
+pref-citations-source-scholar =
+    .label = 只用 Google Scholar
+pref-citations-source-openalex =
+    .label = 只用 OpenAlex
+pref-citations-source-s2 =
+    .label = 只用 Semantic Scholar
+pref-citations-source-note = 「自动」按来源覆盖范围排序：Google Scholar 收录最广，OpenAlex 次之且文档公开，Semantic Scholar 覆盖的期刊最少。某个来源没有数据（或本次被限流）时会自动顺延到下一个；列里悬停会显示当前数字的来源。
 pref-citations-s2-note = Semantic Scholar 未提供 key 时会限流，遇到 429 会跳过并保留下次机会。
-
-pref-note-title = 摘要笔记
-pref-note-desc = 右键「插入点赞摘要笔记」会为每个条目新建一条子笔记。
-pref-note-citations =
-    .label = 包含引用数
-pref-note-trend =
-    .label = 包含点赞变化
-pref-note-arxiv-link =
-    .label = 包含 arXiv 链接
-
 pref-refresh-title = 刷新与网络
 pref-refresh-desc = 右键任意条目选择「刷新 alphaXiv 点赞」可以重新读取；缓存也可以按时间自动过期。
 pref-refresh-ttl = 缓存多少天后重新读取点赞数（0 = 不自动）
 pref-refresh-interval = 同一域名请求的最小间隔（毫秒）
 pref-refresh-timeout = 请求超时（毫秒）
 
-pref-filter-title = 只看高赞
-pref-filter-desc = 把列聚焦在一段点赞区间内；边界为 0 表示不限制。也可以在条目右键菜单里一键切换「只看高赞」。
+pref-filter-title = 点赞数范围筛选
+pref-filter-desc = 把列聚焦在一段点赞区间内；边界为 0 表示不限制。
 pref-filter-enabled =
     .label = 启用点赞数范围筛选
 pref-filter-min = 最少点赞数
@@ -182,15 +183,3 @@ pref-filter-mode-hide =
 pref-filter-mode-dim =
     .label = 保留但变淡
 
-pref-export-title = 导出
-pref-export-desc = 右键「导出为 CSV / JSON」会导出所选条目的标题、DOI、arXiv ID、点赞数、引用数与更新时间。
-pref-export-sort = 导出排序
-pref-export-sort-likes =
-    .label = 按点赞数（从高到低）
-pref-export-sort-citations =
-    .label = 按引用数（从高到低）
-pref-export-sort-title =
-    .label = 按标题
-pref-export-sort-none =
-    .label = 按 Zotero 当前顺序
-pref-export-hint = CSV 带 UTF-8 BOM，用 Excel 打开中文标题不会乱码。

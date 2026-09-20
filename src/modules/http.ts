@@ -1,13 +1,17 @@
 /**
  * HTTP access with global serialisation and per-host pacing.
  *
- * arXiv asks for at least three seconds between API calls, while the other
- * providers are happy with the configured interval, so the delay is chosen per
- * host rather than globally.
+ * arXiv asks for at least three seconds between API calls and Google Scholar
+ * blocks reads that come too fast, while the other providers are happy with the
+ * configured interval, so the delay is chosen per host rather than globally.
  */
 
 import pkg from "../../package.json";
-import { ARXIV_API_INTERVAL_MS, REQUEST_TIMEOUT_MS } from "./constants";
+import {
+  ARXIV_API_INTERVAL_MS,
+  GOOGLE_SCHOLAR_INTERVAL_MS,
+  REQUEST_TIMEOUT_MS,
+} from "./constants";
 
 export interface RequesterOptions {
   timeoutMs: number;
@@ -60,6 +64,9 @@ export class PacedRequester {
     const base = this.options.intervalMs;
     if (/(^|\.)arxiv\.org$/i.test(host)) {
       return Math.max(base, ARXIV_API_INTERVAL_MS);
+    }
+    if (/(^|\.)scholar\.google\.com$/i.test(host)) {
+      return Math.max(base, GOOGLE_SCHOLAR_INTERVAL_MS);
     }
     return base;
   }
