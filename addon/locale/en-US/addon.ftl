@@ -94,7 +94,7 @@ pref-match-use-unpaywall =
 pref-match-contact = Contact address for OpenAlex / Unpaywall
 
 pref-appearance-title = Appearance
-pref-appearance-desc = How like counts and citation counts are drawn in their columns. The first four styles use the colours from the Colours section; the rest carry their own palette and switch between its strong and muted versions for high and low counts.
+pref-appearance-desc = How like counts and citation counts are drawn in their columns. Six of the styles only change the shape and texture and take their colours from the Colours section; the other eight carry their own palette and switch between its strong and muted versions for high and low counts.
 pref-appearance-style = Display style
 pref-style-plain =
     .label = Plain text

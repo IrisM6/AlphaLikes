@@ -347,6 +347,25 @@ function applyLikeStyle(
     return;
   }
 
+  // #5 玻璃圆形：正圆角标。宽数字无法保持正圆而不裁切，因此变成胶囊并把字号
+  // 降一档。
+  if (style === "ring") {
+    const text = visual.textContent ?? "";
+    visual.style.display = "inline-flex";
+    visual.style.alignItems = "center";
+    visual.style.justifyContent = "center";
+    visual.style.minWidth = "22px";
+    visual.style.height = "22px";
+    visual.style.padding = "0 4px";
+    visual.style.borderRadius = text.length <= 3 ? "50%" : "999px";
+    visual.style.background = translucent(color, 18);
+    visual.style.border = `1px solid ${translucent(color, 45)}`;
+    visual.style.boxShadow =
+      "inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.16)";
+    if (text.length >= 4) visual.style.fontSize = "0.85em";
+    return;
+  }
+
   // Fallback for an unknown style: keep the count readable rather than blank.
   visual.style.padding = "1px 8px";
   visual.style.borderRadius = "999px";

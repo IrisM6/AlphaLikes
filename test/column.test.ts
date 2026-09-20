@@ -291,7 +291,9 @@ describe("AlphaLikes column rendering", function () {
       const visual = high("fresh");
       assert.equal(visual.style.background, "rgb(230, 247, 240)");
       assert.equal(visual.style.color, "rgb(46, 139, 87)");
-      assert.include(visual.style.boxShadow, "0 2px 4px");
+      // The DOM normalises the shadow by putting the colour first.
+      assert.include(visual.style.boxShadow, "2px 4px");
+      assert.include(visual.style.boxShadow, "0.05");
     });
 
     it("playful pairs yellow with a hard shadow", function () {
@@ -321,6 +323,8 @@ describe("AlphaLikes column rendering", function () {
     });
 
     it("dot caps the number at 99+", function () {
+      setPref("colorEnabled", true);
+      useStyle("dot");
       const cell = renderLikeCell(
         toSortableValue(1234),
         COLUMN,

@@ -92,7 +92,7 @@ pref-match-use-unpaywall =
 pref-match-contact = OpenAlex / Unpaywall 联系邮箱
 
 pref-appearance-title = 外观
-pref-appearance-desc = 点赞数与引用数在列里的显示方式。前四种样式使用「颜色」一节里的颜色；其余样式自带一套配色，高赞/低赞会切换它们各自的深浅版本。
+pref-appearance-desc = 点赞数与引用数在列里的显示方式。其中六种只改变形状与质感，颜色取自「颜色」一节；其余八种自带一套配色，高赞/低赞会切换它们各自的深浅版本。
 pref-appearance-style = 显示样式
 pref-style-plain =
     .label = 纯文本
