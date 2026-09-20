@@ -105,49 +105,49 @@ interface BandPaint {
  * keep the like-count signal visible inside each look.
  */
 const PALETTES: Record<string, Record<Band, BandPaint>> = {
-  // #5 侧边强调块：左侧深金色块 + 浅米黄底
+  // 侧边强调块：左侧深金色块 + 浅米黄底
   bookmark: {
     high: { background: "#FDF9E8", color: "#A67C00", border: "#D4AF37" },
     mid: { background: "#F5F6F7", color: "#5F6368", border: "#9AA0A6" },
     low: { background: "#FAFAFA", color: "#8A8A8A", border: "#D0D0D0" },
   },
-  // #6 莫兰迪低饱和
+  // 莫兰迪低饱和
   morandi: {
     high: { background: "#DDE3E5", color: "#7A8B99" },
     mid: { background: "#E8E3E1", color: "#9A8C89" },
     low: { background: "#EFEFEF", color: "#AFAFAF" },
   },
-  // #7 学术严谨
+  // 学术严谨
   academic: {
     high: { background: "#003366", color: "#FFFFFF" },
     mid: { background: "#F5F5F5", color: "#003366", border: "#CCCCCC" },
     low: { background: "#FAFAFA", color: "#777777", border: "#DDDDDD" },
   },
-  // #8 典雅精致：深藏青底 + 细金线
+  // 典雅精致：深藏青底 + 细金线
   elegant: {
     high: { background: "#1A2332", color: "#D4AF37", border: "#D4AF37" },
     mid: { background: "#1A2332", color: "#BFA76A", border: "#8C7A4B" },
     low: { background: "transparent", color: "#8A8F98" },
   },
-  // #9 淡雅清新
+  // 淡雅清新
   fresh: {
     high: { background: "#E6F7F0", color: "#2E8B57" },
     mid: { background: "#FFF0F5", color: "#C71585" },
     low: { background: "#F5F5F5", color: "#999999" },
   },
-  // #10 活泼明快
+  // 活泼明快
   playful: {
     high: { background: "#FFD700", color: "#000000", border: "#000000" },
     mid: { background: "#FFE9A8", color: "#000000", border: "#000000" },
     low: { background: "#EDEDED", color: "#666666", border: "#BDBDBD" },
   },
-  // #12 双色拼接：左半深底白字，右半浅底深字
+  // 双色拼接：左半深底白字，右半浅底深字
   split: {
     high: { background: "#333333", color: "#FFFFFF" },
     mid: { background: "#5F6368", color: "#FFFFFF" },
     low: { background: "#8A8A8A", color: "#FFFFFF" },
   },
-  // #13 数字角标
+  // 数字角标
   dot: {
     high: { background: "#FF3B30", color: "#FFFFFF" },
     mid: { background: "#FF9500", color: "#FFFFFF" },
@@ -204,7 +204,7 @@ function applyLikeStyle(
 
   if (style === "plain") return;
 
-  // #1 纯文本极简：只在数字上做轻量排版，没有底色和边框。
+  // 纯文本极简：只在数字上做轻量排版，没有底色和边框。
   if (style === "minimal") {
     visual.style.fontSize = "0.95em";
     visual.style.fontWeight = "500";
@@ -213,7 +213,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #11 细边框描边：透明底 + 1px 边框。
+  // 细边框描边：透明底 + 1px 边框。
   if (style === "outline") {
     const outline = color || OUTLINE_TEXT;
     visual.style.padding = "1px 8px";
@@ -224,7 +224,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #5 侧边强调块：用左侧的粗边框当那条深色竖块，比塞一个子元素更稳。
+  // 侧边强调块：用左侧的粗边框当那条深色竖块，比塞一个子元素更稳。
   if (style === "bookmark") {
     const paint = PALETTES.bookmark[band];
     visual.style.padding = "1px 8px 1px 7px";
@@ -238,7 +238,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #6 莫兰迪、#7 学术、#9 清新、#10 活泼：实底/浅底 + 文字，
+  // 莫兰迪、学术、清新、活泼：实底/浅底 + 文字，
   // 差别在圆角、字重与阴影。
   if (
     style === "morandi" ||
@@ -278,7 +278,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #8 典雅精致：深藏青底 + 细金线，标题用衬线字体。
+  // 典雅精致：深藏青底 + 细金线，标题用衬线字体。
   if (style === "elegant") {
     const paint = PALETTES.elegant[band];
     visual.style.padding = "1px 9px";
@@ -293,7 +293,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #13 数字角标：正圆、白字，超过 99 显示 99+，真实数字进 tooltip。
+  // 数字角标：正圆、白字，超过 99 显示 99+，真实数字进 tooltip。
   if (style === "dot") {
     const paint = PALETTES.dot[band];
     const text = visual.textContent ?? "";
@@ -315,7 +315,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #12 双色拼接：左半深底白字放前缀，右半浅底深字放数字。
+  // 双色拼接：左半深底白字放前缀，右半浅底深字放数字。
   if (style === "split") {
     const left = PALETTES.split[band];
     const right = SPLIT_RIGHT[band];
@@ -347,7 +347,7 @@ function applyLikeStyle(
     return;
   }
 
-  // #5 玻璃圆形：正圆角标。宽数字无法保持正圆而不裁切，因此变成胶囊并把字号
+  // 玻璃圆形：正圆角标。宽数字无法保持正圆而不裁切，因此变成胶囊并把字号
   // 降一档。
   if (style === "ring") {
     const text = visual.textContent ?? "";

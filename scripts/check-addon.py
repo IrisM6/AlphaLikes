@@ -510,6 +510,42 @@ for key, prefix in (("googleScholar", "gs"), ("openAlex", "oa"), ("semanticSchol
     )
 
 # ---------------------------------------------------------------------------
+# 10. The style preview page is generated, never hand-edited
+# ---------------------------------------------------------------------------
+
+# docs/styles-preview.html exists to show the real colours, so it has to come
+# from the same tables the columns read. Regenerating it into a temporary file
+# and comparing the bytes is the whole guard: an edited page, a stale page and
+# a palette change that skipped the page all show up here.
+preview = ROOT / "docs" / "styles-preview.html"
+generator = ROOT / "scripts" / "gen-styles-preview.py"
+check(preview.exists(), "docs/styles-preview.html is missing")
+if generator.exists() and preview.exists():
+    import subprocess
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        target = pathlib.Path(tmp) / "styles-preview.html"
+        result = subprocess.run(
+            [sys.executable, str(generator), "--out", str(target)],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+        )
+        check(
+            result.returncode == 0,
+            f"the style preview generator failed: {result.stderr.strip()[:200]}",
+        )
+        if result.returncode == 0:
+            check(
+                target.read_text(encoding="utf-8") == read(preview),
+                "docs/styles-preview.html is out of date; "
+                "run `python3 scripts/gen-styles-preview.py`",
+            )
+else:
+    check(False, "scripts/gen-styles-preview.py is missing")
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

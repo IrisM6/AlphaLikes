@@ -32,6 +32,7 @@
     "lint:check": "prettier --check . && eslint .",
     "lint:fix": "prettier --write . && eslint . --fix",
     "check:addon": "python3 scripts/check-addon.py",
+    "gen:styles": "python3 scripts/gen-styles-preview.py",
     "release": "zotero-plugin release",
     "test": "zotero-plugin test",
     "update-deps": "npm update --save"

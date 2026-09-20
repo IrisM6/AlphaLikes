@@ -14,3 +14,6 @@ tsconfig.tsbuildinfo
 .scaffold
 build
 logs
+# Python bytecode from the asset scripts
+__pycache__/
+*.pyc
