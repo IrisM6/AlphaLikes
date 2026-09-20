@@ -8,13 +8,16 @@ import {
   CELL_PENDING,
   CELL_UNAVAILABLE,
   fromSortableValue,
+  splitValueDecorations,
 } from "./likes";
 import { t } from "./l10n";
 import {
   colorBucket,
+  getCitationPrefs,
   getColorScheme,
   getLikeStyle,
   getRangeFilter,
+  getTrendPrefs,
   isWithinRange,
   type ColorScheme,
   type LikeStyle,
@@ -23,6 +26,15 @@ import { AlphaLikesService } from "./service";
 
 export const COLUMN_KEY = "alphaxiv_likes";
 export const COLUMN_LABEL = "alphaXiv Likes";
+
+/** Second column: citation counts from Semantic Scholar and OpenAlex. */
+export const CITATIONS_COLUMN_KEY = "alphaxiv_citations";
+export const CITATIONS_COLUMN_LABEL = "Citations";
+
+/** Decoration value that marks a work as being in its field's top decile. */
+const HIGH_IMPACT_MARKER = "1";
+/** Superscript plus sign, kept as a literal so the cell needs no font tuning. */
+const HIGH_IMPACT_GLYPH = "▲";
 
 const NUMERIC_CELL_RE = /^\d+$/;
 
@@ -128,6 +140,7 @@ export function renderLikeCell(
   cell.style.justifyContent = "flex-end";
   cell.style.fontVariantNumeric = "tabular-nums";
 
+  const { decorations } = splitValueDecorations(data);
   const text = fromSortableValue(data);
   const style = getLikeStyle();
 
@@ -138,7 +151,9 @@ export function renderLikeCell(
   cell.appendChild(visual);
 
   if (NUMERIC_CELL_RE.test(text)) {
-    applyLikeCountStyling(cell, visual, Number.parseInt(text, 10), style);
+    const likes = Number.parseInt(text, 10);
+    applyLikeCountStyling(cell, visual, likes, style);
+    appendTrend(cell, doc, decorations[0], likes);
     return cell;
   }
 
@@ -161,6 +176,95 @@ export function renderLikeCell(
     cell.title = t("cell-unavailable");
   }
 
+  return cell;
+}
+
+/**
+ * Adds the day-over-day change next to the count, e.g. `2979 ↑12`.
+ *
+ * A rise at or above the "hot" threshold is drawn in the high colour and says
+ * so in the tooltip; every other change stays muted so the number itself keeps
+ * the reader's attention.
+ */
+function appendTrend(
+  cell: HTMLElement,
+  doc: Document,
+  decoration: string | undefined,
+  likes: number,
+): void {
+  if (decoration === undefined) return;
+
+  const delta = Number.parseInt(decoration, 10);
+  if (!Number.isSafeInteger(delta)) return;
+
+  const prefs = getTrendPrefs();
+  const scheme = getColorScheme();
+  // The hot accent obeys the master colour switch, like the count does.
+  const hot = scheme.enabled && prefs.hotDelta > 0 && delta >= prefs.hotDelta;
+
+  const suffix = doc.createElement("span");
+  suffix.textContent = `${delta > 0 ? "↑" : delta < 0 ? "↓" : "→"}${Math.abs(delta)}`;
+  suffix.style.marginInlineStart = "4px";
+  suffix.style.fontSize = "0.85em";
+  suffix.style.opacity = hot ? "1" : "0.7";
+  if (hot && scheme.high) suffix.style.color = scheme.high;
+  suffix.title = t("cell-trend", { delta, likes });
+
+  cell.appendChild(suffix);
+}
+
+/** Tooltip and marker for the Citations column. */
+function appendHighImpact(
+  cell: HTMLElement,
+  visual: HTMLElement,
+  doc: Document,
+): void {
+  const scheme = getColorScheme();
+
+  const marker = doc.createElement("span");
+  marker.textContent = HIGH_IMPACT_GLYPH;
+  marker.style.marginInlineStart = "3px";
+  marker.style.fontSize = "0.75em";
+  marker.style.verticalAlign = "super";
+  if (scheme.high) marker.style.color = scheme.high;
+  cell.appendChild(marker);
+
+  visual.title = t("cell-high-impact");
+}
+
+export function renderCitationCell(
+  data: string,
+  column: { className: string },
+  doc: Document,
+): HTMLElement {
+  const cell = doc.createElement("span");
+  cell.className = `cell ${column.className}`;
+  cell.style.justifyContent = "flex-end";
+  cell.style.fontVariantNumeric = "tabular-nums";
+
+  const { decorations } = splitValueDecorations(data);
+  const text = fromSortableValue(data);
+
+  const visual = doc.createElement("span");
+  visual.textContent = text;
+  cell.appendChild(visual);
+
+  if (NUMERIC_CELL_RE.test(text)) {
+    // Citation counts are a different quantity from like counts, so neither
+    // the like-count range filter nor its colours apply here: the number keeps
+    // the theme colour and only the top-decile marker is tinted.
+    if (decorations.includes(HIGH_IMPACT_MARKER)) {
+      appendHighImpact(cell, visual, doc);
+    }
+    return cell;
+  }
+
+  if (text === CELL_LOADING) {
+    cell.title = t("cell-loading");
+    return cell;
+  }
+
+  if (text === CELL_UNAVAILABLE) cell.title = t("cell-citations-unavailable");
   return cell;
 }
 
@@ -191,11 +295,45 @@ function applyLikeCountStyling(
     return;
   }
 
-  const bucket = colorBucket(likes, scheme);
+  // In quantile mode the cut-offs are percentiles of the counts currently in
+  // the item tree, so the same number can be "high" in one view and "mid" in
+  // another. The service owns that derivation and falls back to the fixed
+  // thresholds whenever the sample is too small to rank.
+  const thresholds = getService().getEffectiveThresholds();
+  const bucket = colorBucket(likes, {
+    ...scheme,
+    highThreshold: thresholds.high,
+    lowThreshold: thresholds.low,
+  });
   const color = effectiveColor(bucket, scheme);
 
   if (color) visual.style.color = color;
   applyLikeStyle(visual, style, color);
+
+  if (thresholds.source === "quantile") {
+    appendQuantileTitle(cell, bucket, thresholds);
+  }
+}
+
+/** Explains a quantile-derived colour on hover. */
+function appendQuantileTitle(
+  cell: HTMLElement,
+  bucket: ReturnType<typeof colorBucket>,
+  thresholds: { high: number; low: number; sampleSize: number },
+): void {
+  const label =
+    bucket === "high"
+      ? t("cell-quantile-high")
+      : bucket === "low"
+        ? t("cell-quantile-low")
+        : t("cell-quantile-mid");
+
+  cell.title = t("cell-quantile-title", {
+    label,
+    high: thresholds.high,
+    low: thresholds.low,
+    sample: thresholds.sampleSize,
+  });
 }
 
 export async function registerAlphaXivLikesColumn(): Promise<string[]> {
@@ -227,7 +365,50 @@ export async function registerAlphaXivLikesColumn(): Promise<string[]> {
       "AlphaLikes could not register its Zotero item-tree column",
     );
   }
+
+  if (getCitationPrefs().enabled) {
+    await registerCitationsColumn(activeService);
+  }
+
   return registeredDataKeys;
+}
+
+/**
+ * Registers the Citations column.
+ *
+ * Registration is conditional because the column is opt-out: with citation
+ * lookups switched off the column would only ever render blanks.
+ */
+async function registerCitationsColumn(
+  activeService: AlphaLikesService,
+): Promise<void> {
+  const result = await Zotero.ItemTreeManager.registerColumn({
+    pluginID: config.addonID,
+    dataKey: CITATIONS_COLUMN_KEY,
+    label: t("column-citations-label"),
+    enabledTreeIDs: ["main"],
+    width: "90",
+    minWidth: 64,
+    showInColumnPicker: true,
+    zoteroPersist: ["width", "hidden", "sortDirection"],
+    dataProvider: (item: Zotero.Item) =>
+      activeService.getCitationCellData(item),
+    renderCell(_index, data, column, _isFirstColumn, doc) {
+      return renderCitationCell(data, column, doc);
+    },
+  });
+
+  const keys = (Array.isArray(result) ? result : [result]).filter(
+    (key): key is string => typeof key === "string",
+  );
+  if (!keys.length) {
+    Zotero.debug(
+      "[AlphaLikes] Zotero refused the Citations column; like counts keep working",
+    );
+    return;
+  }
+
+  registeredDataKeys.push(...keys);
 }
 
 export async function shutdownAlphaXivLikesColumn(): Promise<void> {

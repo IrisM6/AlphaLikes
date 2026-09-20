@@ -1,6 +1,6 @@
 import { assert } from "chai";
 import { renderLikeCell } from "../src/modules/column";
-import { toSortableValue } from "../src/modules/likes";
+import { toSortableValue, withValueDecorations } from "../src/modules/likes";
 import {
   PREF_BRANCH,
   setPref,
@@ -46,6 +46,8 @@ function restore(): void {
   setPref("midLikesColor", "");
   setPref("rangeFilterEnabled", false);
   setPref("rangeFilterMode", "hide" as RangeFilterMode);
+  setPref("colorMode", "threshold");
+  setPref("trendHotDelta", 10);
 }
 
 describe("AlphaLikes column rendering", function () {
@@ -161,6 +163,73 @@ describe("AlphaLikes column rendering", function () {
       const visual = cell.firstElementChild as HTMLElement;
       assert.equal(visual.textContent, "…");
       assert.equal(visual.style.color, "");
+    });
+  });
+
+  describe("trend decoration", function () {
+    /** A count plus the decoded day-over-day change. */
+    function renderTrend(
+      likes: number,
+      delta: number,
+    ): {
+      cell: HTMLElement;
+      visual: HTMLElement;
+      suffix: HTMLElement | null;
+    } {
+      const cell = renderLikeCell(
+        withValueDecorations(toSortableValue(likes), [delta]),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      return {
+        cell,
+        visual: cell.children[0] as HTMLElement,
+        suffix: (cell.children[1] as HTMLElement) ?? null,
+      };
+    }
+
+    it("shows the change next to the count", function () {
+      setPref("colorEnabled", false);
+      const { visual, suffix } = renderTrend(2979, 12);
+
+      assert.equal(visual.textContent, "2979");
+      assert.equal(suffix?.textContent, "↑12");
+      assert.equal(suffix?.style.fontSize, "0.85em");
+    });
+
+    it("marks a fall with a downward arrow", function () {
+      setPref("colorEnabled", false);
+      assert.equal(renderTrend(2979, -3).suffix?.textContent, "↓3");
+      assert.equal(renderTrend(2979, 0).suffix?.textContent, "→0");
+    });
+
+    it("highlights growth at or above the hot threshold", function () {
+      setPref("colorEnabled", true);
+      setPref("trendHotDelta", 10);
+
+      const hot = renderTrend(2979, 12);
+      assert.equal(hot.suffix?.style.color, "rgb(26, 127, 55)");
+      assert.include(hot.suffix?.title ?? "", "12");
+
+      const cool = renderTrend(2979, 4);
+      assert.equal(cool.suffix?.style.color, "");
+    });
+
+    it("does not colour a hot suffix when colouring is off", function () {
+      setPref("colorEnabled", false);
+      const { suffix } = renderTrend(2979, 50);
+      assert.equal(suffix?.style.color, "");
+      // The arrow itself still shows; only the accent is dropped.
+      assert.equal(suffix?.textContent, "↑50");
+    });
+
+    it("renders an undecorated count without a suffix", function () {
+      const cell = renderLikeCell(
+        toSortableValue(2979),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      assert.lengthOf(cell.children, 1);
     });
   });
 });

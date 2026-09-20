@@ -262,6 +262,150 @@ check(
 )
 
 # ---------------------------------------------------------------------------
+# 6. Settings pane: Fluent ids, linkset and preference keys
+# ---------------------------------------------------------------------------
+#
+# A `data-l10n-id` that no FTL defines is the failure that blanks the pane:
+# Zotero's Fluent reports it, Zotero logs it, and the element keeps whatever it
+# had. The id also has to be one the build is able to prefix, which is exactly
+# what "exists in a locale" means here.
+
+pane_path = ROOT / "addon" / "content" / "preferences.xhtml"
+if pane_path.exists():
+    pane = read(pane_path)
+    pane_ids = set(re.findall(r'data-l10n-id="([A-Za-z0-9_-]+)"', pane))
+    check(bool(pane_ids), "the settings pane carries no data-l10n-id attribute")
+
+    for name, ids in locale_ids.items():
+        missing = pane_ids - ids
+        check(
+            not missing,
+            f"locale {name} does not define every id the settings pane uses: "
+            f"{sorted(missing)}",
+        )
+
+    # Plugin FTLs are matched by file name, not by path, and the build renames
+    # the file to <namespace>-<basename>.
+    linksets = re.findall(r"<[a-zA-Z:]*link[^>]*rel=\"localization\"[^>]*/>", pane)
+    check(
+        bool(linksets),
+        "the settings pane has no <link rel=\"localization\"> so Fluent never "
+        "reaches it",
+    )
+    hrefs = {
+        href
+        for link in linksets
+        for href in re.findall(r'href="([^"]+)"', link)
+    }
+    check(
+        all(re.fullmatch(r"[A-Za-z0-9_.-]+\.ftl", href) for href in hrefs),
+        f"the settings pane references FTL files by path instead of name: {sorted(hrefs)}",
+    )
+    expected_prefix = None
+    config_ts = read(ROOT / "zotero-plugin.config.ts")
+    namespace_match = re.search(r"namespace:\s*(?:pkg\.)?config\.addonRef", config_ts)
+    package_json = json.loads(read(ROOT / "package.json"))
+    if namespace_match:
+        expected_prefix = package_json["config"]["addonRef"]
+    if expected_prefix:
+        check(
+            all(href.startswith(f"{expected_prefix}-") for href in hrefs),
+            f"the settings pane must reference the built file names "
+            f"({expected_prefix}-*.ftl), got {sorted(hrefs)}",
+        )
+
+    pane_prefs = set(re.findall(r'preference="([A-Za-z0-9_]+)"', pane))
+    check(bool(pane_prefs), "the settings pane binds no preferences")
+    unknown_pane_prefs = pane_prefs - declared_prefs
+    check(
+        not unknown_pane_prefs,
+        f"the settings pane binds preferences that addon/prefs.js does not "
+        f"declare: {sorted(unknown_pane_prefs)}",
+    )
+    unused_pane_prefs = declared_prefs - pane_prefs
+    check(
+        not unused_pane_prefs,
+        f"preferences are declared but have no control in the pane: "
+        f"{sorted(unused_pane_prefs)}",
+    )
+else:
+    check(False, "addon/content/preferences.xhtml is missing")
+
+# ---------------------------------------------------------------------------
+# 7. Fluent variables used by t() must exist in the locale files
+# ---------------------------------------------------------------------------
+#
+# The build prefixes variables as well as ids, so a mismatch only shows up as a
+# placeholder that never gets filled at runtime.
+
+argument_re = re.compile(
+    r"\bt\(\s*\"([A-Za-z0-9_-]+)\"\s*,\s*\{(.*?)\}\s*\)", re.DOTALL
+)
+
+
+def argument_names(body: str) -> set[str]:
+    """Keys of the object literal passed to t().
+
+    Only top-level keys count: `{ sample: thresholds.sampleSize }` names the
+    variable `sample`, and the value expression must not be mistaken for
+    another variable.
+    """
+    parts: list[str] = []
+    current = ""
+    depth = 0
+    for char in body:
+        if char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth -= 1
+        if char == "," and depth == 0:
+            parts.append(current)
+            current = ""
+        else:
+            current += char
+    parts.append(current)
+
+    names: set[str] = set()
+    for part in parts:
+        text = part.strip()
+        if not text:
+            continue
+        key = text.split(":", 1)[0].strip() if ":" in text else text
+        if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            names.add(key)
+    return names
+
+
+variables_by_id: dict[str, set[str]] = {}
+for ts in (ROOT / "src").rglob("*.ts"):
+    for message_id, body in argument_re.findall(read(ts)):
+        names = argument_names(body)
+        if names:
+            variables_by_id.setdefault(message_id, set()).update(names)
+
+check(bool(variables_by_id), "no t() call passes named arguments")
+
+for name in locale_ids:
+    ftl_text = read(LOCALES / name / "addon.ftl")
+    for message_id, variables in sorted(variables_by_id.items()):
+        block = re.search(
+            rf"^{re.escape(message_id)}\s*=(.*?)(?=^[A-Za-z0-9_-]+\s*=|\Z)",
+            ftl_text,
+            re.MULTILINE | re.DOTALL,
+        )
+        if not block:
+            continue
+        # The source FTL is checked, so variables are still unprefixed; the
+        # build adds the namespace to both ids and variables afterwards.
+        declared = set(re.findall(r"\{\s*([A-Za-z0-9_-]+)\s*\}", block.group(1)))
+        absent = variables - declared
+        check(
+            not absent,
+            f"locale {name}: message {message_id} is called with {sorted(absent)} "
+            f"but the Fluent message declares {sorted(declared)}",
+        )
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

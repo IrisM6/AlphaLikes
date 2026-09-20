@@ -4,6 +4,9 @@
  * Everything in this module is pure so it can be unit tested outside Zotero.
  */
 
+import { CITATIONS_ANY_LINE_RE, CITATIONS_UPDATED_LINE_RE } from "./citations";
+import { HISTORY_ANY_LINE_RE } from "./history";
+
 export const CACHE_KEY = "alphaxiv_likes";
 export const ARXIV_ID_KEY = "alphaxiv_arxiv_id";
 export const UPDATED_KEY = "alphaxiv_likes_updated";
@@ -221,16 +224,21 @@ export function upsertLikesCache(
   return next;
 }
 
+/** Every `Extra` line AlphaLikes owns, for the "clear data" action. */
+const OWNED_LINE_RES = [
+  CACHE_LINE_RE,
+  ARXIV_ID_ANY_LINE_RE,
+  UPDATED_LINE_RE,
+  HISTORY_ANY_LINE_RE,
+  CITATIONS_ANY_LINE_RE,
+  CITATIONS_UPDATED_LINE_RE,
+];
+
 /** Removes every line AlphaLikes owns, leaving the rest of `Extra` intact. */
 export function stripAlphaLikesData(extra: string): string {
   const stripped = (extra || "")
     .split(/\r?\n/)
-    .filter(
-      (line) =>
-        !CACHE_LINE_RE.test(line) &&
-        !ARXIV_ID_ANY_LINE_RE.test(line) &&
-        !UPDATED_LINE_RE.test(line),
-    )
+    .filter((line) => !OWNED_LINE_RES.some((re) => re.test(line)))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .replace(/^[\r\n]+|[\r\n]+$/g, "");

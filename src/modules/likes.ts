@@ -57,21 +57,70 @@ export function parseLikesFromDocument(doc: Document): number | null {
   return null;
 }
 
+/**
+ * Separates the sort key from the display decorations appended to it.
+ *
+ * The data provider is the only channel between `dataProvider` and
+ * `renderCell`, so anything the cell needs beyond the bare number - a like
+ * trend, a high-impact marker - travels in the same string. Decorations only
+ * ever follow the sort key, so lexicographic ordering is unaffected.
+ */
+export const VALUE_DECORATION_SEPARATOR = "|";
+
 export function toSortableValue(likes: number): string {
   return String(likes).padStart(SORT_WIDTH, "0");
 }
 
+/** Splits a data value into its sort key and its list of decorations. */
+export function splitValueDecorations(value: string): {
+  key: string;
+  decorations: string[];
+} {
+  const raw = value ?? "";
+  const index = raw.indexOf(VALUE_DECORATION_SEPARATOR);
+  if (index < 0) return { key: raw, decorations: [] };
+
+  return {
+    key: raw.slice(0, index),
+    decorations: raw
+      .slice(index + 1)
+      .split(VALUE_DECORATION_SEPARATOR)
+      .filter(Boolean),
+  };
+}
+
+/** Attaches decorations to a sort key. An empty key stays empty. */
+export function withValueDecorations(
+  value: string,
+  decorations: (string | number | null | undefined)[],
+): string {
+  if (!value) return value;
+
+  const parts = decorations
+    .filter(
+      (entry): entry is string | number =>
+        entry !== null && entry !== undefined,
+    )
+    .map(String)
+    .filter(Boolean);
+
+  return parts.length
+    ? `${value}${VALUE_DECORATION_SEPARATOR}${parts.join(VALUE_DECORATION_SEPARATOR)}`
+    : value;
+}
+
 export function fromSortableValue(value: string): string {
-  if (!SORTABLE_RE.test(value)) return value;
-  return String(Number.parseInt(value, 10));
+  const { key } = splitValueDecorations(value);
+  if (!SORTABLE_RE.test(key)) return key;
+  return String(Number.parseInt(key, 10));
 }
 
 /** Whether a cell value is one of the non-numeric status markers. */
 export function isStatusValue(value: string): boolean {
+  if (SORTABLE_RE.test(value)) return false;
+  const { key } = splitValueDecorations(value);
   return (
-    value === CELL_LOADING ||
-    value === CELL_UNAVAILABLE ||
-    value === CELL_PENDING
+    key === CELL_LOADING || key === CELL_UNAVAILABLE || key === CELL_PENDING
   );
 }
 

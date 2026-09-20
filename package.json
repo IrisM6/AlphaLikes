@@ -1,7 +1,7 @@
 {
   "name": "zotero-alphalikes",
   "type": "module",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A sortable alphaXiv likes column for arXiv items in Zotero 7-9, with automatic arXiv matching, colour coding, like-count filtering and selectable cell styling.",
   "config": {
     "addonName": "AlphaLikes",

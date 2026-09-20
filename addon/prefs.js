@@ -47,3 +47,42 @@ pref("rangeFilterEnabled", false);
 pref("rangeFilterMin", 0);
 pref("rangeFilterMax", 0);
 pref("rangeFilterMode", "hide");
+
+// --- Like trend ------------------------------------------------------------
+//
+// Each refresh appends one snapshot per day to a line in the item's Extra
+// field, so the column can show `2979 ↑12`. The history is trimmed to
+// `historyDays` entries to keep Extra small.
+
+pref("showTrend", true);
+pref("trendHotDelta", 10);
+pref("historyDays", 7);
+
+// --- Colour mode -----------------------------------------------------------
+//
+// threshold | quantile. Quantile colours by rank within the items currently in
+// the tree; the fixed thresholds above are the fallback when there are too few
+// items to rank.
+
+pref("colorMode", "threshold");
+pref("quantileLowPercent", 40);
+pref("quantileHighPercent", 80);
+
+// --- Citations -------------------------------------------------------------
+
+pref("citationsEnabled", true);
+// 0 keeps whatever was read once.
+pref("citationCacheTtlDays", 7);
+
+// --- Summary note ----------------------------------------------------------
+
+pref("noteIncludeCitations", true);
+pref("noteIncludeTrend", true);
+pref("noteIncludeArxivLink", true);
+
+// --- Export ----------------------------------------------------------------
+//
+// likes | citations | title | none. Exporting sorted by like count is the
+// default because that is what the column is used for.
+
+pref("exportSort", "likes");

@@ -12,6 +12,8 @@ AlphaLikes 是一个可排序的 Zotero 条目列表列。它从条目的 `URL`�
 
 从 v1.1.0 起，**没有 arXiv ID 的条目也能自动匹配**：插件会通过 DOI 和标题查询多个免费学术 API，对候选结果打分，高置信度的自动采用，中等置信度的交给你右键确认。
 
+从 v1.3.0 起，插件还会读取**引用数**（Semantic Scholar 与 OpenAlex 双数据源）、记录**点赞数的每日变化**（列里显示 `2979 ↑12`）、支持**按当前列表排名的分位数着色**、批量操作（批量匹配、批量导出 CSV/JSON、批量插入摘要笔记），以及一键切换的**只看高赞**。
+
 > AlphaLikes is a Zotero 7–9 plugin that adds a sortable **alphaXiv Likes** column for arXiv papers, with automatic arXiv-ID matching, colour coding and like-count filtering.
 
 ## 功能
@@ -25,8 +27,15 @@ AlphaLikes 是一个可排序的 Zotero 条目列表列。它从条目的 `URL`�
 - **非 arXiv 条目自动匹配**：通过 DOI、标题、作者、年份查询 Semantic Scholar、OpenAlex、Crossref 和 arXiv API，用相似度打分后决定“自动采用 / 待确认 / 未找到”；
 - **手动确认与修正**：右键 → **查找 arXiv…**，在对话框中查看候选结果、重新搜索，或手动输入 ID；
 - **刷新**：右键 → **刷新 alphaXiv 点赞**，忽略缓存重新抓取；也可设置缓存过期天数自动刷新；
+- **引用数列**：注册第二个可排序列，显示 Semantic Scholar 与 OpenAlex 的引用数，位于本领域同年份前 10% 的成果带 ▲ 标记；
+- **点赞趋势**：每次刷新记录当天的点赞数（保留最近若干天），列里显示每日变化，例如 `2979 ↑12`，增长达到阈值时标为“近期热门”；
 - **颜色标记**：高赞绿色、低赞灰色、中间色可留空跟随主题；阈值与颜色都可自定义；
+- **分位数着色**：可改为按“当前列表内的排名”着色（默认低于 40 分位为低、高于 80 分位为高），样本太少时自动退回固定阈值；
 - **点赞数范围筛选**：输入最小/最大点赞数，区间外的条目可以隐藏或变暗；
+- **只看高赞**：右键菜单一键开关，取上限即“高赞”着色所用的阈值；
+- **批量操作**：一次为多个条目匹配 arXiv ID；
+- **导出**：所选条目导出为 CSV 或 JSON（标题、DOI、arXiv ID、点赞数、引用数、更新时间），默认按点赞数从高到低；
+- **摘要笔记**：右键为所选条目插入子笔记，内容可包含点赞数、趋势、引用数与 arXiv 链接；
 - 异步、串行抓取，同一主机两次请求间隔至少 1.5 秒（arXiv API 为 3 秒）；
 - 断网、非 2xx 响应或页面结构变化时显示 `N/A`，不会中断 Zotero；
 - 设置界面集成在 Zotero 的 **编辑 → 设置 → AlphaLikes** 中。
@@ -94,22 +103,58 @@ _界面示意图；主题、列宽和实际点赞数会因 Zotero 环境及 alph
 
 ### 右键菜单
 
-| 菜单项                   | 作用                                                                           |
-| ------------------------ | ------------------------------------------------------------------------------ |
-| **查找 arXiv…**          | 对选中的单个条目查询候选 arXiv 记录，弹出对话框让你挑选、重新搜索或手动输入 ID |
-| **刷新 alphaXiv 点赞**   | 忽略缓存与失败冷却，重新抓取所选条目的点赞数；没有 ID 的条目会重新尝试匹配     |
-| **清除 AlphaLikes 数据** | 从 `Extra` 中删除 AlphaLikes 写入的所有行                                      |
+| 菜单项                   | 作用                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------- |
+| **查找 arXiv…**          | 对选中的单个条目查询候选 arXiv 记录，弹出对话框让你挑选、重新搜索或手动输入 ID     |
+| **批量查找 arXiv…**      | 对多个选中条目依次匹配；高分自动采用，其余留待逐个确认，完成后给出统计             |
+| **刷新 alphaXiv 点赞**   | 忽略缓存与失败冷却，重新抓取所选条目的点赞数与引用数；没有 ID 的条目会重新尝试匹配 |
+| **只看高赞**             | 一键开关点赞数下限（勾选状态与列里的高赞颜色一致）                                 |
+| **导出为 CSV… / JSON…**  | 导出所选条目的标题、DOI、arXiv ID、点赞数、引用数与更新时间                        |
+| **插入点赞摘要笔记**     | 为每个所选条目新建一条子笔记                                                       |
+| **清除 AlphaLikes 数据** | 从 `Extra` 中删除 AlphaLikes 写入的所有行（含趋势与引用缓存）                      |
 
 对话框中的 **移除 AlphaLikes 数据** 与 **应用** 会立即生效；点 **取消** 不做任何修改。
 
+单个条目时只显示 **查找 arXiv…**，多选时显示 **批量查找 arXiv…**。
+
+### 导出
+
+导出默认按**点赞数从高到低**排列，可在设置里改为按引用数、标题或 Zotero 当前顺序；数值缺失的条目排在最后。CSV 带 UTF-8 BOM，用 Excel 打开中文标题不会乱码，且以 `=`、`+`、`-`、`@` 开头的标题会被加上前导单引号，避免被当成公式。JSON 输出是一个对象：
+
+```json
+{
+  "exportedAt": "2026-09-20T10:12:00.000Z",
+  "version": "1.3.0",
+  "count": 12,
+  "sortedBy": "likes",
+  "items": [
+    {
+      "title": "…",
+      "doi": "…",
+      "arxivID": "1706.03762",
+      "likes": 2979,
+      "citations": 7608,
+      "influential": 56,
+      "highImpact": true,
+      "updated": "…"
+    }
+  ]
+}
+```
+
 ### 设置
 
-**编辑 → 设置 → AlphaLikes** 提供四组选项：
+**编辑 → 设置 → AlphaLikes**，面板按中文优先渲染（Zotero 界面语言为英文时显示英文，其他语言回退到英文；面板本身自带中文兜底文案，即使 Fluent 未生效也不会空白）。选项分为以下几组：
 
-- **arXiv matching**：是否自动匹配、自动采用/待确认的置信度阈值、每次标题检索的结果数、启用哪些数据源、联系邮箱（OpenAlex 与 Unpaywall 的 polite pool 使用）；
-- **Refreshing**：缓存过期天数（0 = 不自动刷新）、同一主机的请求间隔、请求超时；
-- **Colours**：是否着色、高/低阈值、高/中/低三档颜色，以及 `?` 待确认标记的颜色。任何 CSS 颜色都可以写：`#1a7f37`、`green`、`rgb(26 127 55)`；
-- **Like-count range filter**：启用筛选、最小/最大点赞数（0 表示该侧无边界），以及区间外条目是**隐藏**还是**变暗**。
+- **arXiv 匹配**：是否自动匹配、自动采用/待确认的置信度阈值、每次标题检索的结果数、启用哪些数据源、联系邮箱（OpenAlex 与 Unpaywall 的 polite pool 使用）；
+- **外观**：点赞数的显示样式（纯文本 / 浅色标签 / 玻璃胶囊 / 玻璃圆形）；
+- **颜色**：是否着色、**着色依据**（固定阈值 / 当前列表分位数）、分位数上下限、高/低阈值、高/中/低三档颜色，以及 `?` 待确认标记的颜色。任何 CSS 颜色都可以写：`#1a7f37`、`green`、`rgb(26 127 55)`；
+- **点赞趋势**：是否在列里显示每日变化、判定“近期热门”的每日增长值、保留多少天的快照；
+- **引用数**：是否显示引用列、缓存多少天后重新读取；
+- **摘要笔记**：插入笔记时是否包含引用数、点赞变化、arXiv 链接；
+- **刷新与网络**：点赞缓存过期天数（0 = 不自动刷新）、同一主机的请求间隔、请求超时；
+- **只看高赞**：启用范围筛选、最小/最大点赞数（0 表示该侧无边界），以及区间外条目是**隐藏**还是**变暗**；
+- **导出**：导出排序方式。
 
 ## Extra 字段格式
 
@@ -120,10 +165,16 @@ arXiv: 2301.12345
 alphaxiv_arxiv_id: 2301.12345
 alphaxiv_likes: 2979
 alphaxiv_likes_updated: 2026-09-20T08:04:11.412Z
+alphaxiv_likes_history: 2026-09-20:2979;2026-09-19:2967;2026-09-18:2951
+alphaxiv_citations: oa=7608,s2=7400,infl=56,top10=1,top1=1
+alphaxiv_citations_updated: 2026-09-20T08:04:12.006Z
 ```
 
 - `alphaxiv_arxiv_id` 是匹配或手动确认的结果，优先级高于 `URL` 字段——你手动选定过的记录不会被覆盖；
 - `alphaxiv_likes_updated` 用于缓存过期判断（设置里的“缓存过期天数”为 0 时不参与）；
+- `alphaxiv_likes_history` 每天最多一条 `日期:点赞数`，新的在前，**最多保留 7 条**（可在设置里调整到 30），超出后丢弃最旧的，因此 `Extra` 不会无限增长；
+- `alphaxiv_citations` 中 `oa` 是 OpenAlex 的 `cited_by_count`，`s2` 是 Semantic Scholar 的 `citationCount`，`infl` 是 `influentialCitationCount`，`top10` / `top1` 表示 OpenAlex 认为该成果位于同领域同年份的前 10% / 1%；
+- 某次请求失败时，已缓存的数据源数值会被保留，不会被清空；
 - 已有的 `Extra` 内容会保留，AlphaLikes 只新增或更新自己的行。
 
 缓存保存在 Zotero 数据库中，因此会随 `Extra` 字段参与 Zotero 同步。
@@ -157,8 +208,11 @@ Zotero 的条目树 `dataProvider` 是同步 API，因此网络工作不会阻�
 - Semantic Scholar 在没有 API key 时经常返回 HTTP 429；插件会静默跳过并依赖其余数据源。
 - 自动匹配只在“高置信度”时写入结果，但相似度判断不可能完美。如果发现匹配错误，右键 → **查找 arXiv…** 可以手动改正，或 **清除 AlphaLikes 数据** 复位。
 - 对于确实是非 arXiv 的论文，匹配失败后会显示 `N/A`。若不想看到这些标记，可在设置中关闭自动匹配，非 arXiv 条目将保持空白。
+- 设置面板的文案以中文优先：Zotero 界面为中文时显示 `addon/locale/zh-CN`，为英文或其他语言时回退到 `en-US`；面板标记里还写有中文兜底文字，Fluent 万一未生效也不会出现空白面板。
 - `Extra` 被修改后，Zotero 会把条目标记为已修改，这是持久化和同步缓存所必需的行为。
-- 设置面板中的界面文字目前为英文；列名、右键菜单和匹配对话框已支持中文（`addon/locale/zh-CN`）。
+- 引用数只在 OpenAlex 能定位到对应 work 时给出；arXiv 预印本的 DataCite DOI（`10.48550/arXiv.*`）在 OpenAlex 中无法按 DOI 命中，此时插件改用标题检索，并要求标题相似度与年份同时通过，因此个别条目可能仍然查不到引用数。
+- OpenAlex 的“高影响力”判断依赖其 `citation_normalized_percentile`（同领域、同年份的比较），该字段对部分记录为空；此时不显示 ▲，而不是用固定的被引次数猜测。
+- 列里显示趋势需要至少两天的快照，第一次刷新只能写入当天数据；此后差值才出现在列中。
 
 ## 隐私与网络请求
 
@@ -166,8 +220,8 @@ AlphaLikes 只发起 GET 请求，且只发送论文的元数据（DOI、标题�
 
 - `https://www.alphaxiv.org/abs/<arXiv ID>` — 读取点赞数；
 - `https://export.arxiv.org/api/query` — 标题检索；
-- `https://api.semanticscholar.org/graph/v1/` — DOI / 标题检索；
-- `https://api.openalex.org/works` — DOI / 标题检索；
+- `https://api.semanticscholar.org/graph/v1/` — DOI / 标题检索，以及引用数（`citationCount`、`influentialCitationCount`）；
+- `https://api.openalex.org/works`（含 `/works/doi:`）— DOI / 标题检索，以及引用数（`cited_by_count`、`citation_normalized_percentile`）；
 - `https://api.crossref.org/works/` — DOI 元数据；
 - `https://api.unpaywall.org/v2/` — 仅在填写联系邮箱并启用时。
 
@@ -204,20 +258,28 @@ npm run release
 addon/manifest.json              Zotero 清单
 addon/bootstrap.js               插件生命周期入口
 addon/prefs.js                   默认设置项（构建时自动加前缀）
-addon/content/preferences.xhtml  设置面板
+addon/content/preferences.xhtml  设置面板（Fluent 本地化，中文兜底）
+addon/content/preferences.js     面板脚本：解析面板前先把 FTL 挂进设置窗口
 addon/content/arxiv-picker.xhtml 手动确认对话框
 addon/content/arxiv-picker.js    对话框逻辑（独立 chrome 脚本，不参与打包）
-src/hooks.ts                     启动时注册列、菜单、设置面板
-src/modules/column.ts            列注册与单元格渲染（颜色、筛选）
-src/modules/service.ts           状态机、缓存、刷新、自动匹配编排
+addon/locale/{zh-CN,en-US}/addon.ftl  界面文案（构建时加 alphalikes- 前缀并重命名）
+src/hooks.ts                     启动时注册列、菜单、设置面板与 Fluent 文件
+src/modules/column.ts            列注册与单元格渲染（颜色、筛选、趋势、引用）
+src/modules/service.ts           状态机、缓存、历史快照、批量操作编排
 src/modules/resolver.ts          多数据源查询与候选排序
 src/modules/similarity.ts        标题/作者/年份相似度评分
 src/modules/arxiv-id.ts          arXiv ID 解析与 Extra 字段读写
-src/modules/likes.ts             alphaXiv 页面解析与排序值编码
+src/modules/citations.ts         引用数双数据源查询与缓存行编解码
+src/modules/history.ts           点赞快照解析、写入、截断与差值计算
+src/modules/quantile.ts          分位数与阈值推导
+src/modules/export.ts            CSV/JSON 序列化与排序
+src/modules/note.ts              摘要笔记正文生成
+src/modules/likes.ts             alphaXiv 页面解析与排序值编码（含装饰后缀）
 src/modules/http.ts              串行限速请求器
 src/modules/prefs.ts             带默认值与钳制的设置读取
-src/modules/menu.ts              右键菜单
-src/modules/l10n.ts              界面文案
+src/modules/menu.ts              右键菜单（单项与批量）
+src/modules/l10n.ts              界面文案与占位符替换
+scripts/check-addon.py           静态检查（54 项，含面板 l10n 与设置项一致性）
 test/                            Zotero 集成测试与纯逻辑测试
 zotero-plugin.config.ts          构建与发布配置
 ```

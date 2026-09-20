@@ -24,6 +24,19 @@ export type LikeStyle = "plain" | "badge" | "glass" | "ring";
 
 const LIKE_STYLES: readonly LikeStyle[] = ["plain", "badge", "glass", "ring"];
 
+/** Fixed cut-offs, or rank within the loaded items. */
+export type ColorMode = "threshold" | "quantile";
+
+/** Ordering applied when exporting selected items. */
+export type ExportSort = "likes" | "citations" | "title" | "none";
+
+const EXPORT_SORTS: readonly ExportSort[] = [
+  "likes",
+  "citations",
+  "title",
+  "none",
+];
+
 export const PREF_DEFAULTS = {
   /** Look up arXiv IDs for items that have none. */
   autoResolveNonArxiv: true,
@@ -64,6 +77,36 @@ export const PREF_DEFAULTS = {
   rangeFilterMode: "hide" as RangeFilterMode,
   /** Cell presentation: plain text, soft badge, glass pill or glass circle. */
   likeStyle: "glass" as LikeStyle,
+
+  // --- Trend ---------------------------------------------------------------
+  /** Append the day-over-day change to the like count, e.g. `2979 ↑12`. */
+  showTrend: true,
+  /** A rise of at least this many likes in a day counts as "hot". */
+  trendHotDelta: 10,
+  /** Daily snapshots kept in `Extra` before the oldest are dropped. */
+  historyDays: 7,
+
+  // --- Colour mode ---------------------------------------------------------
+  /** `threshold` uses the fixed cut-offs below; `quantile` colours by rank. */
+  colorMode: "threshold" as ColorMode,
+  /** Percentile at or below which a count is "low" in quantile mode. */
+  quantileLowPercent: 40,
+  /** Percentile at or above which a count is "high" in quantile mode. */
+  quantileHighPercent: 80,
+
+  // --- Citations -----------------------------------------------------------
+  /** Register the Citations column and look counts up. */
+  citationsEnabled: true,
+  /** Re-read citation counts after this many days (`0` disables). */
+  citationCacheTtlDays: 7,
+
+  // --- Notes ---------------------------------------------------------------
+  noteIncludeCitations: true,
+  noteIncludeTrend: true,
+  noteIncludeArxivLink: true,
+
+  // --- Export --------------------------------------------------------------
+  exportSort: "likes" as ExportSort,
 } as const;
 
 export type PrefName = keyof typeof PREF_DEFAULTS;
@@ -156,12 +199,48 @@ function likeCountBelowMin(likes: number, filter: RangeFilter): boolean {
 
 export interface ColorScheme {
   enabled: boolean;
+  /** Whether cut-offs are fixed numbers or percentiles of the visible set. */
+  mode: ColorMode;
+  quantileLowPercent: number;
+  quantileHighPercent: number;
   high: string;
   low: string;
   mid: string;
   pending: string;
   highThreshold: number;
   lowThreshold: number;
+}
+
+/** Reads the display style, falling back to the default for unknown values. */
+export function getLikeStyle(): LikeStyle {
+  const raw = getPref("likeStyle");
+  return LIKE_STYLES.includes(raw as LikeStyle)
+    ? (raw as LikeStyle)
+    : (PREF_DEFAULTS.likeStyle as LikeStyle);
+}
+
+/** Reads the export ordering, falling back to the default for junk values. */
+export function getExportSort(): ExportSort {
+  const raw = getPref("exportSort");
+  return EXPORT_SORTS.includes(raw as ExportSort)
+    ? (raw as ExportSort)
+    : (PREF_DEFAULTS.exportSort as ExportSort);
+}
+
+export interface TrendPrefs {
+  enabled: boolean;
+  /** Day-over-day rise that marks a paper as hot. */
+  hotDelta: number;
+  /** Snapshots kept in `Extra`. */
+  historyDays: number;
+}
+
+export function getTrendPrefs(): TrendPrefs {
+  return {
+    enabled: getPref("showTrend"),
+    hotDelta: Math.max(0, Math.floor(getPref("trendHotDelta"))),
+    historyDays: clamp(Math.floor(getPref("historyDays")), 2, 30),
+  };
 }
 
 /**
@@ -177,6 +256,9 @@ export function getColorScheme(): ColorScheme {
 
   return {
     enabled: getPref("colorEnabled"),
+    mode: getPref("colorMode") === "quantile" ? "quantile" : "threshold",
+    quantileLowPercent: clamp(getPref("quantileLowPercent"), 0, 99),
+    quantileHighPercent: clamp(getPref("quantileHighPercent"), 1, 100),
     high: getPref("highLikesColor").trim(),
     low: getPref("lowLikesColor").trim(),
     mid: getPref("midLikesColor").trim(),
@@ -186,12 +268,16 @@ export function getColorScheme(): ColorScheme {
   };
 }
 
-/** Reads the display style, falling back to the default for unknown values. */
-export function getLikeStyle(): LikeStyle {
-  const raw = getPref("likeStyle");
-  return LIKE_STYLES.includes(raw as LikeStyle)
-    ? (raw as LikeStyle)
-    : (PREF_DEFAULTS.likeStyle as LikeStyle);
+export interface CitationPrefs {
+  enabled: boolean;
+  cacheTtlDays: number;
+}
+
+export function getCitationPrefs(): CitationPrefs {
+  return {
+    enabled: getPref("citationsEnabled"),
+    cacheTtlDays: Math.max(0, Math.floor(getPref("citationCacheTtlDays"))),
+  };
 }
 
 export type ColorBucket = "high" | "low" | "mid";

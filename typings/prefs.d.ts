@@ -32,6 +32,18 @@ declare namespace _ZoteroTypes {
       "rangeFilterMin": number;
       "rangeFilterMax": number;
       "rangeFilterMode": string;
+      "showTrend": boolean;
+      "trendHotDelta": number;
+      "historyDays": number;
+      "colorMode": string;
+      "quantileLowPercent": number;
+      "quantileHighPercent": number;
+      "citationsEnabled": boolean;
+      "citationCacheTtlDays": number;
+      "noteIncludeCitations": boolean;
+      "noteIncludeTrend": boolean;
+      "noteIncludeArxivLink": boolean;
+      "exportSort": string;
     };
   }
 }

@@ -17,7 +17,30 @@ import {
   upsertLikesCache,
   upsertResolvedArxivID,
 } from "./arxiv-id";
+import {
+  citationCountsFromSemanticScholar,
+  isHighImpact,
+  openAlexCitationSearchURL,
+  openAlexCitationURL,
+  openAlexSearchResults,
+  openAlexWorkInfo,
+  primaryCitationCount,
+  readCitations,
+  readCitationsUpdatedAt,
+  semanticScholarCitationURL,
+  upsertCitations,
+  type CitationCounts,
+} from "./citations";
 import { ERROR_RETRY_DELAY_MS, RESOLUTION_RETRY_DELAY_MS } from "./constants";
+import type { ExportRow } from "./export";
+import {
+  latestTrend,
+  readLikesHistory,
+  recordLikesSnapshot,
+  trendOverDays,
+  type LikesSnapshot,
+  type TrendDelta,
+} from "./history";
 import { PacedRequester } from "./http";
 import {
   CELL_LOADING,
@@ -26,15 +49,22 @@ import {
   fromSortableValue,
   parseLikesFromDocument,
   toSortableValue,
+  withValueDecorations,
 } from "./likes";
+import { buildNoteHTML, type NoteLabels } from "./note";
 import {
+  getCitationPrefs,
+  getColorScheme,
   getPref,
   getRangeFilter,
   getRequestPrefs,
   getResolverPrefs,
+  getTrendPrefs,
   isWithinRange,
   observePrefs,
+  setPref,
 } from "./prefs";
+import { quantileThresholds } from "./quantile";
 import {
   findArxivCandidates,
   normalizeDoi,
@@ -42,7 +72,7 @@ import {
   type PaperMetadata,
   type ResolverDeps,
 } from "./resolver";
-import { normalizeText } from "./similarity";
+import { normalizeText, titleSimilarity, yearDistance } from "./similarity";
 
 /** Item types that can plausibly have an arXiv preprint. */
 const RESOLVABLE_ITEM_TYPES = new Set([
@@ -67,10 +97,79 @@ type ItemState =
   | { kind: "success"; arxivID: string; likes: number }
   | { kind: "failed"; retryAfter: number };
 
+type CitationState =
+  | { kind: "loading" }
+  | { kind: "success"; counts: CitationCounts }
+  | { kind: "failed"; retryAfter: number };
+
 interface ResolutionCacheEntry {
   candidates: ArxivCandidate[];
   createdAt: number;
   expiresAt: number;
+}
+
+/**
+ * How long computed percentile cut-offs are reused. Quoting the population
+ * keeps the data provider from rescanning on every rendered cell, while still
+ * tracking a scrolling list closely enough to feel live.
+ */
+const QUANTILE_REFRESH_MS = 2_000;
+
+/** Title similarity an OpenAlex search hit must reach to be trusted. */
+const CITATION_TITLE_MATCH_MIN = 0.85;
+
+/** Bounds on the population sample, so a huge library stays responsive. */
+const MIN_QUANTILE_VALUES = 5;
+
+export interface CitationCellPlan {
+  value: string;
+  text: string;
+  count: number | null;
+  highImpact: boolean;
+}
+
+export interface EffectiveThresholds {
+  high: number;
+  low: number;
+  /** Which rule produced them, for the cell's tooltip. */
+  source: "threshold" | "quantile";
+  sampleSize: number;
+}
+
+export interface BatchResolutionResult {
+  /** Items handed to the batch action. */
+  total: number;
+  /** Items that already carried an arXiv ID. */
+  alreadyKnown: number;
+  /** Items whose match cleared the auto-accept threshold. */
+  applied: number;
+  /** Items with a candidate waiting for manual confirmation. */
+  pending: number;
+  /** Items for which nothing plausible was found. */
+  notFound: number;
+}
+
+export interface NoteResult {
+  inserted: number;
+  /** Items with nothing worth writing into a note. */
+  skipped: number;
+  failed: number;
+}
+
+export interface ItemTrend {
+  /** Day-over-day change, when two snapshots exist. */
+  latest: TrendDelta | null;
+  /** Change over the configured window, when history reaches back that far. */
+  window: TrendDelta | null;
+  history: LikesSnapshot[];
+  /** A day-over-day rise at or above the configured threshold. */
+  hot: boolean;
+}
+
+function isSameYearOrAdjacent(a: number | null, b: number | null): boolean {
+  if (a === null || b === null) return true;
+  const distance = yearDistance(a, b);
+  return distance === null || distance <= 1;
 }
 
 export interface CellRenderPlan {
@@ -82,6 +181,8 @@ export interface CellRenderPlan {
   likes: number | null;
   /** Whether the like-count range filter excludes this cell. */
   filteredOut: boolean;
+  /** Snapshot deltas, or `null` when the trend display is switched off. */
+  trend: ItemTrend | null;
 }
 
 function safeGetField(item: Zotero.Item, field: string): string {
@@ -140,6 +241,20 @@ export class AlphaLikesService {
   private stopObservingPrefs: (() => void) | null = null;
   private disposed = false;
 
+  private citationStates = new Map<number, CitationState>();
+  private inFlightCitations = new Map<string, Promise<CitationCounts | null>>();
+
+  /**
+   * Latest like count seen for each item the column has rendered. This is the
+   * population the percentile colouring ranks against, so "top 20%" means the
+   * top 20% of the counts the user has actually loaded.
+   */
+  private observedLikes = new Map<number, number>();
+  private quantileCache: {
+    thresholds: EffectiveThresholds | null;
+    computedAt: number;
+  } | null = null;
+
   constructor() {
     const { timeoutMs, intervalMs } = getRequestPrefs();
     this.requester = new PacedRequester({ timeoutMs, intervalMs });
@@ -167,6 +282,9 @@ export class AlphaLikesService {
     const text = fromSortableValue(raw);
     const likes = /^\d+$/.test(text) ? Number.parseInt(text, 10) : null;
 
+    // Feed the percentile population, including counts the range filter hides.
+    if (likes !== null) this.observedLikes.set(item.id, likes);
+
     const filter = getRangeFilter();
     const filteredOut = likes !== null && !isWithinRange(likes, filter);
 
@@ -174,7 +292,339 @@ export class AlphaLikesService {
     // which also keeps out-of-range rows out of the sortable ordering.
     const value = filteredOut && filter.mode === "hide" ? "" : raw;
 
-    return { value, text, likes, filteredOut };
+    const trend =
+      likes !== null && getTrendPrefs().enabled ? this.readTrend(item) : null;
+
+    return {
+      // The renderer only receives the data string, so the delta travels with
+      // it. Decorations follow the zero-padded sort key, which keeps sorting
+      // numeric.
+      value: withValueDecorations(
+        value,
+        trend?.latest ? [trend.latest.delta] : [],
+      ),
+      text,
+      likes,
+      filteredOut,
+      trend,
+    };
+  }
+
+  /**
+   * Cut-offs used for colouring.
+   *
+   * In `quantile` mode these are percentiles of the loaded like counts; when
+   * the sample is too small, or every loaded item has the same count, the
+   * fixed thresholds are used so the column never collapses to one colour.
+   */
+  getEffectiveThresholds(): EffectiveThresholds {
+    const scheme = getColorScheme();
+    const fallback: EffectiveThresholds = {
+      high: scheme.highThreshold,
+      low: scheme.lowThreshold,
+      source: "threshold",
+      sampleSize: this.observedLikes.size,
+    };
+
+    if (scheme.mode !== "quantile") return fallback;
+
+    const now = Date.now();
+    if (
+      this.quantileCache &&
+      now - this.quantileCache.computedAt < QUANTILE_REFRESH_MS
+    ) {
+      return this.quantileCache.thresholds ?? fallback;
+    }
+
+    const values = [...this.observedLikes.values()];
+    const derived =
+      values.length >= MIN_QUANTILE_VALUES
+        ? quantileThresholds(
+            values,
+            scheme.quantileLowPercent,
+            scheme.quantileHighPercent,
+          )
+        : null;
+
+    const thresholds: EffectiveThresholds | null = derived
+      ? {
+          high: derived.high,
+          low: derived.low,
+          source: "quantile",
+          sampleSize: derived.sampleSize,
+        }
+      : null;
+
+    this.quantileCache = { thresholds, computedAt: now };
+    return thresholds ?? fallback;
+  }
+
+  /** Snapshot history and derived deltas for one item. */
+  readTrend(item: Zotero.Item): ItemTrend {
+    const prefs = getTrendPrefs();
+    const history = readLikesHistory(safeGetField(item, "extra"));
+    const latest = latestTrend(history);
+    const window = trendOverDays(history, prefs.historyDays);
+
+    return {
+      latest,
+      window,
+      history,
+      hot:
+        latest !== null && latest.delta >= prefs.hotDelta && prefs.hotDelta > 0,
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Citations
+  // -------------------------------------------------------------------------
+
+  /**
+   * Synchronous entry point for the Citations column, mirroring `getCellData`.
+   */
+  getCitationCellData(item: Zotero.Item): string {
+    return this.planCitationCell(item).value;
+  }
+
+  planCitationCell(item: Zotero.Item): CitationCellPlan {
+    const prefs = getCitationPrefs();
+    if (!prefs.enabled)
+      return { value: "", text: "", count: null, highImpact: false };
+
+    const extra = safeGetField(item, "extra");
+    const cached = readCitations(extra);
+
+    if (cached) {
+      this.citationStates.delete(item.id);
+      if (this.isCitationCacheStale(extra, prefs.cacheTtlDays)) {
+        this.scheduleCitationRefresh(item);
+      }
+      return this.citationPlanFrom(cached);
+    }
+
+    const state = this.citationStates.get(item.id);
+    if (state) {
+      if (state.kind === "success") return this.citationPlanFrom(state.counts);
+      if (state.kind === "loading") {
+        return {
+          value: CELL_LOADING,
+          text: CELL_LOADING,
+          count: null,
+          highImpact: false,
+        };
+      }
+      if (state.retryAfter > Date.now()) {
+        return { value: "", text: "", count: null, highImpact: false };
+      }
+    }
+
+    if (!this.disposed && this.hasCitationKey(item)) {
+      this.citationStates.set(item.id, { kind: "loading" });
+      void this.populateCitations(item);
+      return {
+        value: CELL_LOADING,
+        text: CELL_LOADING,
+        count: null,
+        highImpact: false,
+      };
+    }
+
+    return { value: "", text: "", count: null, highImpact: false };
+  }
+
+  private citationPlanFrom(counts: CitationCounts): CitationCellPlan {
+    const count = primaryCitationCount(counts);
+    if (count === null) {
+      return { value: "", text: "", count: null, highImpact: false };
+    }
+
+    const highImpact = isHighImpact(counts);
+    return {
+      // `1` asks the renderer for the high-impact marker.
+      value: withValueDecorations(
+        toSortableValue(count),
+        highImpact ? [1] : [],
+      ),
+      text: String(count),
+      count,
+      highImpact,
+    };
+  }
+
+  /** Whether we hold an identifier precise enough to look citations up. */
+  private hasCitationKey(item: Zotero.Item): boolean {
+    if (safeGetField(item, "DOI").trim()) return true;
+    return this.getItemArxivID(item) !== null;
+  }
+
+  private isCitationCacheStale(extra: string, ttlDays: number): boolean {
+    if (!ttlDays) return false;
+
+    const updatedAt = readCitationsUpdatedAt(extra);
+    if (!updatedAt) return true;
+    return Date.now() - updatedAt.getTime() > ttlDays * 86_400_000;
+  }
+
+  private scheduleCitationRefresh(item: Zotero.Item): void {
+    if (this.disposed) return;
+    if (this.citationStates.get(item.id)?.kind === "loading") return;
+
+    this.citationStates.set(item.id, { kind: "loading" });
+    void this.populateCitations(item).catch(() => undefined);
+  }
+
+  private async populateCitations(item: Zotero.Item): Promise<void> {
+    const arxivID = this.getItemArxivID(item);
+
+    try {
+      const counts = await this.fetchCitations(item, arxivID);
+      if (this.disposed) return;
+
+      if (counts === null) {
+        this.citationStates.set(item.id, {
+          kind: "failed",
+          retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+        });
+        return;
+      }
+
+      this.citationStates.set(item.id, { kind: "success", counts });
+      await this.writeExtra(item, (extra) => upsertCitations(extra, counts));
+    } catch (error) {
+      if (!this.disposed) {
+        this.citationStates.set(item.id, {
+          kind: "failed",
+          retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+        });
+        this.debug(`citation lookup failed for item ${item.id}: ${error}`);
+      }
+    } finally {
+      if (!this.disposed) refreshItemTrees();
+    }
+  }
+
+  /**
+   * Merges whatever the enabled providers can tell us.
+   *
+   * Semantic Scholar is asked by DOI or arXiv ID and is skipped silently when
+   * it rate-limits. OpenAlex answers precisely for a DOI; without one it is
+   * searched by title, and a hit is only trusted when its title matches and
+   * its year is within a year of ours, because OpenAlex carries duplicate and
+   * mis-attributed records that a naive "first result" would accept.
+   */
+  private fetchCitations(
+    item: Zotero.Item,
+    arxivID: string | null,
+  ): Promise<CitationCounts | null> {
+    const paper = this.readPaperMetadata(item);
+    const key = `${paper.doi || ""}|${arxivID || ""}|${normalizeText(paper.title)}`;
+
+    const existing = this.inFlightCitations.get(key);
+    if (existing) return existing;
+
+    const request = this.collectCitations(paper, arxivID).finally(() =>
+      this.inFlightCitations.delete(key),
+    );
+
+    this.inFlightCitations.set(key, request);
+    return request;
+  }
+
+  private async collectCitations(
+    paper: PaperMetadata,
+    arxivID: string | null,
+  ): Promise<CitationCounts | null> {
+    const prefs = getResolverPrefs();
+    let merged: CitationCounts = {};
+    let answered = false;
+
+    if (prefs.useSemanticScholar) {
+      const url = semanticScholarCitationURL({
+        doi: paper.doi,
+        arxivID: arxivID ?? undefined,
+      });
+      if (url) {
+        const payload = await this.safeJSON("Semantic Scholar citations", url);
+        const counts = citationCountsFromSemanticScholar(payload);
+        if (counts) {
+          merged = { ...merged, ...counts };
+          answered = true;
+        }
+      }
+    }
+
+    if (prefs.useOpenAlex) {
+      const openAlex = await this.collectOpenAlexCitations(paper, prefs);
+      if (openAlex) {
+        merged = { ...merged, ...openAlex };
+        answered = true;
+      }
+    }
+
+    return answered ? merged : null;
+  }
+
+  private async collectOpenAlexCitations(
+    paper: PaperMetadata,
+    prefs: { contactEmail: string; titleSearchResults: number },
+  ): Promise<CitationCounts | null> {
+    const byDoi = openAlexCitationURL({
+      doi: paper.doi,
+      contactEmail: prefs.contactEmail,
+    });
+
+    if (byDoi) {
+      const payload = await this.safeJSON("OpenAlex citations", byDoi);
+      const info = openAlexWorkInfo(payload);
+      if (info) return info.counts;
+    }
+
+    // No DOI, or the DOI is not indexed: fall back to a verified title search.
+    if (!paper.title || paper.title.length < 10) return null;
+
+    const payload = await this.safeJSON(
+      "OpenAlex citation search",
+      openAlexCitationSearchURL(paper.title, {
+        perPage: Math.min(5, Math.max(2, prefs.titleSearchResults)),
+        contactEmail: prefs.contactEmail,
+      }),
+    );
+
+    for (const info of openAlexSearchResults(payload)) {
+      if (titleSimilarity(paper.title, info.title) < CITATION_TITLE_MATCH_MIN) {
+        continue;
+      }
+      if (!isSameYearOrAdjacent(paper.year, info.year)) continue;
+      return info.counts;
+    }
+
+    return null;
+  }
+
+  /** Runs a request, logging failures instead of letting them abort the merge. */
+  private async safeJSON(label: string, url: string): Promise<unknown> {
+    try {
+      return await this.requester.requestJSON(url);
+    } catch (error) {
+      this.debug(`${label} failed: ${error}`);
+      return null;
+    }
+  }
+
+  /**
+   * Re-reads citations, ignoring the cached value and any failure cooldown.
+   */
+  async refreshCitations(items: Zotero.Item[]): Promise<void> {
+    for (const item of items.filter(Boolean)) {
+      this.citationStates.delete(item.id);
+    }
+    refreshItemTrees();
+
+    for (const item of items.filter(Boolean)) {
+      if (this.disposed) return;
+      if (!this.hasCitationKey(item)) continue;
+      await this.populateCitations(item);
+    }
   }
 
   private computeCellValue(item: Zotero.Item): string {
@@ -344,7 +794,18 @@ export class AlphaLikesService {
       }
 
       this.itemStates.set(item.id, { kind: "success", arxivID, likes });
-      await this.writeExtra(item, (extra) => upsertLikesCache(extra, likes));
+      this.observedLikes.set(item.id, likes);
+
+      const { historyDays } = getTrendPrefs();
+      await this.writeExtra(item, (extra) =>
+        // The snapshot is what makes `2979 ↑12` possible on a later run.
+        recordLikesSnapshot(
+          upsertLikesCache(extra, likes),
+          likes,
+          new Date(),
+          historyDays,
+        ),
+      );
     } catch (error) {
       if (!this.disposed) {
         this.itemStates.set(item.id, {
@@ -523,17 +984,183 @@ export class AlphaLikesService {
         await this.resolveItem(item, { force: true });
       }
     }
+
+    // Citation counts move far more slowly than likes, but a manual refresh is
+    // an explicit "re-read everything", so they are included.
+    if (getCitationPrefs().enabled) await this.refreshCitations(targets);
   }
 
-  /** Removes every line AlphaLikes wrote into `Extra`. */
+  /**
+   * Removes every line AlphaLikes wrote into `Extra`, including the like
+   * history and the citation cache.
+   */
   async clearItems(items: Zotero.Item[]): Promise<void> {
     for (const item of items.filter(Boolean)) {
       await this.writeExtra(item, stripAlphaLikesData);
       this.itemStates.delete(item.id);
       this.pendingByItem.delete(item.id);
       this.staleRefreshing.delete(item.id);
+      this.citationStates.delete(item.id);
+      this.observedLikes.delete(item.id);
     }
+    this.quantileCache = null;
     refreshItemTrees();
+  }
+
+  // -------------------------------------------------------------------------
+  // Batch actions
+  // -------------------------------------------------------------------------
+
+  /**
+   * Resolves arXiv IDs for every item that lacks one.
+   *
+   * Items whose best candidate clears the auto-accept threshold are adopted
+   * silently; the rest are left pending for the manual picker, and the counts
+   * are returned so the menu can report what happened.
+   */
+  async batchFindArxiv(items: Zotero.Item[]): Promise<BatchResolutionResult> {
+    const result: BatchResolutionResult = {
+      total: 0,
+      alreadyKnown: 0,
+      applied: 0,
+      pending: 0,
+      notFound: 0,
+    };
+
+    const targets = items.filter(Boolean);
+    result.total = targets.length;
+
+    for (const item of targets) {
+      if (this.disposed) break;
+
+      if (this.getItemArxivID(item)) {
+        result.alreadyKnown += 1;
+        continue;
+      }
+
+      await this.resolveItem(item, { force: true });
+      if (this.getItemArxivID(item)) result.applied += 1;
+    }
+
+    // What is left is either waiting for the user to confirm a candidate or
+    // had no candidate worth offering at all.
+    result.pending = targets.filter(
+      (item) =>
+        !this.getItemArxivID(item) && this.pendingByItem.get(item.id)?.length,
+    ).length;
+    result.notFound =
+      result.total - result.alreadyKnown - result.applied - result.pending;
+
+    return result;
+  }
+
+  /** Snapshot of a selected item for CSV/JSON export. */
+  buildExportRow(item: Zotero.Item): ExportRow {
+    const extra = safeGetField(item, "extra");
+    const cachedLikes = readCachedLikes(extra);
+    const citations = readCitations(extra);
+
+    return {
+      title: safeGetField(item, "title"),
+      doi: safeGetField(item, "DOI"),
+      arxivID: this.getItemArxivID(item) ?? "",
+      likes: cachedLikes,
+      citations: primaryCitationCount(citations),
+      influential: citations?.influential ?? null,
+      highImpact: isHighImpact(citations),
+      updated: readLikesUpdatedAt(extra)?.toISOString() ?? "",
+    };
+  }
+
+  buildExportRows(items: Zotero.Item[]): ExportRow[] {
+    return items.filter(Boolean).map((item) => this.buildExportRow(item));
+  }
+
+  /**
+   * Inserts one summary note per item, as a child note.
+   *
+   * Notes are only written for items that have something to say, and the
+   * library's editability is left to `saveTx`, which throws for read-only
+   * libraries.
+   */
+  async insertSummaryNotes(
+    items: Zotero.Item[],
+    labels: NoteLabels,
+  ): Promise<NoteResult> {
+    const result: NoteResult = { inserted: 0, skipped: 0, failed: 0 };
+
+    for (const item of items.filter(Boolean)) {
+      if (this.disposed) break;
+
+      const extra = safeGetField(item, "extra");
+      const cachedLikes = readCachedLikes(extra);
+      const html = buildNoteHTML(
+        {
+          likes: cachedLikes,
+          citations: readCitations(extra),
+          arxivID: this.getItemArxivID(item),
+          trend: cachedLikes === null ? null : this.readTrend(item),
+          updatedAt: readLikesUpdatedAt(extra),
+        },
+        {
+          includeCitations: getPref("noteIncludeCitations"),
+          includeTrend: getPref("noteIncludeTrend"),
+          includeArxivLink: getPref("noteIncludeArxivLink"),
+        },
+        labels,
+      );
+
+      if (!html) {
+        result.skipped += 1;
+        continue;
+      }
+
+      try {
+        const note = new Zotero.Item("note");
+        note.libraryID = item.libraryID;
+        note.parentID = item.id;
+        note.setNote(html);
+        await note.saveTx();
+        result.inserted += 1;
+      } catch (error) {
+        result.failed += 1;
+        this.debug(`could not add a summary note to item ${item.id}: ${error}`);
+      }
+    }
+
+    return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // High-likes-only toggle
+  // -------------------------------------------------------------------------
+
+  /**
+   * Turns the like-count range filter into a single "high likes only" switch.
+   *
+   * The lower bound follows the same cut-off the column uses for its "high"
+   * colour, so the quick toggle and the colouring never disagree.
+   */
+  setHighOnly(enabled: boolean): number {
+    if (enabled) {
+      const thresholds = this.getEffectiveThresholds();
+      const bound = Math.max(
+        1,
+        thresholds.source === "quantile"
+          ? thresholds.high
+          : getColorScheme().highThreshold,
+      );
+      setPref("rangeFilterMin", bound);
+      setPref("rangeFilterEnabled", true);
+      return bound;
+    }
+
+    setPref("rangeFilterEnabled", false);
+    return 0;
+  }
+
+  isHighOnly(): boolean {
+    return getRangeFilter().enabled;
   }
 
   private async writeExtra(
@@ -567,6 +1194,17 @@ export class AlphaLikesService {
       this.requester.setOptions({ timeoutMs, intervalMs });
     }
 
+    // Colour mode and the percentile cut-offs are derived, so the memo has to
+    // go or the column would keep the previous ranking.
+    if (
+      name === "colorMode" ||
+      name === "quantileLowPercent" ||
+      name === "quantileHighPercent" ||
+      name === "historyDays"
+    ) {
+      this.quantileCache = null;
+    }
+
     // Colouring, filtering and thresholds only change the presentation, so a
     // repaint is enough. Resolution switches also reset cached state.
     if (
@@ -575,6 +1213,13 @@ export class AlphaLikesService {
       name === "autoAcceptPercent"
     ) {
       this.itemStates.clear();
+    }
+
+    // Turning citation lookups on has to start from a clean slate, and turning
+    // them off should stop the pending work from repainting.
+    if (name === "citationsEnabled" || name === "citationCacheTtlDays") {
+      this.citationStates.clear();
+      this.inFlightCitations.clear();
     }
 
     refreshItemTrees();
@@ -592,7 +1237,11 @@ export class AlphaLikesService {
     this.resolutionCache.clear();
     this.inFlightLikes.clear();
     this.inFlightResolution.clear();
+    this.inFlightCitations.clear();
     this.staleRefreshing.clear();
+    this.citationStates.clear();
+    this.observedLikes.clear();
+    this.quantileCache = null;
 
     this.stopObservingPrefs?.();
     this.stopObservingPrefs = null;

@@ -12,6 +12,19 @@
 
   (This comment deliberately avoids two consecutive hyphens, which XML forbids
   inside a comment, and does not spell out the declaration keyword.)
+
+  Localisation: the linkset below pulls in the plugin's Fluent file. The href
+  is the *built* file name - zotero-plugin-scaffold prefixes every FTL with the
+  add-on reference - and it is a bare file name because Zotero resolves plugin
+  FTLs by name, not by path. The same file is inserted from
+  addon/content/preferences.js before this markup is parsed, so the pane is
+  translated even if this link is not picked up early enough.
+
+  Every string also carries a Chinese fallback in the markup itself. Fluent
+  replaces it when the file resolves, and the fallback keeps the pane readable
+  if it ever does not. Controls use `label` attributes because that is what
+  Zotero's Fluent messages target for checkboxes, radios and menu items.
+
   The preference attributes carry keys without the branch prefix; the build
   rewrites them to full extensions.zotero.alphalikes.* names.
 -->
@@ -20,22 +33,34 @@
   xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
   xmlns:html="http://www.w3.org/1999/xhtml"
 >
+  <linkset>
+    <html:link rel="localization" href="alphalikes-addon.ftl" />
+  </linkset>
+
+  <description data-l10n-id="pref-pane-intro" style="opacity: 0.8"
+    >自动读取每篇文献在 alphaXiv 上的点赞数与引用数，并把结果写入条目的 Extra
+    字段。</description
+  >
+
   <groupbox class="main-section">
-    <label><html:h2>arXiv matching</html:h2></label>
-    <description style="opacity: 0.8">
-      AlphaLikes reads the arXiv record from the URL, the DOI or the Extra
-      field. When an item has none, it can look one up through scholarly APIs.
+    <label><html:h2 data-l10n-id="pref-match-title">arXiv 匹配</html:h2></label>
+    <description data-l10n-id="pref-match-desc" style="opacity: 0.8">
+      AlphaLikes 会从链接、DOI 或 Extra 字段里读取 arXiv
+      记录；条目里没有时，可以通过学术 API 自动查找。
     </description>
 
     <checkbox
       id="alphalikes-pref-auto-resolve"
       preference="autoResolveNonArxiv"
-      label="Find arXiv IDs for items that do not have one"
+      data-l10n-id="pref-match-auto"
+      label="为没有 arXiv ID 的条目自动查找"
       native="true"
     />
 
     <hbox align="center">
-      <label value="Adopt a match automatically at or above (%)" />
+      <label data-l10n-id="pref-match-auto-accept"
+        >达到该置信度（%）时自动采用</label
+      >
       <html:input
         type="number"
         preference="autoAcceptPercent"
@@ -44,7 +69,9 @@
         step="5"
         style="width: 5em"
       />
-      <label value="Offer a match for manual confirmation at or above (%)" />
+      <label data-l10n-id="pref-match-confirm"
+        >达到该置信度（%）时提示手动确认</label
+      >
       <html:input
         type="number"
         preference="confirmPercent"
@@ -56,7 +83,9 @@
     </hbox>
 
     <hbox align="center">
-      <label value="Results per title search" />
+      <label data-l10n-id="pref-match-title-results"
+        >每次标题搜索返回的结果数</label
+      >
       <html:input
         type="number"
         preference="titleSearchResults"
@@ -70,36 +99,43 @@
     <checkbox
       id="alphalikes-pref-use-arxiv"
       preference="useArxivTitleSearch"
-      label="Search the arXiv API by title"
+      data-l10n-id="pref-match-use-arxiv"
+      label="通过标题搜索 arXiv API"
       native="true"
     />
     <checkbox
       id="alphalikes-pref-use-s2"
       preference="useSemanticScholar"
-      label="Use Semantic Scholar (DOI and title)"
+      data-l10n-id="pref-match-use-s2"
+      label="使用 Semantic Scholar（DOI 与标题）"
       native="true"
     />
     <checkbox
       id="alphalikes-pref-use-openalex"
       preference="useOpenAlex"
-      label="Use OpenAlex (DOI and title)"
+      data-l10n-id="pref-match-use-openalex"
+      label="使用 OpenAlex（DOI 与标题）"
       native="true"
     />
     <checkbox
       id="alphalikes-pref-use-crossref"
       preference="useCrossref"
-      label="Use Crossref (DOI metadata)"
+      data-l10n-id="pref-match-use-crossref"
+      label="使用 Crossref（DOI 元数据）"
       native="true"
     />
     <checkbox
       id="alphalikes-pref-use-unpaywall"
       preference="useUnpaywall"
-      label="Use Unpaywall (requires a contact address)"
+      data-l10n-id="pref-match-use-unpaywall"
+      label="使用 Unpaywall（需要填写联系邮箱）"
       native="true"
     />
 
     <hbox align="center">
-      <label value="Contact address for OpenAlex / Unpaywall" />
+      <label data-l10n-id="pref-match-contact"
+        >OpenAlex / Unpaywall 联系邮箱</label
+      >
       <html:input
         type="text"
         preference="contactEmail"
@@ -110,36 +146,105 @@
   </groupbox>
 
   <groupbox>
-    <label><html:h2>Appearance</html:h2></label>
-    <description style="opacity: 0.8">
-      How the like count is drawn in the column. The colour still comes from the
-      thresholds below.
+    <label><html:h2 data-l10n-id="pref-appearance-title">外观</html:h2></label>
+    <description data-l10n-id="pref-appearance-desc" style="opacity: 0.8">
+      点赞数在列里的显示方式；颜色由下面的「颜色」一节决定。
     </description>
 
     <hbox align="center">
-      <label value="Display style" control="alphalikes-pref-style" />
+      <label
+        id="alphalikes-pref-style-label"
+        data-l10n-id="pref-appearance-style"
+        control="alphalikes-pref-style"
+        >显示样式</label
+      >
       <menulist id="alphalikes-pref-style" preference="likeStyle" native="true">
         <menupopup>
-          <menuitem value="plain" label="Plain text" />
-          <menuitem value="badge" label="Soft badge" />
-          <menuitem value="glass" label="Glass pill" />
-          <menuitem value="ring" label="Glass circle" />
+          <menuitem
+            value="plain"
+            data-l10n-id="pref-style-plain"
+            label="纯文本"
+          />
+          <menuitem
+            value="badge"
+            data-l10n-id="pref-style-badge"
+            label="浅色标签"
+          />
+          <menuitem
+            value="glass"
+            data-l10n-id="pref-style-glass"
+            label="玻璃胶囊"
+          />
+          <menuitem
+            value="ring"
+            data-l10n-id="pref-style-ring"
+            label="玻璃圆形"
+          />
         </menupopup>
       </menulist>
     </hbox>
   </groupbox>
 
   <groupbox>
-    <label><html:h2>Colours</html:h2></label>
+    <label><html:h2 data-l10n-id="pref-color-title">颜色</html:h2></label>
     <checkbox
       id="alphalikes-pref-colors"
       preference="colorEnabled"
-      label="Colour the like counts"
+      data-l10n-id="pref-color-enabled"
+      label="为点赞数着色"
       native="true"
     />
 
     <hbox align="center">
-      <label value="High likes above" />
+      <label
+        id="alphalikes-pref-color-mode-label"
+        data-l10n-id="pref-color-mode"
+        control="alphalikes-pref-color-mode"
+        >着色依据</label
+      >
+      <menulist
+        id="alphalikes-pref-color-mode"
+        preference="colorMode"
+        native="true"
+      >
+        <menupopup>
+          <menuitem
+            value="threshold"
+            data-l10n-id="pref-color-mode-threshold"
+            label="固定阈值"
+          />
+          <menuitem
+            value="quantile"
+            data-l10n-id="pref-color-mode-quantile"
+            label="按当前列表排名（分位数）"
+          />
+        </menupopup>
+      </menulist>
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-color-quantile-low">低赞分位（%）</label>
+      <html:input
+        type="number"
+        preference="quantileLowPercent"
+        min="0"
+        max="99"
+        step="5"
+        style="width: 5em"
+      />
+      <label data-l10n-id="pref-color-quantile-high">高赞分位（%）</label>
+      <html:input
+        type="number"
+        preference="quantileHighPercent"
+        min="1"
+        max="100"
+        step="5"
+        style="width: 5em"
+      />
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-color-high-threshold">高赞阈值</label>
       <html:input
         type="number"
         preference="highLikesThreshold"
@@ -147,12 +252,12 @@
         step="10"
         style="width: 6em"
       />
-      <label value="colour" />
+      <label data-l10n-id="pref-color-high">颜色</label>
       <html:input type="text" preference="highLikesColor" style="width: 9em" />
     </hbox>
 
     <hbox align="center">
-      <label value="Low likes up to" />
+      <label data-l10n-id="pref-color-low-threshold">低赞阈值</label>
       <html:input
         type="number"
         preference="lowLikesThreshold"
@@ -160,34 +265,147 @@
         step="10"
         style="width: 6em"
       />
-      <label value="colour" />
+      <label data-l10n-id="pref-color-low">颜色</label>
       <html:input type="text" preference="lowLikesColor" style="width: 9em" />
     </hbox>
 
     <hbox align="center">
-      <label value="Everything in between (blank keeps the theme colour)" />
+      <label data-l10n-id="pref-color-mid"
+        >中间区间颜色（留空则使用主题色）</label
+      >
       <html:input type="text" preference="midLikesColor" style="width: 9em" />
     </hbox>
 
     <hbox align="center">
-      <label value="“Confirm this match” marker" />
+      <label data-l10n-id="pref-color-pending">「请确认匹配」标记颜色</label>
       <html:input type="text" preference="pendingColor" style="width: 9em" />
     </hbox>
 
-    <description style="opacity: 0.8">
-      Any CSS colour works: #1a7f37, green, rgb(26 127 55).
+    <description data-l10n-id="pref-color-hint" style="opacity: 0.8">
+      可以使用任意 CSS 颜色：#1a7f37、green、rgb(26 127
+      55)。分位数模式按当前列表里的点赞数排名，样本太少时自动退回固定阈值。
     </description>
   </groupbox>
 
   <groupbox>
-    <label><html:h2>Refreshing</html:h2></label>
-    <description style="opacity: 0.8">
-      Right-click any item and choose “Refresh alphaXiv Likes” to re-read the
-      counts. Cached values can also expire on their own.
+    <label><html:h2 data-l10n-id="pref-trend-title">点赞趋势</html:h2></label>
+    <description data-l10n-id="pref-trend-desc" style="opacity: 0.8">
+      每次刷新会把当天的点赞数记入条目的 Extra 字段，列里就能显示「2979 ↑12」。
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-show-trend"
+      preference="showTrend"
+      data-l10n-id="pref-trend-show"
+      label="在列里显示每日变化"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label data-l10n-id="pref-trend-hot"
+        >每日增长达到该数值视为「近期热门」</label
+      >
+      <html:input
+        type="number"
+        preference="trendHotDelta"
+        min="0"
+        max="100000"
+        step="5"
+        style="width: 6em"
+      />
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-trend-history"
+        >保留最近多少天的快照（写入 Extra，最多 30）</label
+      >
+      <html:input
+        type="number"
+        preference="historyDays"
+        min="2"
+        max="30"
+        step="1"
+        style="width: 5em"
+      />
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-citations-title">引用数</html:h2></label>
+    <description data-l10n-id="pref-citations-desc" style="opacity: 0.8">
+      引用数据来自 Semantic Scholar 与
+      OpenAlex。被引次数变化很慢，所以缓存时间比点赞数长。
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-citations"
+      preference="citationsEnabled"
+      data-l10n-id="pref-citations-enabled"
+      label="显示「引用数」列并查询引用数据"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label data-l10n-id="pref-citations-ttl"
+        >缓存多少天后重新读取（0 = 只读一次）</label
+      >
+      <html:input
+        type="number"
+        preference="citationCacheTtlDays"
+        min="0"
+        max="365"
+        step="1"
+        style="width: 5em"
+      />
+    </hbox>
+
+    <description data-l10n-id="pref-citations-s2-note" style="opacity: 0.8">
+      Semantic Scholar 未提供 key 时会限流，遇到 429 会跳过并保留下次机会。
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-note-title">摘要笔记</html:h2></label>
+    <description data-l10n-id="pref-note-desc" style="opacity: 0.8">
+      右键「插入点赞摘要笔记」会为每个条目新建一条子笔记。
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-note-citations"
+      preference="noteIncludeCitations"
+      data-l10n-id="pref-note-citations"
+      label="包含引用数"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-note-trend"
+      preference="noteIncludeTrend"
+      data-l10n-id="pref-note-trend"
+      label="包含点赞变化"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-note-arxiv"
+      preference="noteIncludeArxivLink"
+      data-l10n-id="pref-note-arxiv-link"
+      label="包含 arXiv 链接"
+      native="true"
+    />
+  </groupbox>
+
+  <groupbox>
+    <label
+      ><html:h2 data-l10n-id="pref-refresh-title">刷新与网络</html:h2></label
+    >
+    <description data-l10n-id="pref-refresh-desc" style="opacity: 0.8">
+      右键任意条目选择「刷新 alphaXiv
+      点赞」可以重新读取；缓存也可以按时间自动过期。
     </description>
 
     <hbox align="center">
-      <label value="Re-fetch cached like counts after (days, 0 = never)" />
+      <label data-l10n-id="pref-refresh-ttl"
+        >缓存多少天后重新读取点赞数（0 = 不自动）</label
+      >
       <html:input
         type="number"
         preference="cacheTtlDays"
@@ -199,7 +417,9 @@
     </hbox>
 
     <hbox align="center">
-      <label value="Minimum delay between requests to the same host (ms)" />
+      <label data-l10n-id="pref-refresh-interval"
+        >同一域名请求的最小间隔（毫秒）</label
+      >
       <html:input
         type="number"
         preference="requestIntervalMs"
@@ -211,7 +431,7 @@
     </hbox>
 
     <hbox align="center">
-      <label value="Request timeout (ms)" />
+      <label data-l10n-id="pref-refresh-timeout">请求超时（毫秒）</label>
       <html:input
         type="number"
         preference="requestTimeoutMs"
@@ -224,20 +444,22 @@
   </groupbox>
 
   <groupbox>
-    <label><html:h2>Like-count range filter</html:h2></label>
-    <description style="opacity: 0.8">
-      Focus the column on a band of like counts. Bounds of 0 mean “no bound”.
+    <label><html:h2 data-l10n-id="pref-filter-title">只看高赞</html:h2></label>
+    <description data-l10n-id="pref-filter-desc" style="opacity: 0.8">
+      把列聚焦在一段点赞区间内；边界为 0
+      表示不限制。也可以在条目右键菜单里一键切换「只看高赞」。
     </description>
 
     <checkbox
       id="alphalikes-pref-range"
       preference="rangeFilterEnabled"
-      label="Enable the range filter"
+      data-l10n-id="pref-filter-enabled"
+      label="启用点赞数范围筛选"
       native="true"
     />
 
     <hbox align="center">
-      <label value="Minimum likes" />
+      <label data-l10n-id="pref-filter-min">最少点赞数</label>
       <html:input
         type="number"
         preference="rangeFilterMin"
@@ -245,7 +467,7 @@
         step="10"
         style="width: 6em"
       />
-      <label value="Maximum likes (0 = no upper bound)" />
+      <label data-l10n-id="pref-filter-max">最多点赞数（0 = 不限制）</label>
       <html:input
         type="number"
         preference="rangeFilterMax"
@@ -255,9 +477,74 @@
       />
     </hbox>
 
-    <radiogroup id="alphalikes-pref-range-mode" preference="rangeFilterMode">
-      <radio value="hide" label="Hide entries outside the range" />
-      <radio value="dim" label="Show them dimmed instead" />
-    </radiogroup>
+    <hbox align="center">
+      <label
+        id="alphalikes-pref-range-mode-label"
+        data-l10n-id="pref-filter-mode"
+        control="alphalikes-pref-range-mode"
+        >超出范围的条目</label
+      >
+      <radiogroup id="alphalikes-pref-range-mode" preference="rangeFilterMode">
+        <radio
+          value="hide"
+          data-l10n-id="pref-filter-mode-hide"
+          label="直接隐藏"
+        />
+        <radio
+          value="dim"
+          data-l10n-id="pref-filter-mode-dim"
+          label="保留但变淡"
+        />
+      </radiogroup>
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-export-title">导出</html:h2></label>
+    <description data-l10n-id="pref-export-desc" style="opacity: 0.8">
+      右键「导出为 CSV / JSON」会导出所选条目的标题、DOI、arXiv
+      ID、点赞数、引用数与更新时间。
+    </description>
+
+    <hbox align="center">
+      <label
+        id="alphalikes-pref-export-sort-label"
+        data-l10n-id="pref-export-sort"
+        control="alphalikes-pref-export-sort"
+        >导出排序</label
+      >
+      <menulist
+        id="alphalikes-pref-export-sort"
+        preference="exportSort"
+        native="true"
+      >
+        <menupopup>
+          <menuitem
+            value="likes"
+            data-l10n-id="pref-export-sort-likes"
+            label="按点赞数（从高到低）"
+          />
+          <menuitem
+            value="citations"
+            data-l10n-id="pref-export-sort-citations"
+            label="按引用数（从高到低）"
+          />
+          <menuitem
+            value="title"
+            data-l10n-id="pref-export-sort-title"
+            label="按标题"
+          />
+          <menuitem
+            value="none"
+            data-l10n-id="pref-export-sort-none"
+            label="按 Zotero 当前顺序"
+          />
+        </menupopup>
+      </menulist>
+    </hbox>
+
+    <description data-l10n-id="pref-export-hint" style="opacity: 0.8">
+      CSV 带 UTF-8 BOM，用 Excel 打开中文标题不会乱码。
+    </description>
   </groupbox>
 </vbox>

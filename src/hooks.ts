@@ -26,6 +26,7 @@ function registerPreferencePane(): void {
         src: string;
         label: string;
         image?: string;
+        scripts?: string[];
       }): unknown;
     };
   };
@@ -36,6 +37,9 @@ function registerPreferencePane(): void {
       src: `${rootURI}content/preferences.xhtml`,
       label: config.addonName,
       image: `chrome://${config.addonRef}/content/icons/favicon.png`,
+      // Pane scripts run before the markup is parsed, which is where the
+      // Fluent file has to be linked into the settings window.
+      scripts: [`${rootURI}content/preferences.js`],
     });
   } catch (error) {
     Zotero.logError(
@@ -43,6 +47,37 @@ function registerPreferencePane(): void {
         `[AlphaLikes] Could not register the preference pane: ${error}`,
       ),
     );
+  }
+}
+
+/**
+ * The plugin's Fluent file, as it is named after the build prefixes it.
+ *
+ * Zotero registers every `.ftl` under `locale/<locale>/` automatically, but a
+ * window only gets the messages once the file is linked into it. The link is
+ * what `document.l10n` reads, so both the settings pane and the main window
+ * need one.
+ */
+const FTL_FILE = `${config.addonRef}-addon.ftl`;
+
+/** Links the Fluent file into a window. Safe to call more than once. */
+function ensureWindowLocalization(win: Window): void {
+  try {
+    const target = win as unknown as {
+      MozXULElement?: { insertFTLIfNeeded?(name: string): void };
+    };
+    target.MozXULElement?.insertFTLIfNeeded?.(FTL_FILE);
+  } catch (error) {
+    Zotero.debug(`[AlphaLikes] Could not link ${FTL_FILE}: ${error}`);
+  }
+}
+
+/** Removes the link again, as the plugin-development docs ask on shutdown. */
+function removeWindowLocalization(win: Window): void {
+  try {
+    win.document.querySelector(`[href="${FTL_FILE}"]`)?.remove();
+  } catch {
+    // The window is already gone.
   }
 }
 
@@ -54,7 +89,11 @@ async function onStartup(): Promise<void> {
   ]);
 
   await registerAlphaXivLikesColumn();
-  // Localised menu labels are read from the cache, so fill it first.
+
+  // The Fluent file has to be linked into the window before the strings are
+  // read, otherwise the first read would fall back to the built-in English
+  // text for the rest of the session.
+  for (const win of Zotero.getMainWindows()) ensureWindowLocalization(win);
   await loadStrings();
 
   try {
@@ -83,16 +122,19 @@ async function onStartup(): Promise<void> {
 }
 
 async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {
+  ensureWindowLocalization(win);
   registerItemMenu(win);
 }
 
 async function onMainWindowUnload(win: Window): Promise<void> {
   unregisterItemMenu(win);
+  removeWindowLocalization(win);
 }
 
 async function onShutdown(): Promise<void> {
   for (const win of Zotero.getMainWindows()) {
     unregisterItemMenu(win);
+    removeWindowLocalization(win);
   }
 
   await shutdownAlphaXivLikesColumn();
