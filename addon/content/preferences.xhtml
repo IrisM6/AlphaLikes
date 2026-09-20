@@ -1,0 +1,263 @@
+<!--
+  AlphaLikes settings pane.
+
+  Loaded by Zotero.PreferencePanes.register() from src/hooks.ts.
+
+  IMPORTANT: this file is parsed with MozXULElement.parseXULToFragment(), which
+  wraps the markup in a div and then runs it through an XML parser. An XML
+  declaration is only legal at the very start of a document, so one here would
+  land mid-document and the parser would reject the whole pane as
+  "not well-formed", leaving the settings page blank. This file therefore
+  starts directly with an element, as Zotero's own panes do.
+
+  (This comment deliberately avoids two consecutive hyphens, which XML forbids
+  inside a comment, and does not spell out the declaration keyword.)
+  The preference attributes carry keys without the branch prefix; the build
+  rewrites them to full extensions.zotero.alphalikes.* names.
+-->
+<vbox
+  id="zotero-prefpane-alphalikes"
+  xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+  xmlns:html="http://www.w3.org/1999/xhtml"
+>
+  <groupbox class="main-section">
+    <label><html:h2>arXiv matching</html:h2></label>
+    <description style="opacity: 0.8">
+      AlphaLikes reads the arXiv record from the URL, the DOI or the Extra
+      field. When an item has none, it can look one up through scholarly APIs.
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-auto-resolve"
+      preference="autoResolveNonArxiv"
+      label="Find arXiv IDs for items that do not have one"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label value="Adopt a match automatically at or above (%)" />
+      <html:input
+        type="number"
+        preference="autoAcceptPercent"
+        min="50"
+        max="100"
+        step="5"
+        style="width: 5em"
+      />
+      <label value="Offer a match for manual confirmation at or above (%)" />
+      <html:input
+        type="number"
+        preference="confirmPercent"
+        min="0"
+        max="100"
+        step="5"
+        style="width: 5em"
+      />
+    </hbox>
+
+    <hbox align="center">
+      <label value="Results per title search" />
+      <html:input
+        type="number"
+        preference="titleSearchResults"
+        min="1"
+        max="20"
+        step="1"
+        style="width: 5em"
+      />
+    </hbox>
+
+    <checkbox
+      id="alphalikes-pref-use-arxiv"
+      preference="useArxivTitleSearch"
+      label="Search the arXiv API by title"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-use-s2"
+      preference="useSemanticScholar"
+      label="Use Semantic Scholar (DOI and title)"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-use-openalex"
+      preference="useOpenAlex"
+      label="Use OpenAlex (DOI and title)"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-use-crossref"
+      preference="useCrossref"
+      label="Use Crossref (DOI metadata)"
+      native="true"
+    />
+    <checkbox
+      id="alphalikes-pref-use-unpaywall"
+      preference="useUnpaywall"
+      label="Use Unpaywall (requires a contact address)"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label value="Contact address for OpenAlex / Unpaywall" />
+      <html:input
+        type="text"
+        preference="contactEmail"
+        placeholder="you@example.org"
+        style="min-width: 16em"
+      />
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Appearance</html:h2></label>
+    <description style="opacity: 0.8">
+      How the like count is drawn in the column. The colour still comes from the
+      thresholds below.
+    </description>
+
+    <hbox align="center">
+      <label value="Display style" control="alphalikes-pref-style" />
+      <menulist id="alphalikes-pref-style" preference="likeStyle" native="true">
+        <menupopup>
+          <menuitem value="plain" label="Plain text" />
+          <menuitem value="badge" label="Soft badge" />
+          <menuitem value="glass" label="Glass pill" />
+          <menuitem value="ring" label="Glass circle" />
+        </menupopup>
+      </menulist>
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Colours</html:h2></label>
+    <checkbox
+      id="alphalikes-pref-colors"
+      preference="colorEnabled"
+      label="Colour the like counts"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label value="High likes above" />
+      <html:input
+        type="number"
+        preference="highLikesThreshold"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+      <label value="colour" />
+      <html:input type="text" preference="highLikesColor" style="width: 9em" />
+    </hbox>
+
+    <hbox align="center">
+      <label value="Low likes up to" />
+      <html:input
+        type="number"
+        preference="lowLikesThreshold"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+      <label value="colour" />
+      <html:input type="text" preference="lowLikesColor" style="width: 9em" />
+    </hbox>
+
+    <hbox align="center">
+      <label value="Everything in between (blank keeps the theme colour)" />
+      <html:input type="text" preference="midLikesColor" style="width: 9em" />
+    </hbox>
+
+    <hbox align="center">
+      <label value="“Confirm this match” marker" />
+      <html:input type="text" preference="pendingColor" style="width: 9em" />
+    </hbox>
+
+    <description style="opacity: 0.8">
+      Any CSS colour works: #1a7f37, green, rgb(26 127 55).
+    </description>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Refreshing</html:h2></label>
+    <description style="opacity: 0.8">
+      Right-click any item and choose “Refresh alphaXiv Likes” to re-read the
+      counts. Cached values can also expire on their own.
+    </description>
+
+    <hbox align="center">
+      <label value="Re-fetch cached like counts after (days, 0 = never)" />
+      <html:input
+        type="number"
+        preference="cacheTtlDays"
+        min="0"
+        max="365"
+        step="1"
+        style="width: 5em"
+      />
+    </hbox>
+
+    <hbox align="center">
+      <label value="Minimum delay between requests to the same host (ms)" />
+      <html:input
+        type="number"
+        preference="requestIntervalMs"
+        min="0"
+        max="30000"
+        step="100"
+        style="width: 6em"
+      />
+    </hbox>
+
+    <hbox align="center">
+      <label value="Request timeout (ms)" />
+      <html:input
+        type="number"
+        preference="requestTimeoutMs"
+        min="1000"
+        max="60000"
+        step="1000"
+        style="width: 6em"
+      />
+    </hbox>
+  </groupbox>
+
+  <groupbox>
+    <label><html:h2>Like-count range filter</html:h2></label>
+    <description style="opacity: 0.8">
+      Focus the column on a band of like counts. Bounds of 0 mean “no bound”.
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-range"
+      preference="rangeFilterEnabled"
+      label="Enable the range filter"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label value="Minimum likes" />
+      <html:input
+        type="number"
+        preference="rangeFilterMin"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+      <label value="Maximum likes (0 = no upper bound)" />
+      <html:input
+        type="number"
+        preference="rangeFilterMax"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+    </hbox>
+
+    <radiogroup id="alphalikes-pref-range-mode" preference="rangeFilterMode">
+      <radio value="hide" label="Hide entries outside the range" />
+      <radio value="dim" label="Show them dimmed instead" />
+    </radiogroup>
+  </groupbox>
+</vbox>

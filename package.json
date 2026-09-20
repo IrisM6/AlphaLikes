@@ -1,0 +1,67 @@
+{
+  "name": "zotero-alphalikes",
+  "type": "module",
+  "version": "1.2.0",
+  "description": "A sortable alphaXiv likes column for arXiv items in Zotero 7-9, with automatic arXiv matching, colour coding, like-count filtering and selectable cell styling.",
+  "config": {
+    "addonName": "AlphaLikes",
+    "addonID": "alphalikes@iris",
+    "addonRef": "alphalikes",
+    "addonInstance": "AlphaLikes",
+    "prefsPrefix": "extensions.zotero.alphalikes"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IrisM6/AlphaLikes.git"
+  },
+  "author": "IrisM6 <331546448+IrisM6@users.noreply.github.com>",
+  "bugs": {
+    "url": "https://github.com/IrisM6/AlphaLikes/issues"
+  },
+  "homepage": "https://github.com/IrisM6/AlphaLikes#readme",
+  "keywords": [
+    "zotero",
+    "zotero-plugin",
+    "arxiv",
+    "alphaxiv"
+  ],
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "lint:check": "prettier --check . && eslint .",
+    "lint:fix": "prettier --write . && eslint . --fix",
+    "check:addon": "python3 scripts/check-addon.py",
+    "release": "zotero-plugin release",
+    "test": "zotero-plugin test",
+    "update-deps": "npm update --save"
+  },
+  "devDependencies": {
+    "@types/chai": "^5.2.3",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "^24.13.6",
+    "@zotero-plugin/eslint-config": "^0.6.10",
+    "chai": "^6.2.2",
+    "eslint": "^9.39.5",
+    "mocha": "^11.8.0",
+    "prettier": "^3.9.8",
+    "typescript": "^5.9.3",
+    "zotero-plugin-scaffold": "^0.8.8",
+    "zotero-types": "^4.1.3"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "tabWidth": 2,
+    "endOfLine": "lf",
+    "overrides": [
+      {
+        "files": [
+          "*.xhtml"
+        ],
+        "options": {
+          "htmlWhitespaceSensitivity": "css"
+        }
+      }
+    ]
+  }
+}

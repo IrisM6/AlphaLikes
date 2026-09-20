@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="660" viewBox="0 0 1280 660" role="img" aria-label="The AlphaLikes column in a Zotero item list, with colour-coded like counts">
+  <defs>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="20" flood-color="#0f172a" flood-opacity=".18"/>
+    </filter>
+    <linearGradient id="top" x1="0" x2="1">
+      <stop stop-color="#f8fafc"/>
+      <stop offset="1" stop-color="#eef2ff"/>
+    </linearGradient>
+    <style>
+      .ui { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+      .title { font-size: 16px; fill: #1e293b; }
+      .meta { font-size: 14px; fill: #64748b; }
+      .head { font-size: 14px; font-weight: 600; fill: #475569; letter-spacing: .02em; }
+      .num { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+      .high { fill: #1a7f37; }
+      .low { fill: #9aa0a6; }
+      .mid { fill: #334155; }
+      .pending { fill: #b45309; }
+      .na { fill: #94a3b8; font-size: 13px; font-weight: 500; }
+    </style>
+  </defs>
+
+  <rect width="1280" height="660" fill="#eef2f6"/>
+  <rect x="56" y="40" width="1168" height="580" rx="16" fill="#fff" filter="url(#shadow)"/>
+
+  <!-- title bar -->
+  <path d="M72 40h1136a16 16 0 0 1 16 16v50H56V56a16 16 0 0 1 16-16Z" fill="url(#top)"/>
+  <circle cx="88" cy="72" r="8" fill="#fb7185"/><circle cx="114" cy="72" r="8" fill="#fbbf24"/><circle cx="140" cy="72" r="8" fill="#34d399"/>
+  <text x="640" y="79" text-anchor="middle" class="ui" font-size="18" font-weight="600" fill="#334155">Zotero — My Library</text>
+
+  <!-- toolbar -->
+  <rect x="56" y="106" width="1168" height="46" fill="#fbfcfe"/>
+  <line x1="56" y1="152" x2="1224" y2="152" stroke="#e2e8f0"/>
+  <rect x="76" y="118" width="86" height="24" rx="6" fill="#eef2ff"/>
+  <text x="119" y="135" text-anchor="middle" class="ui" font-size="13" font-weight="600" fill="#4338ca">AlphaLikes</text>
+  <path d="M188 130h56M188 121v18m56-18v18" stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"/>
+  <rect x="272" y="120" width="230" height="22" rx="11" fill="#f1f5f9"/>
+  <text x="290" y="136" class="ui" font-size="13" fill="#94a3b8">🔍  Search library…</text>
+
+  <!-- left pane -->
+  <rect x="56" y="152" width="228" height="468" fill="#f8fafc"/>
+  <line x1="284" y1="152" x2="284" y2="620" stroke="#e2e8f0"/>
+  <rect x="72" y="172" width="196" height="34" rx="7" fill="#e0e7ff"/>
+  <text x="90" y="195" class="ui" font-size="15" font-weight="600" fill="#3730a3">▾  My Library</text>
+  <text x="94" y="238" class="ui" font-size="14" fill="#475569">▱  All Items</text>
+  <text x="94" y="268" class="ui" font-size="14" fill="#475569">▱  arXiv</text>
+  <text x="94" y="298" class="ui" font-size="14" fill="#475569">▱  Preprints</text>
+
+  <!-- column headers -->
+  <rect x="284" y="152" width="940" height="34" fill="#f1f5f9"/>
+  <text x="304" y="174" class="ui head">Title</text>
+  <text x="700" y="174" class="ui head">Creator</text>
+  <text x="896" y="174" class="ui head">Year</text>
+  <rect x="1010" y="152" width="150" height="34" fill="#e0e7ff"/>
+  <text x="1024" y="174" class="ui" font-size="14" font-weight="700" fill="#3730a3">alphaXiv Likes ⌄</text>
+  <line x1="284" y1="186" x2="1224" y2="186" stroke="#e2e8f0"/>
+
+  <!-- rows -->
+  <g class="ui">
+    <rect x="284" y="186" width="940" height="46" fill="#f5f8ff"/>
+    <text x="304" y="206" class="title">Attention Is All You Need</text>
+    <text x="304" y="224" class="meta">1706.03762 · NeurIPS</text>
+    <text x="700" y="215" class="meta">Vaswani et al.</text>
+    <text x="900" y="215" class="meta">2017</text>
+    <text x="1150" y="215" class="num high" text-anchor="end">1126</text>
+
+    <rect x="284" y="232" width="940" height="46" fill="#fff"/>
+    <text x="304" y="252" class="title">Deep Residual Learning for Image Recognition</text>
+    <text x="304" y="270" class="meta">1512.03385 · CVPR</text>
+    <text x="700" y="261" class="meta">He et al.</text>
+    <text x="900" y="261" class="meta">2016</text>
+    <text x="1150" y="261" class="num high" text-anchor="end">233</text>
+
+    <rect x="284" y="278" width="940" height="46" fill="#f5f8ff"/>
+    <text x="304" y="298" class="title">Nanometre-scale thermometry in a living cell</text>
+    <text x="304" y="316" class="meta">1304.1068 · Nature</text>
+    <text x="700" y="307" class="meta">Kucsko et al.</text>
+    <text x="900" y="307" class="meta">2013</text>
+    <text x="1150" y="307" class="num mid" text-anchor="end">58</text>
+
+    <rect x="284" y="324" width="940" height="46" fill="#fff"/>
+    <text x="304" y="344" class="title">Observation of Gravitational Waves from a Binary Black Hole Merger</text>
+    <text x="304" y="362" class="meta">1602.03837 · PRL</text>
+    <text x="700" y="353" class="meta">Abbott et al.</text>
+    <text x="900" y="353" class="meta">2016</text>
+    <text x="1150" y="353" class="num low" text-anchor="end">6</text>
+
+    <rect x="284" y="370" width="940" height="46" fill="#f5f8ff"/>
+    <text x="304" y="390" class="title">A Survey of Techniques for Approximate Computing</text>
+    <text x="304" y="408" class="meta">DOI: 10.1145/2893356 · ACM CSUR</text>
+    <text x="700" y="399" class="meta">Mittal</text>
+    <text x="900" y="399" class="meta">2016</text>
+    <text x="1150" y="399" class="num pending" text-anchor="end">?</text>
+
+    <rect x="284" y="416" width="940" height="46" fill="#fff"/>
+    <text x="304" y="436" class="title">The Design of Everyday Things</text>
+    <text x="304" y="454" class="meta">Book · not an arXiv record</text>
+    <text x="700" y="445" class="meta">Norman</text>
+    <text x="900" y="445" class="meta">1988</text>
+    <text x="1150" y="445" class="na" text-anchor="end">—</text>
+  </g>
+
+  <!-- legend -->
+  <g class="ui">
+    <rect x="284" y="470" width="940" height="150" fill="#fbfcfe"/>
+    <line x1="284" y1="470" x2="1224" y2="470" stroke="#e2e8f0"/>
+    <text x="308" y="504" font-size="14" font-weight="700" fill="#1e293b">What the column shows</text>
+
+    <text x="308" y="536" class="num high">1126</text>
+    <text x="364" y="536" class="meta">at or above the high threshold — green by default</text>
+
+    <text x="308" y="562" class="num low">6</text>
+    <text x="364" y="562" class="meta">at or below the low threshold — grey by default</text>
+
+    <text x="308" y="588" class="num pending">?</text>
+    <text x="364" y="588" class="meta">a candidate match needs confirming — right-click → “Find arXiv ID…”</text>
+
+    <text x="308" y="614" class="na">N/A</text>
+    <text x="364" y="614" class="meta">no arXiv record and nothing confidently matched</text>
+    <text x="764" y="536" class="meta">Colours, thresholds and the like-count range filter are all configurable in</text>
+    <text x="764" y="556" class="meta">Zotero’s settings. Counts are cached in the item’s Extra field.</text>
+  </g>
+</svg>
