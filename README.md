@@ -319,7 +319,8 @@ src/modules/menu.ts              右键菜单（三个动作）
 src/modules/l10n.ts              界面文案与占位符替换
 src/modules/notify.ts            提示条与「在浏览器中打开」的薄封装
 scripts/check-addon.py           静态检查（175 项，含面板 l10n、设置项、样式一致性、取色面板与「已移除功能不许回归」）
-test/                            Zotero 集成测试与纯逻辑测试（193 个用例，在 Zotero 7/8/9/10 上各跑一遍）
+test/                            Zotero 集成测试与纯逻辑测试（199 个用例，在 Zotero 7/8/9/10 上各跑一遍）
+test/pane.test.ts                打开真实的设置窗口，点取色面板、切着色依据、按恢复默认
 CHANGELOG.md                     更新记录；最新一节用作 GitHub Release 的说明正文
 zotero-plugin.config.ts          构建与发布配置
 ```

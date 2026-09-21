@@ -1,0 +1,384 @@
+/**
+ * The settings pane, driven the way a user drives it.
+ *
+ * Everything else about the pane is checked statically (scripts/check-addon.py
+ * looks at the markup and the script), which cannot tell whether the colour
+ * picker actually appears, whether clicking it writes a colour, or whether the
+ * quantile and threshold rows swap over. Those are the parts of this round the
+ * user sees first, so they are worth opening the real window for: this file
+ * registers the same pane Zotero does, opens the settings window, and clicks.
+ */
+
+import { assert } from "chai";
+import { config } from "../package.json";
+
+const ADDON_ID = config.addonID;
+const PREFIX = "extensions.zotero.alphalikes.";
+
+function pref(name: string): unknown {
+  return Zotero.Prefs.get(PREFIX + name, true);
+}
+
+function setPref(name: string, value: unknown): void {
+  Zotero.Prefs.set(PREFIX + name, value, true);
+}
+
+interface PaneWindow {
+  document: Document;
+  MouseEvent: typeof MouseEvent;
+  close(): void;
+}
+
+/** Turns anything thrown into a string a failing run can show. */
+function describeError(error: unknown): string {
+  if (error instanceof Error) {
+    // Gecko's stack is the frame list alone, so the message must come first:
+    // reading the stack alone loses the one line that explains the failure.
+    return `${error.message} || ${error.stack ?? ""}`;
+  }
+  try {
+    return JSON.stringify(error, Object.getOwnPropertyNames(error));
+  } catch {
+    return String(error);
+  }
+}
+
+/** Opens the settings window and waits until AlphaLikes' pane is in it. */
+async function openPane(): Promise<{
+  win: PaneWindow;
+  doc: Document;
+  pane: HTMLElement;
+}> {
+  const internal = Zotero.Utilities.Internal as unknown as {
+    openPreferences(id: string): void;
+  };
+
+  // Plugin panes get an id of `plugin-pane-<random>-<pluginID>`, so it cannot
+  // be hard-coded: it is whatever the registration returned.
+  const panes =
+    (
+      Zotero as unknown as {
+        PreferencePanes: { pluginPanes: { id: string; pluginID: string }[] };
+      }
+    ).PreferencePanes?.pluginPanes ?? [];
+  const paneId = panes.find((pane) => pane.pluginID === ADDON_ID)?.id ?? "";
+
+  let failure = "";
+  try {
+    internal.openPreferences(paneId);
+  } catch (error) {
+    const detail =
+      error && typeof error === "object"
+        ? ((error as { message?: string; name?: string }).message ??
+          (error as { name?: string }).name ??
+          JSON.stringify(Object.keys(error)))
+        : String(error);
+    failure = `openPreferences threw: ${detail}`;
+  }
+
+  const deadline = Date.now() + 20_000;
+  let settings: (PaneWindow & { Zotero_Preferences?: unknown }) | null = null;
+
+  while (Date.now() < deadline && !settings) {
+    // Zotero opens the window with the type `zotero:pref` (see
+    // utilities_internal.js), not the URL's own name.
+    settings = Services.wm.getMostRecentWindow(
+      "zotero:pref",
+    ) as unknown as PaneWindow | null;
+    if (settings && !settings.Zotero_Preferences) settings = null;
+    if (!settings) await Zotero.Promise.delay(100);
+  }
+  if (!settings) {
+    assert.fail("the settings window never finished loading");
+  }
+
+  // Navigating is awaited on purpose: a pane whose markup does not parse, or
+  // whose script throws, rejects here instead of leaving a blank page.
+  try {
+    await (
+      settings.Zotero_Preferences as {
+        navigateToPane(id: string): Promise<void>;
+      }
+    ).navigateToPane(paneId);
+  } catch (error) {
+    failure = `navigateToPane rejected: ${describeError(error)}`;
+  }
+
+  while (Date.now() < deadline) {
+    const pane = settings.document.getElementById("zotero-prefpane-alphalikes");
+    if (pane) {
+      // The pane script polls for its own markup; give it the same 50ms turns
+      // it uses before deciding something is missing.
+      await Zotero.Promise.delay(300);
+      return { win: settings, doc: settings.document, pane };
+    }
+    await Zotero.Promise.delay(200);
+  }
+
+  const open: string[] = [];
+  try {
+    const windows = Services.wm.getEnumerator(null);
+    while (windows.hasMoreElements()) {
+      try {
+        const candidate = windows.getNext() as unknown as {
+          location?: { href: string };
+        };
+        open.push(String(candidate.location?.href ?? "?"));
+      } catch {
+        open.push("(closed)");
+      }
+    }
+  } catch {
+    open.push("(the enumerator itself failed)");
+  }
+  throw new Error(
+    [
+      failure || "the AlphaLikes pane did not appear in the settings window",
+      `pane id = ${paneId || "(the pane is not registered)"}`,
+      `panes = ${panes.map((p) => `${p.id}/${p.pluginID}`).join(", ")}`,
+      `windows = ${open.join(", ")}`,
+    ].join(" | "),
+  );
+}
+
+function click(
+  win: PaneWindow,
+  doc: Document,
+  el: Element,
+  x = 0,
+  y = 0,
+): void {
+  const box = el.getBoundingClientRect();
+  const event = {
+    bubbles: true,
+    cancelable: true,
+    button: 0,
+    clientX: box.left + x,
+    clientY: box.top + y,
+  };
+  el.dispatchEvent(new win.MouseEvent("mousedown", event));
+  doc.dispatchEvent(new win.MouseEvent("mouseup", event));
+  // A real press produces a click as well, and it is the click the pane
+  // listens for when it opens the picker.
+  el.dispatchEvent(new win.MouseEvent("click", event));
+}
+
+function colorInputs(doc: Document): Element[] {
+  return Array.from(doc.querySelectorAll(".alphalikes-color-input"));
+}
+
+describe("AlphaLikes settings pane", function () {
+  this.timeout(60_000);
+
+  let win: PaneWindow;
+  let doc: Document;
+  const saved = new Map<string, unknown>();
+
+  before(async function () {
+    try {
+      for (const name of [
+        "likeStyle",
+        "likeColorsCustomised",
+        "highLikesColor",
+        "midLikesColor",
+        "lowLikesColor",
+        "colorMode",
+        "quantileLowPercent",
+        "quantileHighPercent",
+        "citationStyle",
+        "citationColorsCustomised",
+        "citationColorMode",
+      ]) {
+        saved.set(name, pref(name));
+      }
+
+      ({ win, doc } = await openPane());
+    } catch (error) {
+      // assert.fail is the one channel whose text reaches the test log from
+      // inside Zotero, so the failure is reported through it.
+      assert.fail(`pane setup failed: ${describeError(error)}`);
+    }
+  });
+
+  after(async function () {
+    for (const [name, value] of saved) setPref(name, value);
+    try {
+      win?.close();
+    } catch {
+      // The window may already be gone when the run tears down.
+    }
+  });
+
+  it("shows a colour preview next to every colour box", function () {
+    const inputs = colorInputs(doc);
+    assert.lengthOf(inputs, 6, "three like colours and three citation ones");
+
+    for (const input of inputs) {
+      const preview = input.parentNode?.querySelector(
+        ".alphalikes-color-preview",
+      );
+      assert.isOk(
+        preview,
+        `no preview was built for ${input.getAttribute("preference")}`,
+      );
+      assert.isNotEmpty(
+        preview?.getAttribute("style") ?? "",
+        "the preview carries no colour",
+      );
+    }
+  });
+
+  it("opens one picker with a colour area and a hue bar", function () {
+    const preview = colorInputs(doc)[0].parentNode?.querySelector(
+      ".alphalikes-color-preview",
+    ) as Element;
+    click(win, doc, preview);
+
+    const panel = doc.getElementById("alphalikes-color-panel");
+    assert.isOk(panel, "clicking the preview built no panel");
+    assert.equal(
+      panel?.style.display,
+      "grid",
+      "the panel is in the document but not shown",
+    );
+
+    const area = panel?.querySelector(".alphalikes-color-area");
+    const hue = panel?.querySelector(".alphalikes-color-hue");
+    assert.isOk(area, "the panel has no colour area");
+    assert.isOk(hue, "the panel has no hue bar");
+    assert.lengthOf(
+      panel?.querySelectorAll(".alphalikes-color-marker") ?? [],
+      2,
+      "one marker on the area, one on the hue bar",
+    );
+
+    // A panel that is in the document but has no box would be invisible to the
+    // user, which no static check can tell apart from a working one.
+    const box = panel?.getBoundingClientRect();
+    assert.isAbove(box?.width ?? 0, 50, "the panel has no width");
+    assert.isAbove(box?.height ?? 0, 50, "the panel has no height");
+  });
+
+  it("writes the picked colour to the box and to the setting", function () {
+    const input = colorInputs(doc)[0];
+    const name = String(input.getAttribute("preference")).replace(PREFIX, "");
+    const panel = doc.getElementById("alphalikes-color-panel") as HTMLElement;
+    const area = panel.querySelector(".alphalikes-color-area") as Element;
+
+    // Top-right corner: fully saturated, fully bright — the pure hue.
+    const box = area.getBoundingClientRect();
+    click(win, doc, area, box.width - 2, 2);
+
+    const value = (input as HTMLInputElement).value;
+    assert.match(
+      value,
+      /^#[0-9a-f]{6}$/i,
+      `the box holds ${value} instead of a hex colour`,
+    );
+    assert.equal(
+      pref(name),
+      value,
+      "the setting did not follow the picked colour",
+    );
+    assert.isTrue(
+      Boolean(pref("likeColorsCustomised")),
+      "editing a colour has to mark the colours as edited",
+    );
+
+    const marker = panel.querySelector(
+      ".alphalikes-color-area .alphalikes-color-marker",
+    ) as HTMLElement;
+    assert.notEqual(marker.style.left, "0%", "the marker did not move");
+  });
+
+  it("keeps only the rows of the selected banding rule on screen", function () {
+    const menu = doc.getElementById("alphalikes-pref-color-mode") as
+      (Element & { value: string }) | null;
+    const thresholdRows = doc.getElementById("alphalikes-color-threshold-rows");
+    const quantileRows = doc.getElementById("alphalikes-color-quantile-rows");
+    assert.isOk(menu, "the pane has no banding-rule menu");
+    assert.isOk(thresholdRows, "the pane has no threshold rows");
+    assert.isOk(quantileRows, "the pane has no quantile rows");
+
+    setPref("colorMode", "quantile");
+    menu.value = "quantile";
+    menu.dispatchEvent(new Event("command", { bubbles: true }));
+    // The pane defers the swap by one turn so the binding can settle first.
+    return Zotero.Promise.delay(50).then(() => {
+      assert.isTrue(
+        quantileRows.hasAttribute("hidden") === false,
+        "quantile mode should show the percentile inputs",
+      );
+      assert.isTrue(
+        thresholdRows.hasAttribute("hidden"),
+        "quantile mode should hide the threshold inputs",
+      );
+
+      setPref("colorMode", "threshold");
+      menu.value = "threshold";
+      menu.dispatchEvent(new Event("command", { bubbles: true }));
+      return Zotero.Promise.delay(50).then(() => {
+        assert.isFalse(
+          thresholdRows.hasAttribute("hidden"),
+          "threshold mode should show the threshold inputs",
+        );
+        assert.isTrue(
+          quantileRows.hasAttribute("hidden"),
+          "threshold mode should hide the percentile inputs",
+        );
+      });
+    });
+  });
+
+  it("puts a style's own colours back in one click", function () {
+    setPref("likeStyle", "morandi");
+    setPref("likeColorsCustomised", true);
+    setPref("highLikesColor", "#ff00ff");
+    setPref("midLikesColor", "#ff00ff");
+    setPref("lowLikesColor", "#ff00ff");
+
+    const button = doc.getElementById("alphalikes-pref-like-colors-reset");
+    assert.isOk(button, "the pane has no restore button");
+    button?.dispatchEvent(new Event("command", { bubbles: true }));
+
+    assert.isFalse(
+      Boolean(pref("likeColorsCustomised")),
+      "restoring has to clear the edited flag",
+    );
+    assert.equal(
+      pref("highLikesColor"),
+      "#9FB3BF",
+      "the high band did not go back to the style's own colour",
+    );
+    assert.equal(pref("midLikesColor"), "#DCD3C9");
+    assert.equal(pref("lowLikesColor"), "#F1F1EF");
+
+    // …and the boxes follow, so what is shown is what is drawn.
+    const inputs = colorInputs(doc);
+    assert.equal(
+      (inputs[0] as HTMLInputElement).value,
+      "#9FB3BF",
+      "the colour box still shows the colour that was there before",
+    );
+  });
+
+  it("shows the style's colours when nothing has been edited", function () {
+    setPref("likeColorsCustomised", false);
+    setPref("likeStyle", "dot");
+
+    const menu = doc.getElementById("alphalikes-pref-style") as
+      (Element & { value: string }) | null;
+    assert.isOk(menu, "the pane has no style menu");
+    menu.value = "dot";
+    menu.dispatchEvent(new Event("command", { bubbles: true }));
+
+    return Zotero.Promise.delay(50).then(() => {
+      const inputs = colorInputs(doc);
+      assert.equal(
+        (inputs[0] as HTMLInputElement).value,
+        "#FF3B30",
+        "the boxes should show the selected style's colours",
+      );
+    });
+  });
+});
