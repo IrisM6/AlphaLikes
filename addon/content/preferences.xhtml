@@ -394,21 +394,15 @@
       />
     </hbox>
 
-    <checkbox
-      id="alphalikes-pref-google-scholar"
-      preference="useGoogleScholar"
-      data-l10n-id="pref-citations-scholar"
-      label="启用 Google Scholar（无官方 API，读取公开结果页；可能被限流）"
-      native="true"
-    />
-
     <description
       data-l10n-id="pref-citations-scholar-note"
       style="opacity: 0.8"
     >
       Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited
       by」数字。Google
-      可能会要求人机验证或限流，这时会跳过它并使用下一个来源；读取过于频繁更容易被拦，因此请不要把刷新间隔调得太小。
+      可能会要求人机验证或限流：这时插件会暂停读取、弹一条提示，并在约 10
+      分钟后自动重试（继续被拦则翻倍，最长 2
+      小时），不会用别的来源顶替这个数字。读取过于频繁更容易被拦，因此请不要把刷新间隔调得太小。
     </description>
 
     <hbox align="center">
@@ -425,33 +419,29 @@
       >
         <menupopup>
           <menuitem
-            value="auto"
-            data-l10n-id="pref-citations-source-auto"
-            label="自动（Google Scholar → OpenAlex → Semantic Scholar）"
-          />
-          <menuitem
             value="googleScholar"
             data-l10n-id="pref-citations-source-scholar"
-            label="只用 Google Scholar"
+            label="Google Scholar（默认）"
           />
           <menuitem
             value="openAlex"
             data-l10n-id="pref-citations-source-openalex"
-            label="只用 OpenAlex"
+            label="OpenAlex"
           />
           <menuitem
             value="semanticScholar"
             data-l10n-id="pref-citations-source-s2"
-            label="只用 Semantic Scholar"
+            label="Semantic Scholar"
           />
         </menupopup>
       </menulist>
     </hbox>
 
     <description data-l10n-id="pref-citations-source-note" style="opacity: 0.8">
-      「自动」按来源覆盖范围排序：Google Scholar 收录最广，OpenAlex
-      次之且文档公开，Semantic Scholar
-      覆盖的期刊最少。某个来源没有数据（或本次被限流）时会自动顺延到下一个；列里悬停会显示当前数字的来源。
+      只显示所选来源的数字，不会用其他来源顶替：三个来源的口径并不一致（例如
+      Google Scholar 收录预印本、学位论文与书籍，和 OpenAlex
+      的数字可能差一倍）。默认为收录最广的 Google
+      Scholar；它被人机验证拦住时会暂停重试（有提示），此时该列显示「暂无」而不是别的来源的数字。
     </description>
 
     <description data-l10n-id="pref-citations-s2-note" style="opacity: 0.8">

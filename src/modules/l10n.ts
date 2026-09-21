@@ -16,6 +16,7 @@ export const MESSAGES = {
   "menu-find-arxiv": "Find arXiv ID…",
   "menu-refresh": "Refresh alphaXiv Likes",
   "menu-clear": "Clear AlphaLikes data",
+  "menu-open-scholar": "Open the Google Scholar verification page",
 
   "cell-loading": "Loading from alphaXiv…",
   "cell-unavailable": "No alphaXiv likes found for this item",
@@ -25,6 +26,8 @@ export const MESSAGES = {
   "cell-trend": "{delta} likes since the previous snapshot (currently {likes})",
   "cell-high-impact": "In the top 10% of its field and year",
   "cell-citations-unavailable": "No citation count found for this item",
+  "cell-scholar-blocked":
+    "Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.",
   "cell-quantile-high": "High for the items in view",
   "cell-quantile-low": "Low for the items in view",
   "cell-quantile-mid": "Mid-range for the items in view",
@@ -43,6 +46,11 @@ export const MESSAGES = {
   "batch-none-to-do": "Every selected item already has an arXiv ID.",
 
   "progress-error": "AlphaLikes: the update failed: {message}",
+
+  // --- Google Scholar's human check ---------------------------------------
+  "notify-scholar-title": "AlphaLikes · Google Scholar",
+  "notify-scholar-blocked":
+    "Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.",
 
   "error-no-selection": "Select at least one item first.",
   "error-single-selection": "This action works on a single item only.",

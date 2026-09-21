@@ -494,8 +494,67 @@ check(
     f"citation sources missing from the pane: {sorted(code_sources - pane_sources)}",
 )
 check(
-    "auto" in pane_sources,
-    "the citation-source chooser has no automatic option",
+    "auto" not in pane_sources,
+    "the citation-source chooser still offers an automatic mode; a chosen "
+    "source has to be the only one used",
+)
+
+# Google Scholar is the default source, and the shipped default has to say so
+# in both places a fresh profile reads.
+prefs_ts = read(ROOT / "src" / "modules" / "prefs.ts")
+check(
+    'citationSourcePreference: "googleScholar"' in prefs_ts,
+    "the default citation source is not Google Scholar in prefs.ts",
+)
+check(
+    'pref("citationSourcePreference", "googleScholar")' in prefs_js,
+    "the shipped default citation source is not Google Scholar in prefs.js",
+)
+_checkbox = [line for line in prefs_js.splitlines() if "useGoogleScholar" in line]
+check(
+    not _checkbox,
+    "prefs.js still ships the removed Google Scholar checkbox",
+)
+check(
+    "useGoogleScholar" not in pane_text and "useGoogleScholar" not in prefs_ts,
+    "the removed Google Scholar checkbox is still wired up",
+)
+
+# The fall-through that made "only Google Scholar" show OpenAlex numbers must
+# not come back: the provider order is derived from the preference alone.
+service_ts = read(ROOT / "src" / "modules" / "service.ts")
+check(
+    "citationProviderOrder(getCitationSourcePreference())" in service_ts,
+    "the citation provider order is not derived from the chosen source alone",
+)
+check(
+    "CITATION_AUTHORITY_ORDER.filter" not in service_ts,
+    "the citation order still falls through to other providers",
+)
+
+# A block has to be detectable, announced and retried.
+cite_ts = read(ROOT / "src" / "modules" / "citations.ts")
+for needed, why in (
+    ("scholarRetryDelayMs", "the Google Scholar retry backoff is missing"),
+    ("CITATIONS_BLOCKED_MARKER", "blocked cells cannot be marked"),
+    ("citationProviderOrder", "the strict provider order is missing"),
+):
+    check(needed in cite_ts, why)
+for needed, why in (
+    ("noteScholarBlock", "nothing records a Google Scholar block"),
+    ("scholarRetryTimer", "a block is never retried automatically"),
+    ("getScholarBlockStatus", "a block is not reported to the interface"),
+    ("openScholarVerification", "the user cannot open the check themselves"),
+    ("toast(", "a block is never announced"),
+):
+    check(needed in service_ts, why)
+check(
+    "cell-scholar-blocked" in read(ROOT / "src" / "modules" / "column.ts"),
+    "a blocked cell does not explain itself",
+)
+check(
+    "menu-open-scholar" in read(ROOT / "src" / "modules" / "menu.ts"),
+    "the context menu has no way to open the verification page",
 )
 
 # Each provider needs a serialise prefix, so its count survives the round trip.

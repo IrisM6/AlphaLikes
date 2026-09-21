@@ -1,7 +1,12 @@
 import { assert } from "chai";
+import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
 import { renderCitationCell, renderLikeCell } from "../src/modules/column";
 import { getLikeStyle } from "../src/modules/prefs";
-import { toSortableValue, withValueDecorations } from "../src/modules/likes";
+import {
+  CELL_UNAVAILABLE,
+  toSortableValue,
+  withValueDecorations,
+} from "../src/modules/likes";
 import {
   LIKE_STYLES,
   PREF_BRANCH,
@@ -422,6 +427,31 @@ describe("AlphaLikes column rendering", function () {
     it("names Google Scholar when it supplied the number", function () {
       const cell = renderCitations(8012, ["googleScholar"]);
       assert.include(cell.title, "Google Scholar");
+    });
+
+    it("explains a blocked Google Scholar instead of looking empty", function () {
+      const cell = renderCitationCell(
+        withValueDecorations(CELL_UNAVAILABLE, [CITATIONS_BLOCKED_MARKER]),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
+      // The tooltip says why and when the next attempt is, which is the whole
+      // point of marking the cell.
+      assert.include(cell.title, "Google Scholar");
+      assert.match(cell.title, /\d+ 分钟|minutes/);
+    });
+
+    it("keeps the plain explanation when nothing is blocked", function () {
+      const cell = renderCitationCell(
+        CELL_UNAVAILABLE,
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.notInclude(cell.title, "验证");
+      assert.isTrue(cell.title.length > 0);
     });
 
     it("treats a high-impact work as the style's high band", function () {

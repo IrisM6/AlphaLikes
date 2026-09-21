@@ -3,7 +3,11 @@
  */
 
 import { config } from "../../package.json";
-import { CITATION_SOURCE_LABELS, type CitationSourceKey } from "./citations";
+import {
+  CITATIONS_BLOCKED_MARKER,
+  CITATION_SOURCE_LABELS,
+  type CitationSourceKey,
+} from "./citations";
 import {
   CELL_LOADING,
   CELL_PENDING,
@@ -498,7 +502,18 @@ export function renderCitationCell(
     return cell;
   }
 
-  if (text === CELL_UNAVAILABLE) cell.title = t("cell-citations-unavailable");
+  // An empty cell because Google Scholar is waiting out a human check says so,
+  // and says how long until the next attempt: otherwise it is indistinguishable
+  // from a paper that genuinely has no citations anywhere.
+  if (decorations.includes(CITATIONS_BLOCKED_MARKER)) {
+    const status = getService().getScholarBlockStatus();
+    cell.title = t("cell-scholar-blocked", {
+      minutes: Math.max(1, status.minutesLeft),
+    });
+    cell.classList.add("alphalikes-citation-blocked");
+  } else if (text === CELL_UNAVAILABLE) {
+    cell.title = t("cell-citations-unavailable");
+  }
   return cell;
 }
 

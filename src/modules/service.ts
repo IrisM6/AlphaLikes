@@ -37,8 +37,11 @@ import {
   type CitationCounts,
 } from "./citations";
 import {
-  CITATION_AUTHORITY_ORDER,
   CITATION_SOURCE_LABELS,
+  CITATIONS_BLOCKED_MARKER,
+  citationProviderOrder,
+  GOOGLE_SCHOLAR_HOME,
+  scholarRetryDelayMs,
   type CitationSourceKey,
 } from "./citations";
 import { ERROR_RETRY_DELAY_MS, RESOLUTION_RETRY_DELAY_MS } from "./constants";
@@ -51,6 +54,8 @@ import {
   type TrendDelta,
 } from "./history";
 import { PacedRequester } from "./http";
+import { t } from "./l10n";
+import { openExternal, toast } from "./notify";
 import {
   CELL_LOADING,
   CELL_PENDING,
@@ -170,17 +175,16 @@ export interface ItemTrend {
 }
 
 /**
- * Provider precedence for the displayed count.
+ * The provider whose count is displayed, and the only one that is asked.
  *
- * `auto` is the built-in authority order; an explicit choice is tried first and
- * the rest of the order follows, so naming a provider never costs the fallback.
+ * This used to be a preference-first list with the rest of the authority order
+ * behind it, which meant choosing Google Scholar still showed OpenAlex numbers
+ * whenever Scholar had nothing to say. The two counts are not the same
+ * measurement - Scholar counts preprints, theses and books that OpenAlex does
+ * not - so that is a wrong answer rather than a graceful fallback.
  */
 function citationOrder(): CitationSourceKey[] {
-  const preference = getCitationSourcePreference();
-  if (preference === "auto") return [...CITATION_AUTHORITY_ORDER];
-
-  const rest = CITATION_AUTHORITY_ORDER.filter((key) => key !== preference);
-  return [preference, ...rest];
+  return citationProviderOrder(getCitationSourcePreference());
 }
 
 function isSameYearOrAdjacent(a: number | null, b: number | null): boolean {
@@ -294,6 +298,23 @@ export class AlphaLikesService {
 
   private citationStates = new Map<number, CitationState>();
   private inFlightCitations = new Map<string, Promise<CitationCounts | null>>();
+
+  /**
+   * Google Scholar's human check, while it is in force.
+   *
+   * `attempts` counts consecutive blocks so the wait doubles each time;
+   * `items` remembers what was being read so the retry can pick it up again
+   * without making the user do anything.
+   */
+  private scholarBlock: {
+    attempts: number;
+    until: number;
+    url: string;
+  } | null = null;
+  private scholarRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private scholarBlockedItems = new Set<number>();
+  /** One notification per block episode, not one per paper. */
+  private scholarBlockAnnounced = false;
 
   /**
    * Latest like count seen for each item the column has rendered. This is the
@@ -437,7 +458,147 @@ export class AlphaLikesService {
     return this.planCitationCell(item).value;
   }
 
+  /**
+   * Whether Google Scholar is waiting out a human check, and for how long.
+   *
+   * The renderer explains an empty cell with this, and the context menu offers
+   * to open the check in the browser, so both read it from one place.
+   */
+  getScholarBlockStatus(): {
+    blocked: boolean;
+    minutesLeft: number;
+    attempts: number;
+    url: string;
+  } {
+    const block = this.scholarBlock;
+    if (!block || block.until <= Date.now()) {
+      return {
+        blocked: false,
+        minutesLeft: 0,
+        attempts: block?.attempts ?? 0,
+        url: block?.url ?? GOOGLE_SCHOLAR_HOME,
+      };
+    }
+    return {
+      blocked: true,
+      minutesLeft: Math.max(1, Math.ceil((block.until - Date.now()) / 60_000)),
+      attempts: block.attempts,
+      url: block.url,
+    };
+  }
+
+  /** The page a user can open to clear the check themselves. */
+  scholarVerificationURL(): string {
+    return this.scholarBlock?.url ?? GOOGLE_SCHOLAR_HOME;
+  }
+
+  /** Opens that page in the default browser. */
+  openScholarVerification(): void {
+    openExternal(this.scholarVerificationURL());
+  }
+
+  /**
+   * Nothing is fetched while the block is in force, and nothing is retried
+   * early: Google answers a burst of requests by extending the block.
+   */
+  private isScholarBlocked(): boolean {
+    return this.scholarBlock !== null && this.scholarBlock.until > Date.now();
+  }
+
+  /**
+   * Records a block and schedules the automatic retry.
+   *
+   * The user is told once per episode, because the cell would otherwise just
+   * stay empty with no explanation and no way to help.
+   */
+  private noteScholarBlock(url: string): void {
+    const attempts = (this.scholarBlock?.attempts ?? 0) + 1;
+    const delay = scholarRetryDelayMs(attempts);
+    this.scholarBlock = { attempts, until: Date.now() + delay, url };
+
+    if (!this.scholarBlockAnnounced) {
+      this.scholarBlockAnnounced = true;
+      const minutes = Math.round(delay / 60_000);
+      this.debug(
+        `Google Scholar asked for a human check; retrying in ${minutes} minutes`,
+      );
+      toast(
+        t("notify-scholar-title"),
+        t("notify-scholar-blocked", { minutes }),
+      );
+    }
+
+    this.scheduleScholarRetry(delay);
+  }
+
+  private scheduleScholarRetry(delayMs: number): void {
+    if (this.scholarRetryTimer !== null) clearTimeout(this.scholarRetryTimer);
+    this.scholarRetryTimer = setTimeout(() => {
+      this.scholarRetryTimer = null;
+      void this.retryBlockedScholar();
+    }, delayMs);
+  }
+
+  /**
+   * Clears the block and re-reads the items that were waiting on it.
+   *
+   * The backoff is cleared only when a request actually succeeds, so an item
+   * that is still blocked simply books a longer wait.
+   */
+  private async retryBlockedScholar(): Promise<void> {
+    if (this.disposed) return;
+    this.scholarBlock = null;
+    this.scholarBlockAnnounced = false;
+
+    const items = [...this.scholarBlockedItems]
+      .map((id) => Zotero.Items.get(id))
+      .filter((item): item is Zotero.Item => Boolean(item));
+    this.scholarBlockedItems.clear();
+    if (!items.length) return;
+
+    await this.refreshCitations(items);
+  }
+
+  /**
+   * Stops waiting and tries now - the user pressed refresh, or answered the
+   * check themselves.
+   */
+  private clearScholarBlock(): void {
+    if (this.scholarRetryTimer !== null) {
+      clearTimeout(this.scholarRetryTimer);
+      this.scholarRetryTimer = null;
+    }
+    this.scholarBlock = null;
+    this.scholarBlockAnnounced = false;
+  }
+
+  /**
+   * Wraps the per-item plan so an empty cell can explain itself.
+   *
+   * While Google Scholar is waiting out a human check every cell that has no
+   * number yet - loading, failed or genuinely absent - reads the same: "none
+   * yet", with a tooltip saying why and when the next attempt is. Leaving the
+   * spinner or a bare N/A there would look like a paper without citations.
+   */
   planCitationCell(item: Zotero.Item): CitationCellPlan {
+    const plan = this.planCitationCellFor(item);
+    if (plan.count !== null) return plan;
+    return this.blockedCitationPlan() ?? plan;
+  }
+
+  private blockedCitationPlan(): CitationCellPlan | null {
+    if (!this.isScholarBlocked()) return null;
+
+    return {
+      value: withValueDecorations(CELL_UNAVAILABLE, [CITATIONS_BLOCKED_MARKER]),
+      text: CELL_UNAVAILABLE,
+      count: null,
+      highImpact: false,
+      source: null,
+    };
+  }
+
+  private planCitationCellFor(item: Zotero.Item): CitationCellPlan {
     const prefs = getCitationPrefs();
     if (!prefs.enabled)
       return {
@@ -563,6 +724,7 @@ export class AlphaLikesService {
       if (this.disposed) return;
 
       if (counts === null) {
+        if (this.isScholarBlocked()) this.scholarBlockedItems.add(item.id);
         this.citationStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
@@ -617,19 +779,17 @@ export class AlphaLikesService {
     arxivID: string | null,
   ): Promise<CitationCounts | null> {
     const prefs = getResolverPrefs();
-    const citationPrefs = getCitationPrefs();
+    const source = getCitationSourcePreference();
     let merged: CitationCounts = {};
     let answered = false;
 
-    if (citationPrefs.useGoogleScholar) {
+    if (source === "googleScholar") {
       const scholar = await this.collectGoogleScholarCitation(paper);
       if (scholar !== null) {
         merged = { ...merged, googleScholar: scholar };
         answered = true;
       }
-    }
-
-    if (prefs.useSemanticScholar) {
+    } else if (source === "semanticScholar") {
       const url = semanticScholarCitationURL({
         doi: paper.doi,
         arxivID: arxivID ?? undefined,
@@ -642,9 +802,7 @@ export class AlphaLikesService {
           answered = true;
         }
       }
-    }
-
-    if (prefs.useOpenAlex) {
+    } else if (source === "openAlex") {
       const openAlex = await this.collectOpenAlexCitations(paper, prefs);
       if (openAlex) {
         merged = { ...merged, ...openAlex };
@@ -660,18 +818,16 @@ export class AlphaLikesService {
    *
    * Scholar has no API, so the public results page is fetched and the first
    * result whose title resembles the item's is used. A block page (consent
-   * interstitial, captcha, rate limit) is reported as a miss and logged rather
-   * than retried: hammering Scholar is the fastest way to stay blocked, and the
-   * other providers still answer, so the column keeps a number either way.
-   *
-   * This is the one request the plugin makes that reads an interface meant for
-   * browsing rather than an API, which is why it can be switched off on its own
-   * in the settings.
+   * interstitial, captcha, rate limit) stops the attempt, tells the user once,
+   * and books a retry with a doubling wait - hammering Scholar is the fastest
+   * way to stay blocked. No other provider is substituted for the missing
+   * number; the cell says the count is waiting instead.
    */
   private async collectGoogleScholarCitation(
     paper: PaperMetadata,
   ): Promise<number | null> {
     if (!paper.title || paper.title.length < 10) return null;
+    if (this.isScholarBlocked()) return null;
 
     const html = await this.safeText(
       "Google Scholar citations",
@@ -682,9 +838,7 @@ export class AlphaLikesService {
 
     const verdict = googleScholarCitationCount(html);
     if (verdict === -1) {
-      this.debug(
-        "Google Scholar answered with a block or consent page; skipping it",
-      );
+      this.noteScholarBlock(googleScholarCitationSearchURL(paper.title));
       return null;
     }
     if (verdict === null) return null;
@@ -695,6 +849,8 @@ export class AlphaLikesService {
       .map((block) => googleScholarResultTitle(block))
       .filter(Boolean);
     if (!titles.length) return verdict;
+
+    this.clearScholarBlock();
 
     const similarity = Math.max(
       ...titles.map((title) => titleSimilarity(paper.title, title)),
@@ -769,6 +925,8 @@ export class AlphaLikesService {
    * Re-reads citations, ignoring the cached value and any failure cooldown.
    */
   async refreshCitations(items: Zotero.Item[]): Promise<void> {
+    this.clearScholarBlock();
+
     for (const item of items.filter(Boolean)) {
       this.citationStates.delete(item.id);
     }
@@ -1288,6 +1446,8 @@ export class AlphaLikesService {
     this.observedLikes.clear();
     this.quantileCache = null;
 
+    this.clearScholarBlock();
+    this.scholarBlockedItems.clear();
     this.stopObservingPrefs?.();
     this.stopObservingPrefs = null;
   }

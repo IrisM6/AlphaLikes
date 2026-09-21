@@ -68,15 +68,18 @@ export type ColorMode = "threshold" | "quantile";
 /**
  * Which provider's count the Citations column shows.
  *
- * `auto` walks the providers in order of authority: Google Scholar indexes the
- * widest body of literature, OpenAlex is the next broadest and is openly
- * documented, and Semantic Scholar covers the fewest venues of the three.
+ * The choice is strict: the number in the column comes from this provider, or
+ * the cell says it has none. A provider that is blocked or has no record for
+ * an item is never quietly replaced by another one, because the counts are not
+ * interchangeable - Google Scholar indexes preprints, theses and books that
+ * OpenAlex does not, and the two figures for one paper can differ twofold.
+ * Google Scholar is the default because its coverage is the widest; when it
+ * asks for a human check the plugin waits and retries instead of showing a
+ * different provider's number.
  */
-export type CitationSourcePreference =
-  "auto" | "googleScholar" | "openAlex" | "semanticScholar";
+export type CitationSourcePreference = CitationSource;
 
 const CITATION_SOURCE_PREFERENCES: readonly CitationSourcePreference[] = [
-  "auto",
   "googleScholar",
   "openAlex",
   "semanticScholar",
@@ -144,9 +147,8 @@ export const PREF_DEFAULTS = {
   /** Re-read citation counts after this many days (`0` disables). */
   citationCacheTtlDays: 7,
   /** Read counts from Google Scholar. Best-effort: Google rate-limits reads. */
-  useGoogleScholar: true,
   /** Which provider's count is displayed. */
-  citationSourcePreference: "auto" as CitationSourcePreference,
+  citationSourcePreference: "googleScholar" as CitationSourcePreference,
 } as const;
 
 export type PrefName = keyof typeof PREF_DEFAULTS;
@@ -277,7 +279,12 @@ export function getLikeStyle(): LikeStyle {
   return RETIRED_STYLES[raw] ?? (PREF_DEFAULTS.likeStyle as LikeStyle);
 }
 
-/** The provider order used when the preference is `auto`. */
+/**
+ * Providers ordered by how much of the literature they index.
+ *
+ * Only the settings pane and the docs need this ordering; the count itself
+ * always comes from the single provider that was chosen.
+ */
 export const AUTHORITY_ORDER: readonly CitationSource[] = [
   "googleScholar",
   "openAlex",
@@ -287,12 +294,18 @@ export const AUTHORITY_ORDER: readonly CitationSource[] = [
 /** Provider identifiers as they appear in the cache line and the tooltip. */
 export type CitationSource = "googleScholar" | "openAlex" | "semanticScholar";
 
-/** Reads which provider's count should be shown. */
+/**
+ * Reads which provider's count should be shown.
+ *
+ * A value written by an older version (`auto`, from when choosing a source
+ * meant "try this one first") is no longer valid and reads as the default, so
+ * an upgraded install stops mixing providers without the user doing anything.
+ */
 export function getCitationSourcePreference(): CitationSourcePreference {
   const raw = getPref("citationSourcePreference");
   return CITATION_SOURCE_PREFERENCES.includes(raw as CitationSourcePreference)
     ? (raw as CitationSourcePreference)
-    : "auto";
+    : (PREF_DEFAULTS.citationSourcePreference as CitationSourcePreference);
 }
 
 export interface TrendPrefs {
@@ -339,15 +352,12 @@ export function getColorScheme(): ColorScheme {
 export interface CitationPrefs {
   enabled: boolean;
   cacheTtlDays: number;
-  /** Whether Google Scholar is asked for a count. */
-  useGoogleScholar: boolean;
 }
 
 export function getCitationPrefs(): CitationPrefs {
   return {
     enabled: getPref("citationsEnabled"),
     cacheTtlDays: Math.max(0, Math.floor(getPref("citationCacheTtlDays"))),
-    useGoogleScholar: getPref("useGoogleScholar"),
   };
 }
 

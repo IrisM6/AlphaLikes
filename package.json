@@ -1,8 +1,8 @@
 {
   "name": "zotero-alphalikes",
   "type": "module",
-  "version": "1.5.0",
-  "description": "A sortable alphaXiv likes column for arXiv items in Zotero 7-10, with automatic arXiv matching, citation counts from Google Scholar, OpenAlex and Semantic Scholar, like trends, quantile colouring and 11 selectable cell styles.",
+  "version": "1.6.0",
+  "description": "A sortable alphaXiv likes column for arXiv items in Zotero 7-10, with automatic arXiv matching, citation counts from a single source of your choice (Google Scholar by default, with automatic retry when it asks for a human check), like trends, quantile colouring and 11 selectable cell styles.",
   "config": {
     "addonName": "AlphaLikes",
     "addonID": "alphalikes@iris",

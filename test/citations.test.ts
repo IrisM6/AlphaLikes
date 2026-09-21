@@ -1,10 +1,12 @@
 import { assert } from "chai";
 import {
+  CITATIONS_BLOCKED_MARKER,
   CITATIONS_KEY,
+  citationProviderOrder,
+  scholarRetryDelayMs,
   CITATION_AUTHORITY_ORDER,
   CITATIONS_UPDATED_KEY,
   citationCountsFromSemanticScholar,
-  citationSources,
   googleScholarCitationCount,
   googleScholarCitationSearchURL,
   googleScholarResultBlocks,
@@ -122,30 +124,45 @@ describe("AlphaLikes citations", function () {
   });
 
   describe("provider selection", function () {
-    it("prefers the broadest index by default", function () {
+    it("takes the first provider in the order it is given", function () {
       assert.equal(
-        primaryCitationCount({ openAlex: 5, semanticScholar: 9 }),
+        primaryCitationCount({ openAlex: 5, semanticScholar: 9 }, [
+          "openAlex",
+          "semanticScholar",
+        ]),
         5,
       );
       assert.equal(
-        primaryCitationCount({
-          googleScholar: 800,
-          openAlex: 500,
-          semanticScholar: 400,
-        }),
+        primaryCitationCount(
+          { googleScholar: 800, openAlex: 500, semanticScholar: 400 },
+          CITATION_AUTHORITY_ORDER,
+        ),
         800,
       );
-      assert.isNull(primaryCitationCount(null));
-      assert.isNull(primaryCitationCount({ influential: 3 }));
+      assert.isNull(primaryCitationCount(null, CITATION_AUTHORITY_ORDER));
+      assert.isNull(
+        primaryCitationCount({ influential: 3 }, CITATION_AUTHORITY_ORDER),
+      );
     });
 
-    it("falls through to the next provider when one is missing", function () {
-      // Google Scholar blocked, so OpenAlex answers.
+    it("falls through only when the order says it may", function () {
+      // Walking the authority order still falls through...
       assert.equal(
-        primaryCitationCount({ openAlex: 500, semanticScholar: 400 }),
+        primaryCitationCount({ openAlex: 500, semanticScholar: 400 }, [
+          "googleScholar",
+          "openAlex",
+          "semanticScholar",
+        ]),
         500,
       );
-      assert.equal(primaryCitationCount({ semanticScholar: 400 }), 400);
+      assert.equal(
+        primaryCitationCount({ semanticScholar: 400 }, [
+          "googleScholar",
+          "openAlex",
+          "semanticScholar",
+        ]),
+        400,
+      );
     });
 
     it("honours an explicit order", function () {
@@ -167,11 +184,17 @@ describe("AlphaLikes citations", function () {
 
     it("names the provider that produced the displayed count", function () {
       assert.equal(
-        primaryCitationSource({ googleScholar: 1, openAlex: 2 }),
+        primaryCitationSource({ googleScholar: 1, openAlex: 2 }, [
+          "googleScholar",
+          "openAlex",
+        ]),
         "googleScholar",
       );
-      assert.equal(primaryCitationSource({ openAlex: 2 }), "openAlex");
-      assert.isNull(primaryCitationSource({ infl: 1 }));
+      assert.equal(
+        primaryCitationSource({ openAlex: 2 }, ["openAlex"]),
+        "openAlex",
+      );
+      assert.isNull(primaryCitationSource({ infl: 1 }, ["googleScholar"]));
     });
 
     it("treats only the field-normalised percentile as high impact", function () {
@@ -180,13 +203,55 @@ describe("AlphaLikes citations", function () {
       assert.isFalse(isHighImpact({ openAlex: 100000 }));
       assert.isFalse(isHighImpact(null));
     });
+  });
 
-    it("lists which providers answered, broadest first", function () {
-      assert.deepEqual(
-        citationSources({ openAlex: 1, semanticScholar: 2, googleScholar: 3 }),
-        ["Google Scholar", "OpenAlex", "Semantic Scholar"],
-      );
-      assert.deepEqual(citationSources({}), []);
+  describe("the strict source choice", function () {
+    it("asks one provider only, with nothing behind it", function () {
+      assert.deepEqual(citationProviderOrder("googleScholar"), [
+        "googleScholar",
+      ]);
+      assert.deepEqual(citationProviderOrder("openAlex"), ["openAlex"]);
+      assert.deepEqual(citationProviderOrder("semanticScholar"), [
+        "semanticScholar",
+      ]);
+    });
+
+    it("shows nothing rather than another provider's number", function () {
+      const counts = { openAlex: 42, semanticScholar: 7 };
+      const order = citationProviderOrder("googleScholar");
+
+      // The reported bug: Google Scholar had nothing for an item and the
+      // column showed OpenAlex's count instead.
+      assert.isNull(primaryCitationCount(counts, order));
+      assert.isNull(primaryCitationSource(counts, order));
+    });
+
+    it("marks a blocked cell so it does not read as empty", function () {
+      assert.isString(CITATIONS_BLOCKED_MARKER);
+      assert.notEqual(CITATIONS_BLOCKED_MARKER, "");
+      // The marker travels in the pipe-separated decoration list.
+      assert.notInclude(CITATIONS_BLOCKED_MARKER, "|");
+    });
+  });
+
+  describe("the Google Scholar retry backoff", function () {
+    it("waits ten minutes before the first retry", function () {
+      assert.equal(scholarRetryDelayMs(1), 10 * 60_000);
+    });
+
+    it("doubles the wait on every further block", function () {
+      assert.equal(scholarRetryDelayMs(2), 20 * 60_000);
+      assert.equal(scholarRetryDelayMs(3), 40 * 60_000);
+    });
+
+    it("stops growing at two hours", function () {
+      assert.equal(scholarRetryDelayMs(10), 2 * 60 * 60_000);
+      assert.equal(scholarRetryDelayMs(100), 2 * 60 * 60_000);
+    });
+
+    it("treats a nonsense attempt count as the first one", function () {
+      assert.equal(scholarRetryDelayMs(0), 10 * 60_000);
+      assert.equal(scholarRetryDelayMs(-3), 10 * 60_000);
     });
   });
 

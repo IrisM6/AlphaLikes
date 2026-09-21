@@ -39,7 +39,6 @@ declare namespace _ZoteroTypes {
       "quantileHighPercent": number;
       "citationsEnabled": boolean;
       "citationCacheTtlDays": number;
-      "useGoogleScholar": boolean;
       "citationSourcePreference": string;
     };
   }

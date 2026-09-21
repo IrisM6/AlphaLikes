@@ -6,6 +6,7 @@
 import { config } from "../../package.json";
 import { extractIDFromLooseText } from "./arxiv-id";
 import { getService } from "./column";
+import { getCitationSourcePreference } from "./prefs";
 import { t, pickerStrings } from "./l10n";
 import type { ArxivCandidate, PaperMetadata } from "./resolver";
 import { shortAuthorList } from "./similarity";
@@ -13,6 +14,7 @@ import { shortAuthorList } from "./similarity";
 const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const FIND_ID = "alphalikes-find-arxiv";
 const REFRESH_ID = "alphalikes-refresh-likes";
+const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
 const CLEAR_ID = "alphalikes-clear-data";
 const BATCH_FIND_ID = "alphalikes-batch-find-arxiv";
 
@@ -264,12 +266,23 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
     const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
       void clearSelectedItems(win);
     });
+    // Google Scholar is the only provider that can ask the user to prove they
+    // are human, so it is the only one that needs a way out of a block.
+    const openScholar = createMenuItem(
+      doc,
+      OPEN_SCHOLAR_ID,
+      t("menu-open-scholar"),
+      () => {
+        getService().openScholarVerification();
+      },
+    );
 
     popup.append(
       createSeparator(doc, SEPARATOR_ID),
       find,
       batchFind,
       refresh,
+      openScholar,
       clear,
     );
 
@@ -283,6 +296,9 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       (batchFind as HTMLElement).hidden = count < 2;
       (refresh as HTMLElement).hidden = count === 0;
       (clear as HTMLElement).hidden = count === 0;
+      // Only relevant while Google Scholar is the source of the counts.
+      (openScholar as HTMLElement).hidden =
+        getCitationSourcePreference() !== "googleScholar";
     });
   } catch (error) {
     Zotero.debug(`[AlphaLikes] Could not register the item menu: ${error}`);
@@ -297,6 +313,7 @@ export function unregisterItemMenu(win: Window): void {
       FIND_ID,
       REFRESH_ID,
       BATCH_FIND_ID,
+      OPEN_SCHOLAR_ID,
       CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();

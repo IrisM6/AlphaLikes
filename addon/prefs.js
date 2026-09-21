@@ -81,7 +81,6 @@ pref("quantileHighPercent", 80);
 pref("citationsEnabled", true);
 // 0 keeps whatever was read once.
 pref("citationCacheTtlDays", 7);
-pref("useGoogleScholar", true);
 // auto | googleScholar | openAlex | semanticScholar. `auto` walks the
 // providers from the broadest index to the narrowest.
-pref("citationSourcePreference", "auto");
+pref("citationSourcePreference", "googleScholar");

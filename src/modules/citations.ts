@@ -210,9 +210,51 @@ export const CITATION_AUTHORITY_ORDER: readonly CitationSourceKey[] = [
  * OpenAlex does not is still shown, and a provider that was blocked or
  * rate-limited simply loses its turn instead of blanking the column.
  */
+/**
+ * Decoration on a citation cell whose provider is blocked and retrying.
+ *
+ * The renderer turns this into an explanation rather than a bare "N/A", so a
+ * blocked Google Scholar does not look like a paper with no citations.
+ */
+export const CITATIONS_BLOCKED_MARKER = "scholarBlocked";
+
+/** The site whose human check blocks the count. */
+export const GOOGLE_SCHOLAR_HOME = "https://scholar.google.com/";
+
+/**
+ * How long to leave Google Scholar alone after it asks for a human check.
+ *
+ * The first retry is soon enough that a transient rate limit resolves on its
+ * own, and every further block in the same episode doubles the wait: a user
+ * who never clears the check costs one request every couple of hours instead
+ * of a steady stream the plugin would be blocked for anyway.
+ */
+export function scholarRetryDelayMs(
+  attempt: number,
+  baseMs = 10 * 60_000,
+  capMs = 2 * 60 * 60_000,
+): number {
+  const steps = Math.max(0, Math.floor(attempt) - 1);
+  return Math.min(baseMs * 2 ** Math.min(steps, 8), capMs);
+}
+
+/**
+ * The provider whose count is shown, as an order of one.
+ *
+ * `primaryCitationCount` walks an order and takes the first provider with a
+ * value, which is what made "use Google Scholar" fall back to OpenAlex. The
+ * column passes this instead: a provider that has nothing leaves the cell
+ * empty, and nothing silently stands in for it.
+ */
+export function citationProviderOrder(
+  preference: CitationSourceKey,
+): CitationSourceKey[] {
+  return [preference];
+}
+
 export function primaryCitationCount(
   counts: CitationCounts | null,
-  order: readonly CitationSourceKey[] = CITATION_AUTHORITY_ORDER,
+  order: readonly CitationSourceKey[],
 ): number | null {
   if (!counts) return null;
 
@@ -226,7 +268,7 @@ export function primaryCitationCount(
 /** Which provider produced the displayed count, or `null`. */
 export function primaryCitationSource(
   counts: CitationCounts | null,
-  order: readonly CitationSourceKey[] = CITATION_AUTHORITY_ORDER,
+  order: readonly CitationSourceKey[],
 ): CitationSourceKey | null {
   if (!counts) return null;
 
@@ -254,13 +296,6 @@ export const CITATION_SOURCE_LABELS: Record<CitationSourceKey, string> = {
   openAlex: "OpenAlex",
   semanticScholar: "Semantic Scholar",
 };
-
-export function citationSources(counts: CitationCounts | null): string[] {
-  if (!counts) return [];
-  return CITATION_AUTHORITY_ORDER.filter(
-    (key) => counts[key] !== undefined,
-  ).map((key) => CITATION_SOURCE_LABELS[key]);
-}
 
 // ---------------------------------------------------------------------------
 // Provider requests
