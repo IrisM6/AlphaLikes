@@ -236,11 +236,45 @@ function rawCreatorName(creator: unknown): string {
   return `${value.firstName || ""} ${value.lastName || ""}`.trim();
 }
 
+/**
+ * The part of an item tree this module touches, as it exists across the Zotero
+ * versions we support. `invalidateRowCache` is only a method on newer builds,
+ * and the cache itself is internal in all of them, so both spellings are
+ * optional here.
+ */
+export interface ItemTreeView {
+  invalidateRowCache?: (invalidateAll?: boolean) => void;
+  _rowCache?: unknown;
+  tree?: { invalidate?: () => void };
+}
+
+/**
+ * Makes the next paint of an item tree rebuild its cell values from scratch.
+ *
+ * Redrawing alone is not enough: a cell's value is memoised per row, so a
+ * preference that only changes how an existing value is drawn (the trend
+ * arrow, colours, styles) keeps showing the value the data provider produced
+ * *before* the change until the row cache is dropped. Zotero does the same two
+ * steps for its own display-only preferences - clear the cache, then redraw.
+ */
+export function dropRowCache(itemsView: ItemTreeView | null | undefined): void {
+  if (!itemsView) return;
+
+  if (typeof itemsView.invalidateRowCache === "function") {
+    itemsView.invalidateRowCache(true);
+  } else if (itemsView._rowCache) {
+    itemsView._rowCache = {};
+  }
+  itemsView.tree?.invalidate?.();
+}
+
+/**
+ * Repaints every item tree that is showing our columns.
+ */
 function refreshItemTrees(): void {
   for (const win of Zotero.getMainWindows()) {
     try {
-      const itemsView = win.ZoteroPane?.itemsView;
-      if (itemsView) itemsView.tree?.invalidate();
+      dropRowCache(win.ZoteroPane?.itemsView as ItemTreeView | undefined);
     } catch {
       // A window can disappear while an asynchronous request is completing.
     }
@@ -305,9 +339,9 @@ export class AlphaLikesService {
     const filter = getRangeFilter();
     const filteredOut = likes !== null && !isWithinRange(likes, filter);
 
-    // In `hide` mode the value is blanked before it reaches the data provider,
-    // which also keeps out-of-range rows out of the sortable ordering.
-    const value = filteredOut && filter.mode === "hide" ? "" : raw;
+    // Out-of-range rows keep their count and get dimmed by the renderer: the
+    // value itself is never blanked, so sorting still sees the real figure.
+    const value = raw;
 
     const trend =
       likes !== null && getTrendPrefs().enabled ? this.readTrend(item) : null;

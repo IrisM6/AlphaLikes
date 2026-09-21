@@ -34,9 +34,6 @@ export const CITATIONS_COLUMN_LABEL = "Citations";
 
 /** Decoration value that marks a work as being in its field's top decile. */
 const HIGH_IMPACT_MARKER = "1";
-/** Above this the dot style shows "99+" and moves the count into the tooltip. */
-const DOT_CAP = 99;
-
 /** Superscript plus sign, kept as a literal so the cell needs no font tuning. */
 const HIGH_IMPACT_GLYPH = "▲";
 
@@ -111,23 +108,18 @@ const PALETTES: Record<string, Record<Band, BandPaint>> = {
     mid: { background: "#F5F6F7", color: "#5F6368", border: "#9AA0A6" },
     low: { background: "#FAFAFA", color: "#8A8A8A", border: "#D0D0D0" },
   },
-  // 莫兰迪低饱和
+  // 莫兰迪低饱和：仍是灰调，但三档在明度与色相上都拉开，一眼能分辨
+  // （雾霾蓝 → 灰米 → 近白），文字颜色也跟着深浅走。
   morandi: {
-    high: { background: "#DDE3E5", color: "#7A8B99" },
-    mid: { background: "#E8E3E1", color: "#9A8C89" },
-    low: { background: "#EFEFEF", color: "#AFAFAF" },
+    high: { background: "#9FB3BF", color: "#16232A", border: "#7D95A3" },
+    mid: { background: "#DCD3C9", color: "#4A423B", border: "#C0B4A6" },
+    low: { background: "#F1F1EF", color: "#8A8A88", border: "#DFDFDC" },
   },
   // 学术严谨
   academic: {
     high: { background: "#003366", color: "#FFFFFF" },
     mid: { background: "#F5F5F5", color: "#003366", border: "#CCCCCC" },
     low: { background: "#FAFAFA", color: "#777777", border: "#DDDDDD" },
-  },
-  // 典雅精致：深藏青底 + 细金线
-  elegant: {
-    high: { background: "#1A2332", color: "#D4AF37", border: "#D4AF37" },
-    mid: { background: "#1A2332", color: "#BFA76A", border: "#8C7A4B" },
-    low: { background: "transparent", color: "#8A8F98" },
   },
   // 淡雅清新
   fresh: {
@@ -162,8 +154,7 @@ const SPLIT_RIGHT: Record<Band, BandPaint> = {
   low: { background: "#F5F5F5", color: "#8A8A8A" },
 };
 
-/** Colours for the shape-only styles that use the colour section: #1 and #11. */
-const MINIMAL_COLOR = "#666666";
+/** Colours for the shape-only styles that fall back to the colour section. */
 const OUTLINE_COLOR = "#CCCCCC";
 const OUTLINE_TEXT = "#333333";
 
@@ -186,32 +177,17 @@ function applyLikeStyle(
 ): void {
   const color = accent.trim();
 
-  // The frosted look needs a translucent fill, a hairline highlight along the
-  // top edge, and a soft drop shadow to read as glass.
-  if (style === "badge" || style === "glass") {
+  // 玻璃胶囊：圆角胶囊 + 极淡的底色与描边。半透明让它在两种主题下都不刺眼，
+  // 颜色仍来自「颜色」一节。
+  if (style === "badge") {
     visual.style.padding = "1px 8px";
     visual.style.borderRadius = "999px";
-    visual.style.background = translucent(color, style === "glass" ? 18 : 14);
-    visual.style.border = `1px solid ${translucent(color, style === "glass" ? 42 : 32)}`;
-    if (style === "glass") {
-      visual.style.boxShadow =
-        "inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.16)";
-      visual.style.backdropFilter = "blur(6px) saturate(1.5)";
-      visual.style.setProperty("-moz-backdrop-filter", "none");
-    }
+    visual.style.background = translucent(color, 16);
+    visual.style.border = `1px solid ${translucent(color, 36)}`;
     return;
   }
 
   if (style === "plain") return;
-
-  // 纯文本极简：只在数字上做轻量排版，没有底色和边框。
-  if (style === "minimal") {
-    visual.style.fontSize = "0.95em";
-    visual.style.fontWeight = "500";
-    if (!visual.style.color) visual.style.color = MINIMAL_COLOR;
-    visual.style.opacity = "0.9";
-    return;
-  }
 
   // 细边框描边：透明底 + 1px 边框。
   if (style === "outline") {
@@ -278,36 +254,18 @@ function applyLikeStyle(
     return;
   }
 
-  // 典雅精致：深藏青底 + 细金线，标题用衬线字体。
-  if (style === "elegant") {
-    const paint = PALETTES.elegant[band];
-    visual.style.padding = "1px 9px";
-    visual.style.borderRadius = "2px";
-    if (paint.background) visual.style.background = paint.background;
-    if (paint.color) visual.style.color = paint.color;
-    visual.style.border = paint.border
-      ? `1px solid ${paint.border}`
-      : "1px solid transparent";
-    visual.style.fontFamily = "Georgia, 'Songti SC', serif";
-    visual.style.letterSpacing = "0.02em";
-    return;
-  }
-
-  // 数字角标：正圆、白字，超过 99 显示 99+，真实数字进 tooltip。
+  // 数字角标：圆底白字，数字完整显示（位数多了就自然变成胶囊，不缩写）。
   if (style === "dot") {
     const paint = PALETTES.dot[band];
     const text = visual.textContent ?? "";
-    const shown =
-      /^\d+$/.test(text) && Number.parseInt(text, 10) > 99 ? "99+" : text;
 
-    visual.textContent = shown;
     visual.style.display = "inline-flex";
     visual.style.alignItems = "center";
     visual.style.justifyContent = "center";
     visual.style.minWidth = "18px";
     visual.style.height = "18px";
     visual.style.padding = "0 5px";
-    visual.style.borderRadius = shown.length <= 2 ? "50%" : "999px";
+    visual.style.borderRadius = text.length <= 2 ? "50%" : "999px";
     if (paint.background) visual.style.background = paint.background;
     if (paint.color) visual.style.color = paint.color;
     visual.style.fontSize = "0.8em";
@@ -597,12 +555,6 @@ function applyLikeCountStyling(
 
   if (color) visual.style.color = color;
   applyLikeStyle(visual, style, color, band, doc, prefix);
-
-  // The dot style shortens everything above 99, so the real figure goes into
-  // the tooltip rather than being lost.
-  if (style === "dot" && likes > DOT_CAP) {
-    cell.title = t("cell-dot-capped", { likes });
-  }
 
   if (coloring && thresholds.source === "quantile") {
     appendQuantileTitle(cell, bucket, thresholds);

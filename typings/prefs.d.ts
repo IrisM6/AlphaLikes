@@ -31,7 +31,6 @@ declare namespace _ZoteroTypes {
       "rangeFilterEnabled": boolean;
       "rangeFilterMin": number;
       "rangeFilterMax": number;
-      "rangeFilterMode": string;
       "showTrend": boolean;
       "trendHotDelta": number;
       "historyDays": number;

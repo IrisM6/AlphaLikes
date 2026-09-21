@@ -34,7 +34,7 @@ pref("cacheTtlDays", 0);
 // The first five are shape-only and tint with the colours below; the rest
 // carry their own palette for every band.
 
-pref("likeStyle", "glass");
+pref("likeStyle", "badge");
 
 // --- Colours --------------------------------------------------------------
 
@@ -51,7 +51,6 @@ pref("pendingColor", "#b45309");
 pref("rangeFilterEnabled", false);
 pref("rangeFilterMin", 0);
 pref("rangeFilterMax", 0);
-pref("rangeFilterMode", "hide");
 
 // --- Like trend ------------------------------------------------------------
 //

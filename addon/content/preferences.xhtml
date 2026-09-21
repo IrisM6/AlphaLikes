@@ -166,69 +166,54 @@
             label="纯文本"
           />
           <menuitem
-            value="minimal"
-            data-l10n-id="pref-style-minimal"
-            label="纯文本极简（次级文本色、无底无框）"
-          />
-          <menuitem
             value="badge"
             data-l10n-id="pref-style-badge"
-            label="浅色标签（圆角浅底）"
-          />
-          <menuitem
-            value="glass"
-            data-l10n-id="pref-style-glass"
-            label="玻璃胶囊（毛玻璃 + 高光）"
+            label="玻璃胶囊"
           />
           <menuitem
             value="ring"
             data-l10n-id="pref-style-ring"
-            label="玻璃圆形（正圆角标）"
+            label="玻璃圆形"
           />
           <menuitem
             value="bookmark"
             data-l10n-id="pref-style-bookmark"
-            label="侧边强调块（左侧金色竖块 + 米黄底）"
+            label="侧边强调块"
           />
           <menuitem
             value="morandi"
             data-l10n-id="pref-style-morandi"
-            label="莫兰迪低饱和（雾霾蓝灰 / 灰咖）"
+            label="莫兰迪低饱和"
           />
           <menuitem
             value="academic"
             data-l10n-id="pref-style-academic"
-            label="学术严谨（深蓝实底或细灰边）"
-          />
-          <menuitem
-            value="elegant"
-            data-l10n-id="pref-style-elegant"
-            label="典雅精致（深藏青底 + 细金线 + 衬线字）"
+            label="学术严谨"
           />
           <menuitem
             value="fresh"
             data-l10n-id="pref-style-fresh"
-            label="淡雅清新（薄荷绿 / 浅粉 + 淡投影）"
+            label="淡雅清新"
           />
           <menuitem
             value="playful"
             data-l10n-id="pref-style-playful"
-            label="活泼明快（亮黄 + 黑色硬阴影）"
+            label="活泼明快"
           />
           <menuitem
             value="outline"
             data-l10n-id="pref-style-outline"
-            label="细边框描边（透明底 + 1px 边框）"
+            label="细边框描边"
           />
           <menuitem
             value="split"
             data-l10n-id="pref-style-split"
-            label="双色拼接（左深「赞」右浅数字）"
+            label="双色拼接"
           />
           <menuitem
             value="dot"
             data-l10n-id="pref-style-dot"
-            label="数字角标（红色小圆，超过 99 显示 99+）"
+            label="数字角标"
           />
         </menupopup>
       </menulist>
@@ -528,7 +513,7 @@
     <label><html:h2 data-l10n-id="pref-filter-title">只看高赞</html:h2></label>
     <description data-l10n-id="pref-filter-desc" style="opacity: 0.8">
       把列聚焦在一段点赞区间内；边界为 0
-      表示不限制。也可以在条目右键菜单里一键切换「只看高赞」。
+      表示不限制。范围之外的条目仍然显示，只是整格变淡。
     </description>
 
     <checkbox
@@ -556,27 +541,6 @@
         step="10"
         style="width: 6em"
       />
-    </hbox>
-
-    <hbox align="center">
-      <label
-        id="alphalikes-pref-range-mode-label"
-        data-l10n-id="pref-filter-mode"
-        control="alphalikes-pref-range-mode"
-        >超出范围的条目</label
-      >
-      <radiogroup id="alphalikes-pref-range-mode" preference="rangeFilterMode">
-        <radio
-          value="hide"
-          data-l10n-id="pref-filter-mode-hide"
-          label="直接隐藏"
-        />
-        <radio
-          value="dim"
-          data-l10n-id="pref-filter-mode-dim"
-          label="保留但变淡"
-        />
-      </radiogroup>
     </hbox>
   </groupbox>
 </vbox>

@@ -1,11 +1,12 @@
 import { assert } from "chai";
 import { renderCitationCell, renderLikeCell } from "../src/modules/column";
+import { getLikeStyle } from "../src/modules/prefs";
 import { toSortableValue, withValueDecorations } from "../src/modules/likes";
 import {
+  LIKE_STYLES,
   PREF_BRANCH,
   setPref,
   type LikeStyle,
-  type RangeFilterMode,
 } from "../src/modules/prefs";
 
 const COLUMN = { className: "col-alphaxiv_likes" };
@@ -37,7 +38,7 @@ function useStyle(style: LikeStyle): void {
 }
 
 function restore(): void {
-  setPref("likeStyle", "glass");
+  setPref("likeStyle", "badge");
   setPref("colorEnabled", true);
   setPref("highLikesThreshold", 100);
   setPref("lowLikesThreshold", 10);
@@ -45,7 +46,6 @@ function restore(): void {
   setPref("lowLikesColor", "#9aa0a6");
   setPref("midLikesColor", "");
   setPref("rangeFilterEnabled", false);
-  setPref("rangeFilterMode", "hide" as RangeFilterMode);
   setPref("colorMode", "threshold");
   setPref("trendHotDelta", 10);
   setPref("useGoogleScholar", true);
@@ -79,13 +79,16 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(visual.style.backdropFilter, "");
     });
 
-    it("glass style adds the frosted highlight and blur", function () {
-      useStyle("glass");
-      const { visual } = render(500);
-      assert.equal(visual.style.borderRadius, "999px");
-      assert.include(visual.style.background, "color-mix");
-      assert.include(visual.style.backdropFilter, "blur");
-      assert.include(visual.style.boxShadow, "inset");
+    it("no style asks for a backdrop filter", function () {
+      for (const style of LIKE_STYLES) {
+        useStyle(style);
+        const { visual } = render(500);
+        assert.equal(
+          visual.style.backdropFilter,
+          "",
+          `${style} should not frost the backdrop`,
+        );
+      }
     });
 
     it("ring style draws a circle for short counts", function () {
@@ -132,18 +135,18 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(visual.style.color, "");
     });
 
-    it("dims out-of-range counts in dim mode", function () {
+    it("dims out-of-range counts instead of hiding them", function () {
       setPref("rangeFilterEnabled", true);
-      setPref("rangeFilterMode", "dim" as RangeFilterMode);
       setPref("rangeFilterMin", 100);
       setPref("rangeFilterMax", 0);
-      const { cell } = render(5);
+      const { cell, visual } = render(5);
       assert.equal(cell.style.opacity, "0.45");
+      // The count stays readable: that is the point of dimming over hiding.
+      assert.equal(visual.textContent, "5");
     });
 
     it("leaves in-range counts undimmed", function () {
       setPref("rangeFilterEnabled", true);
-      setPref("rangeFilterMode", "dim" as RangeFilterMode);
       setPref("rangeFilterMin", 100);
       const { cell } = render(500);
       assert.notEqual(cell.style.opacity, "0.45");
@@ -151,7 +154,7 @@ describe("AlphaLikes column rendering", function () {
 
     it("ignores colours entirely when colouring is switched off", function () {
       setPref("colorEnabled", false);
-      useStyle("glass");
+      useStyle("badge");
       const { visual } = render(1000);
       assert.equal(visual.style.color, "");
       // The structure of the chosen style still applies.
@@ -251,14 +254,6 @@ describe("AlphaLikes column rendering", function () {
       return cell.firstElementChild as HTMLElement;
     }
 
-    it("minimal keeps a bare number in the secondary colour", function () {
-      const visual = high("minimal");
-      assert.equal(visual.textContent, "1000");
-      assert.equal(visual.style.background, "");
-      assert.equal(visual.style.border, "");
-      assert.equal(visual.style.fontWeight, "500");
-    });
-
     it("bookmark paints a cream fill with an accent left edge", function () {
       const visual = high("bookmark");
       assert.equal(visual.style.background, "rgb(253, 249, 232)");
@@ -266,11 +261,26 @@ describe("AlphaLikes column rendering", function () {
       assert.include(visual.style.borderLeftWidth, "3px");
     });
 
-    it("morandi stays low saturation", function () {
-      const visual = high("morandi");
-      assert.equal(visual.style.background, "rgb(221, 227, 229)");
-      assert.equal(visual.style.color, "rgb(122, 139, 153)");
-      assert.equal(visual.style.borderRadius, "999px");
+    it("morandi separates its three bands", function () {
+      const fills = (["high", "mid", "low"] as const).map((band) => {
+        setPref("highLikesThreshold", 100);
+        setPref("lowLikesThreshold", 10);
+        useStyle("morandi");
+        const likes = band === "high" ? 1000 : band === "low" ? 3 : 50;
+        const cell = renderLikeCell(
+          toSortableValue(likes),
+          COLUMN,
+          testDocument(),
+        ) as HTMLElement;
+        return cell.firstElementChild as HTMLElement;
+      });
+
+      assert.equal(fills[0].style.background, "rgb(159, 179, 191)");
+      assert.equal(fills[1].style.background, "rgb(220, 211, 201)");
+      assert.equal(fills[2].style.background, "rgb(241, 241, 239)");
+      // Three distinct fills, not three near-identical greys.
+      assert.equal(new Set(fills.map((v) => v.style.background)).size, 3);
+      assert.equal(fills[0].style.borderRadius, "999px");
     });
 
     it("academic inverts to a solid navy for high counts", function () {
@@ -278,13 +288,6 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(visual.style.background, "rgb(0, 51, 102)");
       assert.equal(visual.style.color, "rgb(255, 255, 255)");
       assert.equal(visual.style.borderRadius, "3px");
-    });
-
-    it("elegant uses the navy and gold pairing with a serif face", function () {
-      const visual = high("elegant");
-      assert.equal(visual.style.background, "rgb(26, 35, 50)");
-      assert.equal(visual.style.color, "rgb(212, 175, 55)");
-      assert.include(visual.style.fontFamily, "Georgia");
     });
 
     it("fresh paints a mint fill", function () {
@@ -322,7 +325,30 @@ describe("AlphaLikes column rendering", function () {
       assert.equal((halves[1] as HTMLElement).style.color, "rgb(51, 51, 51)");
     });
 
-    it("dot caps the number at 99+", function () {
+    it("maps a style that was removed onto its closest survivor", function () {
+      // Someone who chose 纯文本极简 / 玻璃胶囊 / 典雅精致 keeps an equivalent
+      // look after upgrading instead of being reset to the default.
+      const cases: Array<[string, string]> = [
+        ["minimal", "plain"],
+        ["glass", "badge"],
+        ["elegant", "academic"],
+      ];
+
+      for (const [retired, expected] of cases) {
+        setPref("likeStyle", retired);
+        assert.equal(
+          getLikeStyle(),
+          expected,
+          `${retired} should read as ${expected}`,
+        );
+      }
+
+      // A value that never existed still lands on the default.
+      setPref("likeStyle", "not-a-style");
+      assert.equal(getLikeStyle(), "badge");
+    });
+
+    it("dot prints a long number in full", function () {
       setPref("colorEnabled", true);
       useStyle("dot");
       const cell = renderLikeCell(
@@ -331,8 +357,10 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
       const visual = cell.firstElementChild as HTMLElement;
-      assert.equal(visual.textContent, "99+");
+      assert.equal(visual.textContent, "1234");
+      // Four digits no longer fit a circle, so the badge becomes a stadium.
       assert.equal(visual.style.borderRadius, "999px");
+      assert.equal(cell.title, "");
     });
 
     it("dot keeps a short number as a circle", function () {
@@ -357,9 +385,10 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
       const visual = cell.firstElementChild as HTMLElement;
-      // The muted band, not the "high" one.
-      assert.equal(visual.style.background, "rgb(232, 227, 225)");
-      assert.equal(visual.style.color, "rgb(154, 140, 137)");
+      // The muted band, not the "high" one. Both halves of the band move
+      // together, so the fill and the text are checked against the same band.
+      assert.equal(visual.style.background, "rgb(220, 211, 201)");
+      assert.equal(visual.style.color, "rgb(74, 66, 59)");
     });
   });
 

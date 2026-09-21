@@ -28,7 +28,6 @@ cell-quantile-title = {label}——{high} 个赞以上为高，{low} 个赞及�
 
 # --- 批量操作 ---------------------------------------------------------------
 
-cell-dot-capped = 实际点赞数 {likes}
 cell-split-prefix = 赞
 cell-split-prefix-citations = 引
 cell-citation-source = 来源：{source}
@@ -92,36 +91,31 @@ pref-match-use-unpaywall =
 pref-match-contact = OpenAlex / Unpaywall 联系邮箱
 
 pref-appearance-title = 外观
-pref-appearance-desc = 点赞数与引用数在列里的显示方式。其中六种只改变形状与质感，颜色取自「颜色」一节；其余八种自带一套配色，高赞/低赞会切换它们各自的深浅版本。
+pref-appearance-desc = 点赞数与引用数在列里的显示方式。其中四种只改变形状与质感，颜色取自「颜色」一节；其余七种自带一套配色，高赞/低赞会切换它们各自的深浅版本。
 pref-appearance-style = 显示样式
 pref-style-plain =
     .label = 纯文本
-pref-style-minimal =
-    .label = 纯文本极简（次级文本色、无底无框）
 pref-style-badge =
-    .label = 浅色标签（圆角浅底）
-pref-style-glass =
-    .label = 玻璃胶囊（毛玻璃 + 高光）
+    .label = 玻璃胶囊
 pref-style-ring =
-    .label = 玻璃圆形（正圆角标）
+    .label = 玻璃圆形
 pref-style-bookmark =
-    .label = 侧边强调块（左侧金色竖块 + 米黄底）
+    .label = 侧边强调块
 pref-style-morandi =
-    .label = 莫兰迪低饱和（雾霾蓝灰 / 灰咖）
+    .label = 莫兰迪低饱和
 pref-style-academic =
-    .label = 学术严谨（深蓝实底或细灰边）
-pref-style-elegant =
-    .label = 典雅精致（深藏青底 + 细金线 + 衬线字）
+    .label = 学术严谨
 pref-style-fresh =
-    .label = 淡雅清新（薄荷绿 / 浅粉 + 淡投影）
+    .label = 淡雅清新
 pref-style-playful =
-    .label = 活泼明快（亮黄 + 黑色硬阴影）
+    .label = 活泼明快
 pref-style-outline =
-    .label = 细边框描边（透明底 + 1px 边框）
+    .label = 细边框描边
 pref-style-split =
-    .label = 双色拼接（左深「赞」右浅数字）
+    .label = 双色拼接
 pref-style-dot =
-    .label = 数字角标（红色小圆，超过 99 显示 99+）
+    .label = 数字角标
+
 pref-color-title = 颜色
 pref-color-enabled =
     .label = 为点赞数着色
@@ -172,14 +166,9 @@ pref-refresh-interval = 同一域名请求的最小间隔（毫秒）
 pref-refresh-timeout = 请求超时（毫秒）
 
 pref-filter-title = 点赞数范围筛选
-pref-filter-desc = 把列聚焦在一段点赞区间内；边界为 0 表示不限制。
+pref-filter-desc = 把列聚焦在一段点赞区间内；边界为 0 表示不限制。范围之外的条目仍然显示，只是整格变淡，数字本身不受影响。
 pref-filter-enabled =
     .label = 启用点赞数范围筛选
 pref-filter-min = 最少点赞数
 pref-filter-max = 最多点赞数（0 = 不限制）
-pref-filter-mode = 超出范围的条目
-pref-filter-mode-hide =
-    .label = 直接隐藏
-pref-filter-mode-dim =
-    .label = 保留但变淡
 

@@ -30,7 +30,6 @@ cell-quantile-title = {label} — high from {high} likes, low up to {low} (ranke
 
 # --- Batch actions ---------------------------------------------------------
 
-cell-dot-capped = Full count: {likes}
 cell-split-prefix = likes
 cell-split-prefix-citations = cited
 cell-citation-source = Source: {source}
@@ -94,36 +93,31 @@ pref-match-use-unpaywall =
 pref-match-contact = Contact address for OpenAlex / Unpaywall
 
 pref-appearance-title = Appearance
-pref-appearance-desc = How like counts and citation counts are drawn in their columns. Six of the styles only change the shape and texture and take their colours from the Colours section; the other eight carry their own palette and switch between its strong and muted versions for high and low counts.
+pref-appearance-desc = How like counts and citation counts are drawn in their columns. Four of the styles only change the shape and texture and take their colours from the Colours section; the other seven carry their own palette and switch between its strong and muted versions for high and low counts.
 pref-appearance-style = Display style
 pref-style-plain =
     .label = Plain text
-pref-style-minimal =
-    .label = Minimal plain (secondary text colour, no fill or border)
 pref-style-badge =
-    .label = Soft badge (flat rounded fill)
-pref-style-glass =
-    .label = Glass pill (frosted, translucency and highlight)
+    .label = Glass pill
 pref-style-ring =
-    .label = Glass circle (round counter)
+    .label = Glass circle
 pref-style-bookmark =
-    .label = Side accent block (gold bar on a cream fill)
+    .label = Side accent block
 pref-style-morandi =
-    .label = Muted Morandi (hazy blue-grey / dusty rose)
+    .label = Muted Morandi
 pref-style-academic =
-    .label = Academic (solid navy or hairline grey border)
-pref-style-elegant =
-    .label = Refined (navy with a thin gold rule, serif figures)
+    .label = Academic
 pref-style-fresh =
-    .label = Fresh (mint green / soft pink, light shadow)
+    .label = Fresh
 pref-style-playful =
-    .label = Playful (bright yellow with a hard black shadow)
+    .label = Playful
 pref-style-outline =
-    .label = Outline (transparent fill, 1px border)
+    .label = Outline
 pref-style-split =
-    .label = Split tag (dark label half, light number half)
+    .label = Split tag
 pref-style-dot =
-    .label = Notification dot (red circle, 99+ when larger)
+    .label = Notification dot
+
 pref-color-title = Colours
 pref-color-enabled =
     .label = Colour the like counts
@@ -174,14 +168,9 @@ pref-refresh-interval = Minimum delay between requests to the same host (ms)
 pref-refresh-timeout = Request timeout (ms)
 
 pref-filter-title = Like-count range filter
-pref-filter-desc = Focus the column on a band of like counts; bounds of 0 mean no bound.
+pref-filter-desc = Focus the column on a band of like counts; bounds of 0 mean no bound. Rows outside the band stay visible and are dimmed; their counts are untouched.
 pref-filter-enabled =
     .label = Enable the like-count range filter
 pref-filter-min = Minimum likes
 pref-filter-max = Maximum likes (0 = no upper bound)
-pref-filter-mode = Out-of-range items are
-pref-filter-mode-hide =
-    .label = Hidden
-pref-filter-mode-dim =
-    .label = Shown dimmed
 

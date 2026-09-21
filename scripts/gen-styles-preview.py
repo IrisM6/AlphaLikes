@@ -8,8 +8,7 @@ is typed twice:
   * the style list and their order come from the pane (``pref-style-*`` items
     in ``addon/content/preferences.xhtml``);
   * the names come from both locale files;
-  * the high / mid / low colours come from ``PALETTES`` in ``column.ts``, and
-    the one fixed colour outside it (``MINIMAL_COLOR``) is read too;
+  * the high / mid / low colours come from ``PALETTES`` in ``column.ts``;
   * the split-tag prefixes come from the ``cell-split-prefix*`` messages.
 
 Only the shape of each sample (padding, radii, shadows, fonts) is written out
@@ -40,8 +39,9 @@ OUT = ROOT / "docs/styles-preview.html"
 # The colour section's own three buckets, used to draw the styles that have no
 # palette of their own. Mirrors the defaults in prefs.ts.
 SECTION = {"high": "#1a7f37", "mid": "currentColor", "low": "#9aa0a6"}
-# A long high-band number documents two things at once: the ring style widens
-# into a stadium instead of clipping, and the dot style caps at 99+.
+# A long high-band number documents that the round styles widen into a
+# stadium for four digits instead of clipping, and that the dot style prints
+# the number in full.
 LIKE_SAMPLE = {"high": "2979", "mid": "42", "low": "7"}
 CITATION_SAMPLE = {"high": "128", "mid": "42", "low": "3"}
 
@@ -121,7 +121,6 @@ def sample(
     style: str,
     band: str,
     palettes: dict[str, dict[str, dict[str, str]]],
-    minimal: str,
     accent: str,
     prefix: str,
     text: str,
@@ -130,34 +129,13 @@ def sample(
     if style == "plain":
         return f"<span>{text}</span>"
 
-    if style == "minimal":
-        attrs = css(
-            [
-                ("font-size", "0.95em"),
-                ("font-weight", "500"),
-                ("color", minimal),
-                ("opacity", "0.9"),
-            ]
-        )
-        return f"<span {attrs}>{text}</span>"
-
-    if style in ("badge", "glass"):
+    if style == "badge":
         attrs = css(
             [
                 ("padding", "1px 8px"),
                 ("border-radius", "999px"),
-                ("background", translucent(accent, 18 if style == "glass" else 14)),
-                (
-                    "border",
-                    f"1px solid {translucent(accent, 42 if style == 'glass' else 32)}",
-                ),
-                (
-                    "box-shadow",
-                    "inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 1px 2px rgba(0, 0, 0, 0.16)"
-                    if style == "glass"
-                    else None,
-                ),
-                ("backdrop-filter", "blur(6px) saturate(1.5)" if style == "glass" else None),
+                ("background", translucent(accent, 16)),
+                ("border", f"1px solid {translucent(accent, 36)}"),
                 ("color", accent),
             ]
         )
@@ -239,21 +217,6 @@ def sample(
         )
         return f"<span {attrs}>{text}</span>"
 
-    if style == "elegant":
-        paint = palettes["elegant"][band]
-        attrs = css(
-            [
-                ("padding", "1px 9px"),
-                ("border-radius", "2px"),
-                ("background", paint.get("background")),
-                ("color", paint.get("color")),
-                ("border", f"1px solid {paint.get('border', 'transparent')}"),
-                ("font-family", "Georgia, 'Songti SC', serif"),
-                ("letter-spacing", "0.02em"),
-            ]
-        )
-        return f"<span {attrs}>{text}</span>"
-
     if style == "split":
         left = palettes["split"][band]
         right = {"high": "#F0F0F0", "mid": "#F5F5F5", "low": "#FAFAFA"}[band]
@@ -290,7 +253,7 @@ def sample(
 
     if style == "dot":
         paint = palettes["dot"][band]
-        shown = "99+" if text.isdigit() and int(text) > 99 else text
+        shown = text
         attrs = css(
             [
                 ("display", "inline-flex"),
@@ -307,8 +270,7 @@ def sample(
                 ("font-weight", "600"),
             ]
         )
-        title = f' title="{text}"' if shown != text else ""
-        return f"<span {attrs}{title}>{shown}</span>"
+        return f"<span {attrs}>{shown}</span>"
 
     return f"<span>{text}</span>"
 
@@ -317,7 +279,6 @@ def row(
     style: str,
     labels: dict[str, dict[str, str]],
     palettes: dict[str, dict[str, dict[str, str]]],
-    minimal: str,
     prefix_like: str,
     prefix_cite: str,
     values: dict[str, str],
@@ -340,7 +301,6 @@ def row(
             style,
             band,
             palettes,
-            minimal,
             accent,
             prefix_cite if citations else prefix_like,
             text,
@@ -370,7 +330,6 @@ def table(
     styles: list[str],
     labels: dict[str, dict[str, str]],
     palettes: dict[str, dict[str, dict[str, str]]],
-    minimal: str,
     prefix_like: str,
     prefix_cite: str,
     values: dict[str, str],
@@ -381,7 +340,6 @@ def table(
             style,
             labels,
             palettes,
-            minimal,
             prefix_like,
             prefix_cite,
             values,
@@ -419,7 +377,6 @@ def main() -> None:
     styles = parse_styles()
     labels = parse_labels()
     palettes = parse_palettes()
-    minimal = parse_const("MINIMAL_COLOR")
     prefix_like = parse_prefix("cell-split-prefix") or "赞"
     prefix_cite = parse_prefix("cell-split-prefix-citations") or "引"
 
@@ -446,13 +403,13 @@ def main() -> None:
       <code>scripts/gen-styles-preview.py</code> 从插件源码生成，请勿手动编辑。
     </p>
 
-{table("点赞列 / Likes column", styles, labels, palettes, minimal, prefix_like, prefix_cite, LIKE_SAMPLE, False)}
+{table("点赞列 / Likes column", styles, labels, palettes, prefix_like, prefix_cite, LIKE_SAMPLE, False)}
 
-{table("引用列 / Citations column", styles, labels, palettes, minimal, prefix_like, prefix_cite, CITATION_SAMPLE, True)}
+{table("引用列 / Citations column", styles, labels, palettes, prefix_like, prefix_cite, CITATION_SAMPLE, True)}
 
     <p style="margin: 18px 0 0; opacity: 0.7">
       引用列的档位来自 OpenAlex 的同领域百分位（前 10% 记作高，即带 ▲ 的那一档），
-      不按点赞阈值判断。数字角标样式超过 99 会显示 <code>99+</code>，完整数字在悬停提示里。
+      不按点赞阈值判断。数字角标样式完整显示数字，位数多时从正圆变成胶囊。
       双色拼接样式左半放「{escape(prefix_like)} / {escape(prefix_cite)}」，右半放数字。
     </p>
   </body>

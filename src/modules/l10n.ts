@@ -30,7 +30,6 @@ export const MESSAGES = {
   "cell-quantile-mid": "Mid-range for the items in view",
   "cell-quantile-title":
     "{label} — high from {high} likes, low up to {low} (ranked against {sample} items)",
-  "cell-dot-capped": "Full count: {likes}",
   "cell-split-prefix": "likes",
   "cell-split-prefix-citations": "cited",
   "cell-citation-source": "Source: {source}",

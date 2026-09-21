@@ -17,25 +17,20 @@ import { config } from "../../package.json";
  */
 export const PREF_BRANCH = config.prefsPrefix;
 
-export type RangeFilterMode = "hide" | "dim";
-
 /**
  * How a like count is drawn inside its column cell.
  *
- * `plain`, `badge`, `glass` and `ring` are shape-only: they tint with the
+ * `plain`, `badge`, `ring` and `outline` are shape-only: they tint with the
  * colours from the colour section. The palette styles below carry their own
  * palette for the high/mid/low bands, because their look is the point.
  */
 export type LikeStyle =
   | "plain"
-  | "minimal"
   | "badge"
-  | "glass"
   | "ring"
   | "bookmark"
   | "morandi"
   | "academic"
-  | "elegant"
   | "fresh"
   | "playful"
   | "outline"
@@ -44,14 +39,11 @@ export type LikeStyle =
 
 export const LIKE_STYLES: readonly LikeStyle[] = [
   "plain",
-  "minimal",
   "badge",
-  "glass",
   "ring",
   "bookmark",
   "morandi",
   "academic",
-  "elegant",
   "fresh",
   "playful",
   "outline",
@@ -64,7 +56,6 @@ export const PALETTE_STYLES: readonly LikeStyle[] = [
   "bookmark",
   "morandi",
   "academic",
-  "elegant",
   "fresh",
   "playful",
   "split",
@@ -128,9 +119,8 @@ export const PREF_DEFAULTS = {
   rangeFilterMin: 0,
   rangeFilterMax: 0,
   /** `hide` blanks out-of-range cells, `dim` only greys them. */
-  rangeFilterMode: "hide" as RangeFilterMode,
   /** Cell presentation: plain text, soft badge, glass pill or glass circle. */
-  likeStyle: "glass" as LikeStyle,
+  likeStyle: "badge" as LikeStyle,
 
   // --- Trend ---------------------------------------------------------------
   /** Append the day-over-day change to the like count, e.g. `2979 ↑12`. */
@@ -220,11 +210,17 @@ export function getThresholds(): Thresholds {
   return { autoAccept, confirm };
 }
 
+/**
+ * The like-count window.
+ *
+ * Out-of-range rows are always dimmed rather than hidden: the switch for that
+ * choice was removed, and dimming keeps the row's own count visible, which is
+ * what makes the window useful to begin with.
+ */
 export interface RangeFilter {
   enabled: boolean;
   min: number;
   max: number;
-  mode: RangeFilterMode;
 }
 
 export function getRangeFilter(): RangeFilter {
@@ -232,7 +228,6 @@ export function getRangeFilter(): RangeFilter {
     enabled: getPref("rangeFilterEnabled"),
     min: Math.max(0, Math.floor(getPref("rangeFilterMin"))),
     max: Math.max(0, Math.floor(getPref("rangeFilterMax"))),
-    mode: getPref("rangeFilterMode") === "dim" ? "dim" : "hide",
   };
 }
 
@@ -261,12 +256,25 @@ export interface ColorScheme {
   lowThreshold: number;
 }
 
+/**
+ * Storage values that were once valid, and the style that replaced them.
+ *
+ * Three styles were dropped in 1.5.0. A user who had picked one still has it
+ * stored, so instead of silently resetting them to the default the value is
+ * mapped onto the closest surviving look: the bare number, the pill, and the
+ * navy fill respectively.
+ */
+const RETIRED_STYLES: Record<string, LikeStyle> = {
+  minimal: "plain",
+  glass: "badge",
+  elegant: "academic",
+};
+
 /** Reads the display style, falling back to the default for unknown values. */
 export function getLikeStyle(): LikeStyle {
-  const raw = getPref("likeStyle");
-  return LIKE_STYLES.includes(raw as LikeStyle)
-    ? (raw as LikeStyle)
-    : (PREF_DEFAULTS.likeStyle as LikeStyle);
+  const raw = String(getPref("likeStyle"));
+  if (LIKE_STYLES.includes(raw as LikeStyle)) return raw as LikeStyle;
+  return RETIRED_STYLES[raw] ?? (PREF_DEFAULTS.likeStyle as LikeStyle);
 }
 
 /** The provider order used when the preference is `auto`. */

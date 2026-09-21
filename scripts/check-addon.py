@@ -510,7 +510,76 @@ for key, prefix in (("googleScholar", "gs"), ("openAlex", "oa"), ("semanticSchol
     )
 
 # ---------------------------------------------------------------------------
-# 10. The style preview page is generated, never hand-edited
+# 10. Removed surfaces stay removed
+# ---------------------------------------------------------------------------
+
+# Two features and three styles were deleted on request. Deleting them once is
+# not enough: a rebuilt pane, a stale locale entry or a resurrected preference
+# would quietly bring them back.
+pane_text = read(ROOT / "addon" / "content" / "preferences.xhtml")
+for gone in ("exportSort", "noteInclude", "rangeFilterMode"):
+    check(
+        gone not in pane_text,
+        f"the pane still binds the removed preference {gone}",
+    )
+    for locale in ("zh-CN", "en-US"):
+        ftl = read(LOCALES / locale / "addon.ftl")
+        check(
+            gone not in ftl,
+            f"{locale} still mentions the removed preference {gone}",
+        )
+
+prefs_js = read(ADDON / "prefs.js")
+for gone in ("exportSort", "noteInclude", "rangeFilterMode"):
+    check(
+        gone not in prefs_js,
+        f"prefs.js still ships a default for the removed preference {gone}",
+    )
+
+src = "\n".join(read(f) for f in sorted((ROOT / "src" / "modules").glob("*.ts")))
+for gone in ('"minimal"', '"glass"', '"elegant"', "DOT_CAP", "cell-dot-capped"):
+    check(
+        gone not in src,
+        f"the removed style or message {gone} is still referenced in src/",
+    )
+
+# Out-of-range rows are always dimmed now, so nothing may blank the value.
+check(
+    'filter.mode === "hide"' not in src,
+    "the data provider still hides out-of-range rows",
+)
+check(
+    not (ROOT / "src" / "modules" / "export.ts").exists(),
+    "the export module is back",
+)
+check(
+    not (ROOT / "src" / "modules" / "note.ts").exists(),
+    "the summary-note module is back",
+)
+
+# ---------------------------------------------------------------------------
+# 11. A preference change has to repaint, not just redraw
+# ---------------------------------------------------------------------------
+
+# The reported bug: a toggled setting only took effect after a manual refresh.
+# Dropping the row cache is what makes the new value visible, so the call has
+# to stay in the repaint path.
+service_ts = read(ROOT / "src" / "modules" / "service.ts")
+check(
+    "function dropRowCache" in service_ts,
+    "the row-cache helper is gone; preference changes would stop applying",
+)
+check(
+    "invalidateRowCache" in service_ts and "_rowCache" in service_ts,
+    "the row cache is not dropped on all supported Zotero versions",
+)
+check(
+    "dropRowCache(" in service_ts.split("function dropRowCache")[1],
+    "the repaint path does not use the row-cache helper",
+)
+
+# ---------------------------------------------------------------------------
+# 12. The style preview page is generated, never hand-edited
 # ---------------------------------------------------------------------------
 
 # docs/styles-preview.html exists to show the real colours, so it has to come
