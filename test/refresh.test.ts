@@ -10,6 +10,7 @@
  */
 
 import { assert } from "chai";
+import { trimBodyHead } from "../src/modules/http";
 import { getService } from "../src/modules/column";
 import { upsertLikesCache } from "../src/modules/arxiv-id";
 import {
@@ -91,6 +92,31 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
       await gate();
       if (state.failScholar) throw new Error("service unavailable");
       return scholarPage(state.scholar, state.scholarTitle);
+    },
+    // Scholar reads go through the two-path reader; a stub answers on the
+    // request path, which is also what the plugin falls back to.
+    requestScholarPage: async (url: string) => {
+      state.served.push(url);
+      await gate();
+      if (state.failScholar) throw new Error("service unavailable");
+      const body =
+        state.scholarStatus === 200
+          ? scholarPage(state.scholar, state.scholarTitle)
+          : "<html><title>Sorry...</title><body>unusual traffic</body></html>";
+      const attempt = {
+        via: "xhr" as const,
+        status: state.scholarStatus,
+        error: null,
+        bytes: body.length,
+        bodyHead: trimBodyHead(body),
+        usable: state.scholarStatus === 200,
+      };
+      return {
+        status: state.scholarStatus,
+        body: state.scholarStatus === 200 ? body : "",
+        via: state.scholarStatus === 200 ? ("xhr" as const) : null,
+        attempts: [attempt],
+      };
     },
     // Scholar reads keep the status, so a refusal can be told from a page that
     // carried nothing.

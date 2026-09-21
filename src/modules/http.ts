@@ -7,12 +7,14 @@
  */
 
 import pkg from "../../package.json";
+import { CITATION_REJECTED_STATUSES } from "./citations";
 import {
   ARXIV_API_INTERVAL_MS,
   GOOGLE_SCHOLAR_HOME,
   GOOGLE_SCHOLAR_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
 } from "./constants";
+import { createPageLoader, type PageLoader, type PageLoadResult } from "./page";
 
 /**
  * How a request is actually sent.
@@ -40,6 +42,8 @@ export interface RequesterOptions {
   intervalMs: number;
   /** Defaults to `Zotero.HTTP.request`, bound to its owner. */
   transport?: HttpTransport;
+  /** Defaults to Zotero's hidden browser; injected in tests. */
+  pageLoader?: PageLoader;
 }
 
 /**
@@ -58,6 +62,48 @@ export function bindTransport(host: { request: HttpTransport }): HttpTransport {
 
 interface PacingState {
   lastStartedAt: number;
+}
+
+/** How a Scholar page was fetched. */
+export type ScholarPath = "browser" | "xhr";
+
+/** One attempt at a Scholar search, in the form the report needs. */
+export interface ScholarAttempt {
+  via: ScholarPath;
+  status: number | null;
+  error: string | null;
+  bytes: number;
+  bodyHead: string;
+  /**
+   * Whether this attempt delivered a page that can be judged.
+   *
+   * Not the same as "2xx": a page that arrived is an answer whatever the
+   * actor reports, and Google's refusals arrive as pages too - what they say
+   * is decided by their content, not by the number.
+   */
+  usable: boolean;
+}
+
+export interface ScholarPage {
+  /** The status to judge the read by; `0` when neither path got an answer. */
+  status: number;
+  /** The page body of the path that worked, or `""`. */
+  body: string;
+  /** Which path produced `body`, or `null` when both failed. */
+  via: ScholarPath | null;
+  attempts: ScholarAttempt[];
+}
+
+/** How much of a response body the report quotes. */
+const BODY_HEAD_LIMIT = 160;
+
+/** The opening characters of a response body, whitespace collapsed. */
+export function trimBodyHead(body: string): string {
+  const clean = (body || "").replace(/\s+/g, " ").trim();
+  if (!clean) return "";
+  return clean.length > BODY_HEAD_LIMIT
+    ? `${clean.slice(0, BODY_HEAD_LIMIT)}…`
+    : clean;
 }
 
 /** What the session's opening request to Google answered. */
@@ -86,20 +132,92 @@ export function isGoogleHost(host: string): boolean {
  * requests carry the very same User-Agent Zotero itself sends when it renders
  * a page.
  */
-export function userAgentFor(host: string): string {
-  if (!isGoogleHost(host)) return USER_AGENT;
+/**
+ * The Gecko version this Zotero is built on, e.g. `140`.
+ *
+ * Zotero 7 runs Gecko 115, Zotero 9 runs 140. An agent string that names an
+ * engine the client is not running is itself a signal - Firefox 115 does not
+ * send `Sec-Fetch-*` headers, so claiming to be it while talking like a modern
+ * browser is worse than saying nothing - so the version is taken from the
+ * application rather than written down here.
+ */
+export function geckoMajorVersion(): number | null {
+  try {
+    const version = String(
+      (Services as unknown as { appinfo?: { platformVersion?: string } })
+        ?.appinfo?.platformVersion ?? "",
+    );
+    const major = Number.parseInt(version.split(".")[0], 10);
+    return Number.isFinite(major) && major >= 100 ? major : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Rewrites a Firefox User-Agent to the engine version in use. */
+export function matchGeckoVersion(agent: string, major: number | null): string {
+  if (!major || major < 100) return agent;
+  return agent
+    .replace(/rv:\d+\.\d+/i, `rv:${major}.0`)
+    .replace(/Firefox\/\d+\.\d+/i, `Firefox/${major}.0`);
+}
+
+/**
+ * The User-Agent a Google request goes out with.
+ *
+ * Zotero's own window reports the real agent of the running engine, which is
+ * also what the user's own browser-less sessions look like; the version is
+ * forced to the engine actually in use so the string cannot contradict the
+ * headers around it.
+ */
+export function browserUserAgent(): string {
+  const major = geckoMajorVersion();
 
   try {
     const agent = Zotero.getMainWindow()?.navigator?.userAgent;
-    if (agent && /Firefox\//.test(agent)) return agent;
+    if (agent && /Firefox\//.test(agent))
+      return matchGeckoVersion(agent, major);
   } catch {
     // Fall through to the static string below.
   }
 
-  return (
+  return matchGeckoVersion(
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) " +
-    "Gecko/20100101 Firefox/115.0"
+      "Gecko/20100101 Firefox/115.0",
+    major,
   );
+}
+
+export function userAgentFor(host: string): string {
+  if (!isGoogleHost(host)) return USER_AGENT;
+  return browserUserAgent();
+}
+
+/**
+ * The headers a Firefox navigation sends.
+ *
+ * A request carrying only `Accept` and `User-Agent` is not what a browser
+ * sends; Google's abuse checks look at the difference. `Sec-Fetch-Site` is
+ * `none` for the first navigation of a session and `same-origin` for a search
+ * that follows the site's own front page, with the matching `Referer`.
+ */
+export function browserHeaders(
+  userAgent: string,
+  accept: string,
+  options: { language?: string; referer?: string; site?: string } = {},
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: accept,
+    "User-Agent": userAgent,
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": options.site ?? "same-origin",
+    "Sec-Fetch-User": "?1",
+  };
+  if (options.language) headers["Accept-Language"] = options.language;
+  if (options.referer) headers.Referer = options.referer;
+  return headers;
 }
 
 /** The names of the cookies Zotero holds for `host` (the diagnostic lists them). */
@@ -237,6 +355,11 @@ export class PacedRequester {
   private warmup: WarmupResult | null = null;
   private disposed = false;
   private options: RequesterOptions;
+  /** Zotero's own loader, created on first use. */
+  private createdLoader: PageLoader | null = null;
+  /** Which path worked last: the browser first, then whichever answers. */
+  private pathPreference: ScholarPath = "browser";
+  private scholarAttempts: ScholarAttempt[] | null = null;
 
   constructor(options: RequesterOptions) {
     this.options = options;
@@ -259,6 +382,16 @@ export class PacedRequester {
     return this.warmup;
   }
 
+  /** The last Scholar read's attempts, for the diagnostic. */
+  lastScholarAttempts(): ScholarAttempt[] | null {
+    return this.scholarAttempts;
+  }
+
+  /** Which path the next Scholar read starts with. */
+  scholarReadPath(): ScholarPath {
+    return this.pathPreference;
+  }
+
   /**
    * Opens Scholar's front page once per session, before the first search.
    *
@@ -274,7 +407,7 @@ export class PacedRequester {
    */
   private async warmUpScholar(
     send: HttpTransport,
-    headers: Record<string, string>,
+    userAgent: string,
   ): Promise<void> {
     this.warmed = true;
     try {
@@ -282,7 +415,12 @@ export class PacedRequester {
         timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
         responseType: "text",
         successCodes: false,
-        headers,
+        // The session's first navigation: nothing referred it, so the header
+        // says so and no `Referer` is invented.
+        headers: browserHeaders(userAgent, "text/html,application/xhtml+xml", {
+          language: "en-US,en;q=0.9",
+          site: "none",
+        }),
       });
       this.warmup = { status: Number(opened.status) || 0, error: null };
     } catch (error) {
@@ -352,15 +490,18 @@ export class PacedRequester {
 
     return this.enqueue(host, async () => {
       const userAgent = userAgentFor(host);
-      const headers: Record<string, string> = {
-        Accept: accept,
-        "User-Agent": userAgent,
-      };
-      // Scholar localises its results, and the plugin parses the English page.
-      if (google) headers["Accept-Language"] = "en-US,en;q=0.9";
+      // Google is answered as a browser would be answered - the same headers,
+      // in the same arrangement, with the site's own front page as the
+      // referrer. Every other host gets the honest, minimal request.
+      const headers: Record<string, string> = google
+        ? browserHeaders(userAgent, accept, {
+            language: "en-US,en;q=0.9",
+            referer: GOOGLE_SCHOLAR_HOME,
+          })
+        : { Accept: accept, "User-Agent": userAgent };
 
       const send = this.options.transport ?? bindTransport(Zotero.HTTP);
-      if (google && !this.warmed) await this.warmUpScholar(send, headers);
+      if (google && !this.warmed) await this.warmUpScholar(send, userAgent);
 
       const response = await send("GET", url, {
         timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
@@ -380,6 +521,186 @@ export class PacedRequester {
         userAgent,
       };
     });
+  }
+
+  /**
+   * Reads a Google Scholar search page, by whichever path answers.
+   *
+   * Scholar refuses requests that are not what a browser sends - the same
+   * search, from the same address, with the same cookies, opens in a browser
+   * while an XMLHttpRequest is answered with `429`. So the page is first loaded
+   * the way a browser loads it (a hidden browser: a real navigation, scripts
+   * and all) and, if that is unavailable or does not answer, fetched as before.
+   *
+   * Whichever path works is remembered and tried first from then on, so a
+   * session settles on one path instead of paying for two requests per paper.
+   * `compare` forces both, for the diagnostic: that is the only way to tell
+   * "this address is blocked" from "this client is blocked".
+   */
+  async requestScholarPage(
+    url: string,
+    options: { compare?: boolean } = {},
+  ): Promise<ScholarPage> {
+    const host = hostOf(url);
+    ensureGoogleConsent();
+
+    return this.enqueue(host, async () => {
+      const compare = options.compare === true;
+      const userAgent = browserUserAgent();
+      const headers = browserHeaders(
+        userAgent,
+        "text/html,application/xhtml+xml",
+        {
+          language: "en-US,en;q=0.9",
+          referer: GOOGLE_SCHOLAR_HOME,
+        },
+      );
+
+      const send = this.options.transport ?? bindTransport(Zotero.HTTP);
+      if (!this.warmed) await this.warmUpScholar(send, userAgent);
+
+      const order: ScholarPath[] = compare
+        ? ["browser", "xhr"]
+        : this.pathPreference === "xhr"
+          ? ["xhr", "browser"]
+          : ["browser", "xhr"];
+
+      const attempts: ScholarAttempt[] = [];
+      let winner: { via: ScholarPath; status: number; body: string } | null =
+        null;
+
+      for (const via of order) {
+        const attempt =
+          via === "browser"
+            ? await this.loadScholarInBrowser(url)
+            : await this.loadScholarAsRequest(send, url, headers);
+        attempts.push(attempt.record);
+
+        if (attempt.body !== null && !winner) {
+          winner = {
+            via,
+            // A page that arrived is an answer even when the loader could not
+            // report which status it arrived with; the content decides what it
+            // means, and a reported refusal (429, 403) is kept as it is so the
+            // block logic can tell one kind of refusal from the other.
+            status: attempt.record.status ?? 200,
+            body: attempt.body,
+          };
+        }
+        if (winner && !compare) break;
+      }
+
+      this.scholarAttempts = attempts;
+
+      if (winner) {
+        if (this.pathPreference !== winner.via) {
+          this.pathPreference = winner.via;
+          Zotero.debug(
+            `[AlphaLikes] Google Scholar 读取改用${
+              winner.via === "browser" ? "浏览器页面加载" : "直接请求"
+            }方式`,
+          );
+        }
+        return { ...winner, attempts };
+      }
+
+      return {
+        status: failureStatus(attempts),
+        body: "",
+        via: null,
+        attempts,
+      };
+    });
+  }
+
+  /** The loader in use: the injected one, else Zotero's hidden browser. */
+  private pageLoader(): PageLoader {
+    if (this.options.pageLoader) return this.options.pageLoader;
+    if (!this.createdLoader) this.createdLoader = createPageLoader();
+    return this.createdLoader;
+  }
+
+  /** One Scholar page, loaded as a real navigation in a hidden browser. */
+  private async loadScholarInBrowser(url: string): Promise<{
+    record: ScholarAttempt;
+    body: string | null;
+  }> {
+    const timeoutMs = this.options.timeoutMs || REQUEST_TIMEOUT_MS;
+
+    let loaded: PageLoadResult;
+    try {
+      loaded = await this.pageLoader()(url, timeoutMs);
+    } catch (error) {
+      loaded = {
+        status: null,
+        html: "",
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+
+    const body = loaded.html || "";
+    // Zotero's page-data actor does not always hold on to the response status
+    // by the time the document can be read; a document that arrived is still
+    // the site's answer, and `isGoogleInterstitial` reads the refusal from it.
+    const usable = loaded.error === null && body.length > 0;
+    const record: ScholarAttempt = {
+      via: "browser",
+      status: loaded.status,
+      error: loaded.error,
+      bytes: body.length,
+      bodyHead: trimBodyHead(body),
+      usable,
+    };
+
+    return { record, body: usable ? body : null };
+  }
+
+  /** One Scholar page, fetched as a plain request. */
+  private async loadScholarAsRequest(
+    send: HttpTransport,
+    url: string,
+    headers: Record<string, string>,
+  ): Promise<{ record: ScholarAttempt; body: string | null }> {
+    try {
+      const response = await send("GET", url, {
+        timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
+        responseType: "text",
+        successCodes: false,
+        headers,
+      });
+
+      const raw =
+        typeof response.response === "string"
+          ? response.response
+          : response.responseText;
+      const body = raw ?? "";
+      const status = Number(response.status) || 0;
+      // Same rule as the browser path: an answer is an answer. A refusal often
+      // carries a page too, and its status is what books the wait.
+      const usable = body.length > 0;
+      const record: ScholarAttempt = {
+        via: "xhr",
+        status,
+        error: null,
+        bytes: body.length,
+        bodyHead: trimBodyHead(body),
+        usable,
+      };
+
+      return { record, body: usable ? body : null };
+    } catch (error) {
+      return {
+        record: {
+          via: "xhr",
+          status: null,
+          error: error instanceof Error ? error.message : String(error),
+          bytes: 0,
+          bodyHead: "",
+          usable: false,
+        },
+        body: null,
+      };
+    }
   }
 
   async requestText(
@@ -426,4 +747,23 @@ export class PacedRequester {
     const body = await this.requestText(url, "text/html,application/xhtml+xml");
     return parseHTMLBody(body);
   }
+}
+
+/**
+ * The status a Scholar read is judged by when neither path got a page.
+ *
+ * A refusal is the answer that matters - it says the site decided not to serve
+ * this client, which is what the caller turns into a wait - so it wins over a
+ * transport error, and over a peer path that simply timed out.
+ */
+function failureStatus(attempts: ScholarAttempt[]): number {
+  const answered = attempts.filter(
+    (attempt): attempt is ScholarAttempt & { status: number } =>
+      typeof attempt.status === "number" && attempt.status > 0,
+  );
+  const refusal = answered.find((attempt) =>
+    CITATION_REJECTED_STATUSES.has(attempt.status),
+  );
+  if (refusal) return refusal.status;
+  return answered.length ? answered[0].status : 0;
 }

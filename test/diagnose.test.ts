@@ -66,6 +66,42 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     // The service asks the requester what the session's opening request to
     // Google answered; the real one keeps that state, a stub reports none.
     sessionWarmup: () => null,
+    // Which path the next Scholar read starts with, and what the last one
+    // tried - both are written into the report.
+    scholarReadPath: () => "xhr" as const,
+    lastScholarAttempts: () => null,
+    // The Scholar probe runs both paths and compares them; this stub answers
+    // on the request path, so the browser path reports itself as unavailable.
+    requestScholarPage: async (url: string) => {
+      state.served.push(url);
+      const body =
+        state.scholarStatus === 200
+          ? scholarPage(state.scholar, "AlphaLikes diagnose probe paper")
+          : "<html><title>Sorry...</title><body>unusual traffic</body></html>";
+      return {
+        status: state.scholarStatus,
+        body: state.scholarStatus === 200 ? body : "",
+        via: state.scholarStatus === 200 ? ("xhr" as const) : null,
+        attempts: [
+          {
+            via: "browser" as const,
+            status: null,
+            error: "没有可用的浏览器组件",
+            bytes: 0,
+            bodyHead: "",
+            usable: false,
+          },
+          {
+            via: "xhr" as const,
+            status: state.scholarStatus,
+            error: null,
+            bytes: body.length,
+            bodyHead: trimBodyHead(body),
+            usable: state.scholarStatus === 200,
+          },
+        ],
+      };
+    },
     requestPage: async (url: string) => {
       state.served.push(url);
       if (url.includes("alphaxiv.org")) {

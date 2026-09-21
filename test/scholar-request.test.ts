@@ -18,6 +18,7 @@
 import { assert } from "chai";
 import {
   ensureGoogleConsent,
+  geckoMajorVersion,
   isGoogleHost,
   PacedRequester,
   userAgentFor,
@@ -70,6 +71,40 @@ function headersOf(captured: Captured[]): Record<string, string> {
 }
 
 describe("the Google Scholar request", function () {
+  it("sends the headers of a navigation, not of a bare request", async function () {
+    const { captured, transport } = stubTransport({
+      status: 200,
+      response: "<html><body></body></html>",
+    });
+    const requester = new PacedRequester({
+      timeoutMs: 5_000,
+      intervalMs: 0,
+      transport,
+    });
+
+    await requester.requestPage(
+      "https://scholar.google.com/scholar?hl=en&as_sdt=0,5&q=probe",
+      "text/html,application/xhtml+xml",
+    );
+
+    const search = headersOf(captured);
+    assert.equal(search["Sec-Fetch-Mode"], "navigate");
+    assert.equal(search["Sec-Fetch-Dest"], "document");
+    assert.equal(search["Sec-Fetch-Site"], "same-origin");
+    assert.equal(search["Upgrade-Insecure-Requests"], "1");
+    assert.equal(
+      search.Referer,
+      "https://scholar.google.com/",
+      "a search follows the site's own front page, and says so",
+    );
+
+    // The site's opening request is the first navigation of the session: it
+    // was referred by nothing.
+    const opening = captured[0].options.headers as Record<string, string>;
+    assert.equal(opening["Sec-Fetch-Site"], "none");
+    assert.notProperty(opening, "Referer");
+  });
+
   it("looks like the browser next to it, and brings the consent cookie", async function () {
     const { captured, transport } = stubTransport({
       status: 200,
@@ -198,6 +233,18 @@ describe("the Google Scholar request", function () {
     const agent = userAgentFor("api.openalex.org");
     assert.include(agent, "AlphaLikes");
     assert.notInclude(agent, "Mozilla");
+  });
+
+  it("names the engine the browser next to it is running", function () {
+    const agent = userAgentFor("scholar.google.com");
+    const major = geckoMajorVersion();
+    assert.include(agent, "Mozilla/5.0");
+    assert.include(agent, `Firefox/${major}.0`);
+    assert.include(
+      agent,
+      `rv:${major}.0`,
+      "the engine version has to match the headers that surround it",
+    );
   });
 
   it("knows which hosts play that game", function () {

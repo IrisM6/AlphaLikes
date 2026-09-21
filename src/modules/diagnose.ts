@@ -12,6 +12,10 @@
  * clipboard, and written to Zotero's debug log as a fallback.
  */
 
+import { trimBodyHead, type ScholarAttempt } from "./http";
+
+export { trimBodyHead };
+
 /** One attempt at one URL, in the form the report needs. */
 export interface HttpProbe {
   /** Which read this was, in words: "alphaXiv likes". */
@@ -26,6 +30,14 @@ export interface HttpProbe {
   bodyHead: string;
   /** What the plugin made of whatever came back. */
   verdict: string;
+  /**
+   * Every path that was tried, when the read has more than one.
+   *
+   * This is what separates "the address is blocked" from "this client is
+   * blocked": one of them answers a browser and refuses a request, the other
+   * refuses both.
+   */
+  attempts?: ScholarAttempt[];
 }
 
 export interface DiagnosisInput {
@@ -48,15 +60,17 @@ export interface DiagnosisInput {
   notes: string[];
 }
 
-/** How much of a response body the report quotes. */
-const BODY_HEAD_LIMIT = 160;
+const PATH_NAMES: Record<string, string> = {
+  browser: "浏览器页面加载",
+  xhr: "直接请求",
+};
 
-export function trimBodyHead(body: string): string {
-  const clean = (body || "").replace(/\s+/g, " ").trim();
-  if (!clean) return "";
-  return clean.length > BODY_HEAD_LIMIT
-    ? `${clean.slice(0, BODY_HEAD_LIMIT)}…`
-    : clean;
+function formatAttempt(attempt: ScholarAttempt): string {
+  const name = PATH_NAMES[attempt.via] ?? attempt.via;
+  if (attempt.status === null) {
+    return `  ${name}：没有回应 — ${attempt.error ?? "未知错误"}`;
+  }
+  return `  ${name}：HTTP ${attempt.status}，${attempt.bytes} 字节`;
 }
 
 function formatProbe(probe: HttpProbe): string[] {
@@ -65,6 +79,11 @@ function formatProbe(probe: HttpProbe): string[] {
     `  URL：${probe.url}`,
     `  User-Agent：${probe.userAgent}`,
   ];
+
+  if (probe.attempts && probe.attempts.length > 1) {
+    lines.push("  两种读取方式的结果：");
+    for (const attempt of probe.attempts) lines.push(formatAttempt(attempt));
+  }
 
   if (probe.status === null) {
     lines.push(`  结果：请求失败 — ${probe.error ?? "未知错误"}`);
@@ -95,9 +114,12 @@ export function formatDiagnosis(input: DiagnosisInput): string {
 
   for (const probe of input.probes) lines.push(...formatProbe(probe));
 
-  if (input.notes.length) {
+  // The same advice is produced once per probed item; saying it twice reads
+  // like two different problems.
+  const notes = [...new Set(input.notes)];
+  if (notes.length) {
     lines.push("", "备注：");
-    for (const note of input.notes) lines.push(`  ${note}`);
+    for (const note of notes) lines.push(`  ${note}`);
   }
 
   return lines.join("\n").trimEnd();

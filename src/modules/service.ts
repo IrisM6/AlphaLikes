@@ -60,13 +60,17 @@ import {
   type TrendDelta,
 } from "./history";
 import {
+  browserUserAgent,
   cookieNames,
   googleConsentStored,
   hostOf,
   parseHTMLBody,
   PacedRequester,
   userAgentFor,
+  type ScholarPage,
+  type ScholarPath,
 } from "./http";
+import { hiddenBrowserClass } from "./page";
 import {
   describeProxy,
   formatDiagnosis,
@@ -1085,12 +1089,21 @@ export class AlphaLikesService {
     if (this.isScholarBlocked()) return null;
 
     const url = googleScholarCitationSearchURL(expected);
-    const page = await this.safePage(
-      "Google Scholar citations",
-      url,
-      "text/html,application/xhtml+xml",
-    );
-    if (!page) return null;
+
+    // Two ways in: a real page load in Zotero's hidden browser, then a plain
+    // request. Scholar answers a browser and refuses an XMLHttpRequest from the
+    // same address with the same cookies, so the attempt that looks like a
+    // browser is tried first and the one that works is remembered.
+    let page: { status: number; body: string; via: ScholarPath | null };
+    try {
+      page = await this.requester.requestScholarPage(url);
+    } catch (error) {
+      this.debug(`Google Scholar citations failed: ${error}`);
+      return null;
+    }
+    if (page.via) {
+      this.debug(`Google Scholar citations read by ${page.via}`);
+    }
 
     // A refusal is not an error to hand back: it is the human check. Google
     // answers with 403 (or 429/503) and a "sorry" page when it wants one, and
@@ -1695,6 +1708,18 @@ export class AlphaLikesService {
       `Zotero 里 scholar.google.com 的 cookie：${
         cookieNames("scholar.google.com").join("、") || "（没有）"
       }`,
+      (() => {
+        const browser = hiddenBrowserClass();
+        return `Google 读取方式：浏览器页面加载优先${
+          browser.constructor
+            ? "（可用）"
+            : `（不可用：${browser.error ?? "原因未知"}）`
+        }，失败时改用直接请求；本次会话当前用${
+          this.requester.scholarReadPath() === "browser"
+            ? "浏览器页面加载"
+            : "直接请求"
+        }`;
+      })(),
     ];
 
     // The session's opening request says whether Google is limiting the address
@@ -1757,12 +1782,42 @@ export class AlphaLikesService {
     const status = probe.status ?? 0;
     if (!probe.label.includes("Scholar")) return;
 
+    const attempts = probe.attempts ?? [];
+    const browser = attempts.find((attempt) => attempt.via === "browser");
+    const request = attempts.find((attempt) => attempt.via === "xhr");
+    const worked = (attempt?: { usable: boolean }) => Boolean(attempt?.usable);
+
+    // The comparison is the diagnosis: a page that opens like a browser and a
+    // request that is refused means the site is judging the client, and the
+    // plugin has just switched to the path that is judged acceptable.
+    if (worked(browser) && !worked(request)) {
+      notes.push(
+        "同一个地址、同一批 cookie：用浏览器方式打开页面能读到结果，用普通请求会被拒。" +
+          "插件已记住这一点，之后直接走浏览器方式，不再发那种会被拒的请求。",
+      );
+    }
+    if (browser && browser.status === null && browser.error) {
+      notes.push(`浏览器方式不可用：${browser.error}。`);
+    }
+    if (worked(request) && !worked(browser)) {
+      notes.push(
+        "这次是普通请求读到的（浏览器方式没有结果）；插件会继续用它，直到浏览器方式重新可用。",
+      );
+    }
+
     if (status === 429 || status === 503) {
       notes.push(
         "Google 这次给的是 429/503（按地址限流），不是 403（人机验证）：" +
           "这类限制对同一个地址上的所有程序都生效，浏览器里做同样的搜索也会被挡，" +
           "等待通常比换办法更快恢复。插件会按 10 分钟起翻倍重试，这期间不再打扰 Google。",
       );
+      if (getCitationSourcePreferences().length <= 1) {
+        notes.push(
+          "现在只勾选了 Google Scholar。被限流期间一个数字都拿不到，可在设置里把" +
+            "「OpenAlex」「Semantic Scholar」一起勾上：勾选多个来源时，插件会查询全部、" +
+            "显示其中最大的数字，并不会拿别家数字冒充 Google Scholar。",
+        );
+      }
     }
     if (status === 403) {
       notes.push(
@@ -1803,35 +1858,72 @@ export class AlphaLikesService {
     return attempt.probe;
   }
 
-  /** One Scholar search, described for the report. */
+  /**
+   * One Scholar search, described for the report - through both paths.
+   *
+   * The comparison is the point: when a browser load answers and a request is
+   * refused, the site is refusing the *client*, and the plugin can do something
+   * about that. When both are refused, it is the address, and no amount of
+   * header work will change it.
+   */
   private async probeScholar(title: string): Promise<HttpProbe> {
-    const attempt = await this.probePage(
-      googleScholarCitationSearchURL(title),
-      "text/html,application/xhtml+xml",
-      "Google Scholar 引用数",
-    );
-    if (attempt.status === null) return attempt.probe;
+    const url = googleScholarCitationSearchURL(title);
+    const probe: HttpProbe = {
+      label: "Google Scholar 引用数",
+      url,
+      userAgent: browserUserAgent(),
+      status: null,
+      error: null,
+      bodyLength: 0,
+      bodyHead: "",
+      verdict: "",
+      attempts: [],
+    };
 
-    const status = attempt.probe.status ?? 0;
-    if (status >= 400) {
-      attempt.probe.verdict = isRateLimitStatus(status)
-        ? `HTTP ${status} — Google 对当前网络地址限流`
-        : `HTTP ${status} — Google 拒绝了这次请求（按人机验证处理）`;
-      return attempt.probe;
+    let page: ScholarPage;
+    try {
+      page = await this.requester.requestScholarPage(url, { compare: true });
+    } catch (error) {
+      probe.error = error instanceof Error ? error.message : String(error);
+      probe.verdict = "请求没有发出去／没有回应";
+      return probe;
     }
 
-    const count = googleScholarCitationCount(attempt.body);
-    const hits = googleScholarResultBlocks(attempt.body).length;
-    if (isGoogleInterstitial(attempt.body) && hits === 0) {
-      attempt.probe.verdict = "人机验证 / 同意页（里面没有结果）";
+    probe.attempts = page.attempts;
+    probe.status = page.status || null;
+    probe.bodyLength = page.body.length;
+    // When neither path got a page the winner has no body - but a refusal page
+    // is exactly the one worth quoting, so the head of the attempt that did
+    // answer is used instead.
+    probe.bodyHead = page.body
+      ? trimBodyHead(page.body)
+      : (page.attempts.find((attempt) => attempt.bodyHead)?.bodyHead ?? "");
+
+    if (page.via === null) {
+      const status = page.status;
+      if (status >= 400) {
+        probe.verdict = isRateLimitStatus(status)
+          ? `HTTP ${status} — 两种读取方式都被限流（按地址）`
+          : `HTTP ${status} — 两种读取方式都被拒绝（按人机验证处理）`;
+      } else {
+        probe.verdict = "两种读取方式都没有拿到页面";
+      }
+      return probe;
+    }
+
+    const how = page.via === "browser" ? "浏览器页面加载" : "直接请求";
+    const count = googleScholarCitationCount(page.body);
+    const hits = googleScholarResultBlocks(page.body).length;
+    if (isGoogleInterstitial(page.body) && hits === 0) {
+      probe.verdict = `${how}：人机验证 / 同意页（里面没有结果）`;
     } else if (hits > 0) {
-      attempt.probe.verdict = `结果页：${hits} 个结果，第一个 Cited by ${
+      probe.verdict = `${how}：结果页${hits} 个结果，第一个 Cited by ${
         count ?? "未解析"
       }`;
     } else {
-      attempt.probe.verdict = "既不是结果页也不是验证页";
+      probe.verdict = `${how}：既不是结果页也不是验证页`;
     }
-    return attempt.probe;
+    return probe;
   }
 
   /** One GET, with whatever came back written down either way. */
