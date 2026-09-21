@@ -12,7 +12,12 @@
 import { assert } from "chai";
 import { getService } from "../src/modules/column";
 import { upsertLikesCache } from "../src/modules/arxiv-id";
-import { fromSortableValue, CELL_LOADING } from "../src/modules/likes";
+import {
+  fromSortableValue,
+  CELL_LOADING,
+  CELL_UNAVAILABLE,
+} from "../src/modules/likes";
+import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
 import { setPref } from "../src/modules/prefs";
 
 /** A page shaped like the alphaXiv paper view. */
@@ -41,6 +46,8 @@ interface Stub {
   scholarTitle: string;
   failLikes: boolean;
   failScholar: boolean;
+  /** HTTP status the Scholar request answers with. */
+  scholarStatus: number;
   /** Set to hold the next request open until `release` is called. */
   hold: boolean;
   release: (() => void) | null;
@@ -54,6 +61,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     scholarTitle: "AlphaLikes refresh probe paper",
     failLikes: false,
     failScholar: false,
+    scholarStatus: 200,
     hold: false,
     release: null,
   };
@@ -80,6 +88,20 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
       await gate();
       if (state.failScholar) throw new Error("service unavailable");
       return scholarPage(state.scholar, state.scholarTitle);
+    },
+    // Scholar reads keep the status, so a refusal can be told from a page that
+    // carried nothing.
+    requestPage: async (url: string) => {
+      state.served.push(url);
+      await gate();
+      if (state.failScholar) throw new Error("service unavailable");
+      return {
+        status: state.scholarStatus,
+        body:
+          state.scholarStatus === 200
+            ? scholarPage(state.scholar, state.scholarTitle)
+            : "<html><title>Sorry...</title><body>unusual traffic</body></html>",
+      };
     },
   };
 
@@ -271,6 +293,47 @@ describe("AlphaLikes refresh", function () {
 
       const plan = service.planCitationCell(target);
       assert.notInclude(String(plan.text), "97531");
+    });
+
+    it("reads a 403 as the human check, not as a failed request", async function () {
+      // The reported bug: from a network Google distrusts, Scholar answers
+      // with 403 and a "sorry" page. Throwing on that status meant the error
+      // surfaced as a broken read and the count stayed empty for good, even
+      // though the same request in a browser was fine.
+      //
+      // The item has no stored count, so a refusal leaves nothing to keep.
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", "AlphaLikes refresh probe paper");
+      target.setField("date", "2026-09-21");
+      target.setField("DOI", "10.1234/alphalikes.403");
+      await target.saveTx();
+
+      try {
+        stub = stubRequester(service, 0, 0);
+        stub.scholarStatus = 403;
+
+        const summary = await service.refreshCitations([target]);
+
+        assert.equal(summary.updated, 0);
+        assert.equal(summary.failed, 1);
+        const plan = service.planCitationCell(target);
+        assert.include(
+          plan.value,
+          CITATIONS_BLOCKED_MARKER,
+          "a refusal has to book a retry, not read as a paper with no citations",
+        );
+        assert.equal(plan.text, CELL_UNAVAILABLE);
+
+        // Leave no block behind: the next test would otherwise see the retry
+        // window rather than its own stub.
+        stub.scholarStatus = 200;
+        stub.scholar = 12;
+        await service.refreshCitations([target]);
+        assert.equal(service.planCitationCell(target).text, "12");
+      } finally {
+        await target.eraseTx();
+      }
     });
 
     it("counts an item with nothing to look up as skipped", async function () {

@@ -1,5 +1,6 @@
 import { assert } from "chai";
 import {
+  CELL_CLEARED,
   CELL_LOADING,
   fromSortableValue,
   isStatusValue,
@@ -65,6 +66,11 @@ describe("AlphaLikes cell encoding", function () {
   it("recognises the status markers with and without decorations", function () {
     assert.isTrue(isStatusValue(CELL_LOADING));
     assert.isTrue(isStatusValue(withValueDecorations(CELL_LOADING, [1])));
+    assert.isTrue(
+      isStatusValue(CELL_CLEARED),
+      "a cleared cell is a status, not a count: it must stay out of the " +
+        "percentile population and out of the range filter",
+    );
     assert.isFalse(isStatusValue(toSortableValue(12)));
     assert.isFalse(
       isStatusValue(withValueDecorations(toSortableValue(12), [3])),

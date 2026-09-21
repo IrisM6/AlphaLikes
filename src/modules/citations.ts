@@ -430,6 +430,22 @@ export function googleScholarCitationSearchURL(title: string): string {
 }
 
 /**
+ * Statuses that mean "Google refused to serve this request".
+ *
+ * 403 and 429 are the rate limit; 503 is the same answer when Google decides
+ * to send one. None of them carry a page that could hold a count, so they are
+ * handled exactly like the "sorry" page rather than as a hard error.
+ */
+export const CITATION_REJECTED_STATUSES = new Set([403, 429, 503]);
+
+/** True when the page is one of Google's block or consent interstitials. */
+export function isGoogleInterstitial(page: string): boolean {
+  return /sorry|consent|before you continue|unusual traffic|automated queries|captcha/i.test(
+    page || "",
+  );
+}
+
+/**
  * Reads the first "Cited by N" count out of a Scholar results page.
  *
  * Returns `null` when the page holds no results, and `-1` when Google answered
@@ -445,7 +461,7 @@ export function googleScholarCitationCount(html: string): number | null {
   const hasCount = /Cited by\s*[\d,]+|被引用次数[:：]\s*[\d,]+/.test(page);
 
   if (!hasResults && !hasCount) {
-    return /sorry|consent|unusual traffic|captcha/i.test(page) ? -1 : null;
+    return isGoogleInterstitial(page) ? -1 : null;
   }
 
   const match = page.match(/(?:Cited by\s*|被引用次数[:：]\s*)([\d,]+)/);

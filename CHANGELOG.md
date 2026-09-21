@@ -2,6 +2,19 @@
 
 每个版本的最新一节会被 `npm run release` 直接作为 GitHub Release 的说明正文（见 `zotero-plugin.config.ts` 里的 `release.changelog`）。
 
+## v1.9.0 — 2026-09-21
+
+### 清除功能（范围只有本插件自己写的内容）
+
+- 右键菜单新增 **清除本插件写入的 Extra 记录**：只删除本插件写在 `Extra` 里的那些行（`alphaxiv_arxiv_id`、`alphaxiv_likes`、`alphaxiv_likes_updated`、`alphaxiv_likes_history`、`alphaxiv_citations`、`alphaxiv_citations_updated`、`alphaxiv_scholar_title`），**条目里原有的其他内容一行都不会动**：你自己写的笔记、`tex.*`、`Citation Key`、其他插件留下的字段全部原样保留。除 `Extra` 之外什么都不写，设置项也不会被重置。
+- 清除过的条目**不会被自动重新读取**。以前列里一发现没有缓存值就会去查，所以清除后下一次重绘又会把刚删掉的行写回来；现在这些条目保持空白，直到你**手动刷新点赞或引用**才会重新读取——那也正是恢复它们的方式。这份“已清除”清单存在插件自己的设置里（不在 `Extra` 中），重启 Zotero 后依然有效。
+
+### Google Scholar 读取失败
+
+- **修复「验证页打得开、插件读取却全部失败」**：请求以前带着 `AlphaLikes/1.8.0` 这类非浏览器标识，Scholar 会把这种请求直接拒绝（403 + “We're sorry…” 页面）；现在发往 Google 的请求改用与本机浏览器一致的 User-Agent，并先写入 Google 的同意 cookie（`SOCS=CAI`），欧盟地区不会再被同意页挡下。
+- **403 / 429 / 503 现在算「需要人机验证」，而不是一次读取失败**：以前这些状态在解析之前就被当作异常抛出，于是既看不到验证提示、也不会自动重试，列里只剩“读取失败”；现在照常进入静默重试流程（前两次静默、约 10 分钟起逐次翻倍，连续多次才提示一次），提示里仍然给出验证页入口。
+- arXiv、OpenAlex、Semantic Scholar、Crossref 的请求标识保持不变：这些 API 要求一个能联系到客户端的名字，只有 Google 会对它过敏。
+
 ## v1.8.0 — 2026-09-21
 
 ### 匹配

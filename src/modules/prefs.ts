@@ -233,6 +233,18 @@ export const PREF_DEFAULTS = {
   citationRangeFilterEnabled: false,
   citationRangeFilterMin: 0,
   citationRangeFilterMax: 0,
+
+  // --- Cleared items -------------------------------------------------------
+  /**
+   * Item ids the user has cleared this plugin's records from.
+   *
+   * A cleared item is left alone - not looked up, not written to - until an
+   * explicit refresh asks for it again, because the column reads a count as
+   * soon as it has none: without this list the very next repaint would write
+   * back the lines that were just removed. It is deliberately *not* stored in
+   * `Extra`, which is the field the action empties.
+   */
+  clearedItemIDs: "",
 } as const;
 
 export type PrefName = keyof typeof PREF_DEFAULTS;
@@ -623,6 +635,20 @@ export function colorBucket(likes: number, scheme: ColorScheme): ColorBucket {
   if (likes >= scheme.highThreshold) return "high";
   if (likes <= scheme.lowThreshold) return "low";
   return "mid";
+}
+
+/** The ids recorded by the clear action, in declaration order. */
+export function readClearedItemIDs(): number[] {
+  const raw = String(getPref("clearedItemIDs") ?? "");
+  const ids = raw
+    .split(",")
+    .map((part) => Number.parseInt(part.trim(), 10))
+    .filter((id) => Number.isSafeInteger(id) && id > 0);
+  return [...new Set(ids)];
+}
+
+export function writeClearedItemIDs(ids: readonly number[]): void {
+  setPref("clearedItemIDs", [...new Set(ids)].join(","));
 }
 
 export function getResolverPrefs() {

@@ -2,12 +2,18 @@
  * Item context-menu entries.
  *
  * Everything here is an explicit action on the *data*: re-read the like counts,
- * re-read the citation counts, or open Google Scholar's verification page.
- * Looking a paper up is not one of them — matching runs on its own, in the
- * background, at the confidence threshold the settings ask for. The manual
- * pickers (find the arXiv ID, choose a Scholar record) and the "clear data"
- * action were removed at the user's request, and the surfaces are kept out by
- * scripts/check-addon.py rather than by memory.
+ * re-read the citation counts, open Google Scholar's verification page, or take
+ * this plugin's records back out of `Extra`. Looking a paper up is not one of
+ * them — matching runs on its own, in the background, at the confidence
+ * threshold the settings ask for.
+ *
+ * The clear action deletes only what this plugin wrote (`alphaxiv_*` lines,
+ * through `stripAlphaLikesData`); everything else an item has in `Extra` stays
+ * exactly as it was, and nothing outside `Extra` is touched. Cleared items are
+ * not written to again until they are refreshed, which is what keeps the next
+ * automatic lookup from undoing the action. The manual pickers (find the arXiv
+ * ID, choose a Scholar record) stay removed, and scripts/check-addon.py holds
+ * both ends of that line rather than memory.
  */
 
 import { getService } from "./column";
@@ -20,6 +26,8 @@ const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const REFRESH_CITATIONS_ID = "alphalikes-refresh-citations";
 const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
+const CLEAR_SEPARATOR_ID = "alphalikes-clear-separator";
+const CLEAR_ID = "alphalikes-clear-data";
 
 type WindowWithAlert = Window & {
   alert?: (message: string) => void;
@@ -149,6 +157,36 @@ async function refreshSelectedCitations(win: Window): Promise<void> {
   }
 }
 
+/**
+ * Takes this plugin's records back out of the selected items' `Extra`.
+ *
+ * Deliberately narrow: only the lines AlphaLikes wrote are removed, and the
+ * items are then left alone until a refresh asks for them again, so the
+ * automatic lookup cannot write them straight back. The summary says both of
+ * those things, because "cleared" that reappears a second later looks like a
+ * bug rather than a setting.
+ */
+async function clearSelectedItems(win: Window): Promise<void> {
+  const items = selectedItems(win);
+  if (!items.length) {
+    notify(win, t("error-no-selection"));
+    return;
+  }
+
+  try {
+    const summary = await getService().clearItems(items);
+    toast(
+      t("notify-clear-title"),
+      summary.cleared
+        ? t("clear-done", { count: summary.cleared })
+        : t("clear-none"),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    notify(win, `${t("progress-error")} ${message}`);
+  }
+}
+
 /** Opens the paper's own Scholar search in the browser. */
 function openScholarVerification(win: Window): void {
   const items = selectedItems(win);
@@ -187,11 +225,19 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       },
     );
 
+    const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
+      void clearSelectedItems(win);
+    });
+
     popup.append(
       createSeparator(doc, SEPARATOR_ID),
       refresh,
       refreshCitations,
       openScholar,
+      // The clear action deletes data rather than showing it, so it sits apart
+      // from the three reading actions above.
+      createSeparator(doc, CLEAR_SEPARATOR_ID),
+      clear,
     );
 
     popup.addEventListener("popupshowing", () => {
@@ -206,6 +252,7 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
         count === 0 || !citationPrefs.enabled;
       (openScholar as HTMLElement).hidden =
         !citationPrefs.enabled || !findsScholar;
+      (clear as HTMLElement).hidden = count === 0;
     });
   } catch (error) {
     Zotero.debug(`[AlphaLikes] Could not register the item menu: ${error}`);
@@ -220,6 +267,8 @@ export function unregisterItemMenu(win: Window): void {
       REFRESH_ID,
       REFRESH_CITATIONS_ID,
       OPEN_SCHOLAR_ID,
+      CLEAR_SEPARATOR_ID,
+      CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();
     }

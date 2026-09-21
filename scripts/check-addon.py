@@ -87,14 +87,19 @@ check(
 )
 
 # ---------------------------------------------------------------------------
-# 2. The picker dialogs stay removed
+# 2. The picker dialogs stay removed, and the clear action stays narrow
 # ---------------------------------------------------------------------------
 #
-# The arXiv picker, the Scholar record picker and the "clear data" action were
-# removed on request, in favour of matching that runs on its own. Their files
-# were deleted, so what is left to guard is that nothing brings them back: a
-# stale dialog file, a menu entry pointing at one, or a preference that only
-# that dialog could write.
+# The arXiv picker and the Scholar record picker were removed on request, in
+# favour of matching that runs on its own. Their files were deleted, so what is
+# left to guard is that nothing brings them back: a stale dialog file, a menu
+# entry pointing at one, or a preference that only that dialog could write.
+#
+# The clear action came back with a boundary the user stated outright: remove
+# what this plugin recorded in `Extra`, and leave every other `Extra` line
+# alone. Three facts hold that boundary: it goes through the one function that
+# knows this plugin's keys, nothing blanks the field outright, and the menu
+# entry exists so the records can actually be taken back out.
 
 for gone in (
     "arxiv-picker.xhtml",
@@ -112,17 +117,45 @@ for gone, why in (
     ("alphalikes-find-arxiv", "the manual arXiv picker menu entry"),
     ("alphalikes-batch-find-arxiv", "the batch arXiv lookup menu entry"),
     ("alphalikes-pick-scholar", "the Scholar record picker menu entry"),
-    ("alphalikes-clear-data", "the clear-data menu entry"),
 ):
     check(
         gone not in _menu_source,
         f"{why} is still registered in src/modules/menu.ts",
     )
-for gone in ("openDialog", "openScholarPicker", "batchFindArxiv", "clearItems"):
+for gone in ("openDialog", "openScholarPicker", "batchFindArxiv"):
     check(
         gone not in _menu_source,
         f"src/modules/menu.ts still drives the removed dialog flow ({gone})",
     )
+
+check(
+    "alphalikes-clear-data" in _menu_source and "menu-clear" in _menu_source,
+    "the context menu has no entry for removing this plugin's records from Extra",
+)
+
+_service_source = read(ROOT / "src" / "modules" / "service.ts")
+check(
+    "stripAlphaLikesData" in _service_source,
+    "clearing data does not go through stripAlphaLikesData, so it could delete "
+    "lines this plugin does not own",
+)
+check(
+    'setField("extra", "")' not in _service_source
+    and "setField(\'extra\', \'\')" not in _service_source,
+    "something blanks the whole Extra field; the clear action must remove only "
+    "this plugin's own lines",
+)
+# A clear would be undone by the next automatic lookup, so the cleared items
+# have to be remembered - in the preferences, not in the field being emptied.
+check(
+    "clearedItemIDs" in _service_source,
+    "a cleared item is not remembered, so the automatic lookup writes the "
+    "records straight back",
+)
+check(
+    "reviveItems" in _service_source,
+    "nothing lifts a clear, so a cleared item could never be read again",
+)
 
 # ---------------------------------------------------------------------------
 # 3. Manifest icons
@@ -259,6 +292,11 @@ check(
     f"addon/prefs.js declares preferences that PREF_DEFAULTS does not know about: "
     f"{sorted(only_in_js)}",
 )
+check(
+    "clearedItemIDs" in declared_prefs,
+    "addon/prefs.js ships no default for clearedItemIDs, so a cleared item "
+    "would be looked up again after a restart",
+)
 
 # ---------------------------------------------------------------------------
 # 6. Settings pane: Fluent ids, linkset and preference keys
@@ -339,6 +377,10 @@ if pane_path.exists():
         # `PREF_DEFAULTS` object are part of the 1.0.0 API.
         "pendingColor",
         "confirmPercent",
+        # Written by the service when the context menu clears an item's
+        # records; it is this plugin's own bookkeeping, not a setting, so the
+        # pane deliberately offers no control for it.
+        "clearedItemIDs",
     }
     unused_pane_prefs = declared_prefs - pane_prefs - js_driven_prefs
     check(

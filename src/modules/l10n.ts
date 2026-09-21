@@ -23,6 +23,8 @@ export const MESSAGES = {
   "cell-trend": "{delta} likes since the previous snapshot (currently {likes})",
   "cell-high-impact": "In the top 10% of its field and year",
   "cell-citations-unavailable": "No citation count found for this item",
+  "cell-cleared":
+    "This plugin's records were cleared from this item. Refresh the likes or the citations to read them again.",
   "cell-scholar-blocked":
     "Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.",
   "cell-quantile-high": "High for the items in view",
@@ -49,6 +51,14 @@ export const MESSAGES = {
   "progress-error": "AlphaLikes: the update failed: {message}",
 
   // --- Google Scholar's human check ---------------------------------------
+  // --- Clearing this plugin's own records ----------------------------------
+  "menu-clear": "Clear this plugin's Extra records",
+  "notify-clear-title": "AlphaLikes · clear",
+  "clear-done":
+    "Removed this plugin's records from {count} item(s); everything else in Extra is untouched. These items stay unwritten until a refresh.",
+  "clear-none":
+    "No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until a refresh.",
+
   "notify-scholar-title": "AlphaLikes · Google Scholar",
   "notify-scholar-blocked":
     "Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.",

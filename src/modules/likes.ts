@@ -11,6 +11,15 @@ export const CELL_LOADING = "…";
 export const CELL_UNAVAILABLE = "N/A";
 /** Shown when a candidate match needs the user to confirm it. */
 export const CELL_PENDING = "?";
+/**
+ * Shown for an item whose records were cleared with the context menu.
+ *
+ * The cell stays visually empty - that is what the user asked for - but the
+ * value is not blank, so the renderer can explain why it is empty and how to
+ * bring the counts back. A blank string would be indistinguishable from an
+ * item this plugin has simply never looked at.
+ */
+export const CELL_CLEARED = "cleared";
 
 /** Sort keys are zero padded so lexicographic order equals numeric order. */
 const SORT_WIDTH = 16;
@@ -120,7 +129,10 @@ export function isStatusValue(value: string): boolean {
   if (SORTABLE_RE.test(value)) return false;
   const { key } = splitValueDecorations(value);
   return (
-    key === CELL_LOADING || key === CELL_UNAVAILABLE || key === CELL_PENDING
+    key === CELL_LOADING ||
+    key === CELL_UNAVAILABLE ||
+    key === CELL_PENDING ||
+    key === CELL_CLEARED
   );
 }
 

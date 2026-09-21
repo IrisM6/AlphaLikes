@@ -20,6 +20,7 @@ cell-filtered = 已被点赞数范围筛选隐藏
 cell-trend = 相比上次快照 {delta} 个赞（当前 {likes}）
 cell-high-impact = 位于本领域同年份的前 10%
 cell-citations-unavailable = 没有找到该条目的引用数据
+cell-cleared = 本插件写在这个条目里的记录已被清除；右键 →「刷新 alphaXiv 点赞」或「刷新引用数」可以重新读取
 cell-quantile-high = 在当前列表中属于高赞
 cell-quantile-low = 在当前列表中属于低赞
 cell-quantile-mid = 在当前列表中属于中等
@@ -47,6 +48,16 @@ refresh-joining = ；
 progress-error = AlphaLikes 无法完成本次更新：{message}
 
 notify-scholar-title = AlphaLikes · Google Scholar
+# --- 清除本插件写入的记录 ---------------------------------------------------
+#
+# 只删这个插件自己写进 Extra 的行（alphaxiv_*），条目里原来的其他内容原样
+# 保留。清除过的条目在手动刷新之前不会再被自动写入，所以提示里说明了这一点。
+
+menu-clear = 清除本插件写入的 Extra 记录
+notify-clear-title = AlphaLikes · 清除
+clear-done = 已清除 {count} 个条目中本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
+clear-none = 选中的条目里没有本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
+
 notify-scholar-blocked = Google Scholar 要求人机验证，引用数暂时无法读取。约 {minutes} 分钟后会自动重试；也可以右键 →「打开 Google Scholar 验证页」先自己完成验证。
 
 error-no-selection = 请先选择至少一个条目。

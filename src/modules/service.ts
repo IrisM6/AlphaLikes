@@ -13,11 +13,13 @@ import {
   extractArxivID,
   readCachedLikes,
   readLikesUpdatedAt,
+  stripAlphaLikesData,
   upsertLikesCache,
   upsertResolvedArxivID,
 } from "./arxiv-id";
 import {
   citationCountsFromSemanticScholar,
+  CITATION_REJECTED_STATUSES,
   googleScholarCitationCount,
   googleScholarCitationSearchURL,
   googleScholarResultBlocks,
@@ -25,6 +27,7 @@ import {
   isHighImpact,
   readScholarTitle,
   scholarTitleSearchURL,
+  isGoogleInterstitial,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
@@ -58,6 +61,7 @@ import { PacedRequester } from "./http";
 import { t } from "./l10n";
 import { openExternal, toast } from "./notify";
 import {
+  CELL_CLEARED,
   CELL_LOADING,
   CELL_UNAVAILABLE,
   fromSortableValue,
@@ -77,6 +81,8 @@ import {
   getTrendPrefs,
   isWithinRange,
   observePrefs,
+  readClearedItemIDs,
+  writeClearedItemIDs,
 } from "./prefs";
 import { quantileThresholds } from "./quantile";
 import {
@@ -298,6 +304,16 @@ function refreshItemTrees(): void {
   }
 }
 
+/** What a clear run did, for the menu's summary. */
+export interface ClearSummary {
+  /** Items the action was run on. */
+  total: number;
+  /** Items that actually had AlphaLikes lines in `Extra`. */
+  cleared: number;
+  /** Items that had none - nothing was removed, but they are left alone now. */
+  alreadyEmpty: number;
+}
+
 export class AlphaLikesService {
   private requester: PacedRequester;
   private itemStates = new Map<number, ItemState>();
@@ -315,6 +331,15 @@ export class AlphaLikesService {
    */
   private refreshingLikes = new Set<number>();
   private refreshingCitations = new Set<number>();
+  /**
+   * Items the user cleared with the context menu.
+   *
+   * Read from the preferences on first use and written back whenever an item
+   * is cleared or revived, so the set survives a restart without putting a
+   * single byte into `Extra` - the field the action is meant to empty.
+   */
+  private clearedItems: Set<number> | null = null;
+
   private stopObservingPrefs: (() => void) | null = null;
   private disposed = false;
 
@@ -594,6 +619,37 @@ export class AlphaLikesService {
     return title.length >= 10 ? title : "";
   }
 
+  // -------------------------------------------------------------------------
+  // Cleared items
+  // -------------------------------------------------------------------------
+
+  private cleared(): Set<number> {
+    if (this.clearedItems === null) {
+      this.clearedItems = new Set(readClearedItemIDs());
+    }
+    return this.clearedItems;
+  }
+
+  /**
+   * Whether this item's records were cleared and nothing may be written to it.
+   *
+   * A cleared item is neutral - not "no data", but "leave me alone" - so the
+   * column shows an empty cell and no request is made for it until an explicit
+   * refresh lifts the mark.
+   */
+  isCleared(item: Zotero.Item | number): boolean {
+    const id = typeof item === "number" ? item : item.id;
+    return this.cleared().has(id);
+  }
+
+  /** Lifts the mark for the items an explicit refresh is about to re-read. */
+  private reviveItems(items: Zotero.Item[]): void {
+    const set = this.cleared();
+    let changed = false;
+    for (const item of items) changed = set.delete(item.id) || changed;
+    if (changed) writeClearedItemIDs([...set]);
+  }
+
   /**
    * Nothing is fetched while the block is in force, and nothing is retried
    * early: Google answers a burst of requests by extending the block.
@@ -706,6 +762,16 @@ export class AlphaLikesService {
   }
 
   private planCitationCellFor(item: Zotero.Item): CitationCellPlan {
+    if (this.isCleared(item)) {
+      return {
+        value: CELL_CLEARED,
+        text: CELL_CLEARED,
+        count: null,
+        highImpact: false,
+        source: null,
+      };
+    }
+
     const prefs = getCitationPrefs();
     if (!prefs.enabled)
       return {
@@ -970,23 +1036,40 @@ export class AlphaLikesService {
     if (this.isScholarBlocked()) return null;
 
     const url = googleScholarCitationSearchURL(expected);
-    const html = await this.safeText(
+    const page = await this.safePage(
       "Google Scholar citations",
       url,
       "text/html,application/xhtml+xml",
     );
-    if (!html) return null;
+    if (!page) return null;
 
-    const verdict = googleScholarCitationCount(html);
+    // A refusal is not an error to hand back: it is the human check. Google
+    // answers with 403 (or 429/503) and a "sorry" page when it wants one, and
+    // throwing here would have left the count permanently empty with the
+    // popup only saying that one request had failed.
+    if (CITATION_REJECTED_STATUSES.has(page.status)) {
+      this.noteScholarBlock(url);
+      return null;
+    }
+    if (page.status < 200 || page.status >= 300) return null;
+
+    // A 200 can still be an interstitial - the consent page in particular
+    // arrives with a perfectly ordinary status.
+    if (!page.body) return null;
+
+    const verdict = googleScholarCitationCount(page.body);
     if (verdict === -1) {
       this.noteScholarBlock(url);
       return null;
     }
-    if (verdict === null) return null;
+    if (verdict === null) {
+      if (isGoogleInterstitial(page.body)) this.noteScholarBlock(url);
+      return null;
+    }
 
     // The count belongs to the first result, so the title has to agree before
     // it is attributed to this item.
-    const titles = googleScholarResultBlocks(html)
+    const titles = googleScholarResultBlocks(page.body)
       .map((block) => googleScholarResultTitle(block))
       .filter(Boolean);
     if (!titles.length) return verdict;
@@ -1037,6 +1120,24 @@ export class AlphaLikesService {
   }
 
   /** Fetches a page as text, logging failures instead of aborting the merge. */
+  /**
+   * Runs a page request, logging failures instead of letting them abort the
+   * merge. Unlike `safeText` the status survives, so a refusal can be told
+   * apart from a page that simply carried nothing.
+   */
+  private async safePage(
+    label: string,
+    url: string,
+    accept?: string,
+  ): Promise<{ status: number; body: string } | null> {
+    try {
+      return await this.requester.requestPage(url, accept);
+    } catch (error) {
+      this.debug(`${label} failed: ${error}`);
+      return null;
+    }
+  }
+
   private async safeText(
     label: string,
     url: string,
@@ -1081,6 +1182,8 @@ export class AlphaLikesService {
     if (!targets.length) return summary;
 
     this.clearScholarBlock();
+    // Asking for the counts is exactly the signal that lifts a clear.
+    this.reviveItems(targets);
 
     for (const item of targets) {
       this.citationStates.delete(item.id);
@@ -1109,6 +1212,10 @@ export class AlphaLikesService {
   }
 
   private computeCellValue(item: Zotero.Item): string {
+    // A cleared item is left alone. Reading it again would put the deleted
+    // lines straight back into `Extra` on the next repaint.
+    if (this.isCleared(item)) return CELL_CLEARED;
+
     const arxivID = this.getItemArxivID(item);
     if (arxivID) return this.cellForKnownID(item, arxivID);
 
@@ -1473,6 +1580,11 @@ export class AlphaLikesService {
     };
     if (!targets.length) return summary;
 
+    // An explicit refresh is also how a cleared item comes back: the user is
+    // asking for the counts, which is a different thing from the column
+    // silently re-reading them.
+    this.reviveItems(targets);
+
     for (const item of targets) {
       this.itemStates.delete(item.id);
       this.staleRefreshing.delete(item.id);
@@ -1512,10 +1624,63 @@ export class AlphaLikesService {
     return summary;
   }
 
+  /**
+   * Removes every line AlphaLikes wrote into `Extra`.
+   *
+   * Strictly scoped: only the lines this plugin owns (`alphaxiv_*`, matched by
+   * `stripAlphaLikesData`) are removed, so a user's own notes, `tex.*` keys or
+   * another tool's records survive the action untouched. Nothing but `Extra`
+   * is written - no preference is reset and no column is re-configured.
+   *
+   * The items are marked as cleared as well, because this plugin reads a count
+   * again the moment it has none: without the mark the next repaint would put
+   * back exactly what the user just deleted. `refreshItems` and
+   * `refreshCitations` lift the mark for the items they are given.
+   */
+  async clearItems(items: Zotero.Item[]): Promise<ClearSummary> {
+    const targets = items.filter(Boolean);
+    const summary: ClearSummary = {
+      total: targets.length,
+      cleared: 0,
+      alreadyEmpty: 0,
+    };
+    if (!targets.length) return summary;
+
+    const set = this.cleared();
+
+    for (const item of targets) {
+      const before = safeGetField(item, "extra");
+      await this.writeExtra(item, stripAlphaLikesData);
+      if (safeGetField(item, "extra") === before) summary.alreadyEmpty += 1;
+      else summary.cleared += 1;
+
+      // Marked only after the strip, because `writeExtra` refuses cleared
+      // items: the order is what lets the action itself through the guard.
+      set.add(item.id);
+      this.itemStates.delete(item.id);
+      this.citationStates.delete(item.id);
+      this.refreshingLikes.delete(item.id);
+      this.refreshingCitations.delete(item.id);
+      this.staleRefreshing.delete(item.id);
+      this.observedLikes.delete(item.id);
+      this.observedCitations.delete(item.id);
+    }
+
+    writeClearedItemIDs([...set]);
+    this.quantileCache = null;
+    this.citationQuantileCache = null;
+    refreshItemTrees();
+    return summary;
+  }
+
   private async writeExtra(
     item: Zotero.Item,
     update: (extra: string) => string,
   ): Promise<void> {
+    // The one choke point every write goes through, so a lookup that was
+    // already in flight when the user cleared the item cannot land afterwards.
+    if (this.isCleared(item)) return;
+
     const current = safeGetField(item, "extra");
     const next = update(current);
     if (next === current) return;
@@ -1537,6 +1702,11 @@ export class AlphaLikesService {
 
   private onPrefChanged(name: string): void {
     if (this.disposed) return;
+
+    // The list of cleared items can be edited outside the running service
+    // (a second window, the preferences pane of a future version), so the
+    // cached copy has to go when it changes.
+    if (name === "clearedItemIDs") this.clearedItems = null;
 
     if (name === "requestTimeoutMs" || name === "requestIntervalMs") {
       const { timeoutMs, intervalMs } = getRequestPrefs();

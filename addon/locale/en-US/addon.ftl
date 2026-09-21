@@ -21,6 +21,7 @@ cell-unavailable = No alphaXiv likes found for this item
 cell-filtered = Hidden by the like-count filter
 cell-trend = {delta} likes since the previous snapshot (currently {likes})
 cell-high-impact = In the top 10% of its field and year
+cell-cleared = This plugin's records were cleared from this item; refresh the likes or the citations to read them again.
 cell-citations-unavailable = No citation count found for this item
 cell-quantile-high = High for the items in view
 cell-quantile-low = Low for the items in view
@@ -49,6 +50,17 @@ refresh-joining = "; "
 progress-error = AlphaLikes: the update failed: {message}
 
 notify-scholar-title = AlphaLikes · Google Scholar
+# --- Clearing this plugin's own records ------------------------------------
+#
+# Only the lines this plugin wrote into Extra (alphaxiv_*) are removed; any
+# content an item already had stays exactly as it was. A cleared item is not
+# written to again until it is refreshed, so the toast says so.
+
+menu-clear = Clear this plugin's Extra records
+notify-clear-title = AlphaLikes · clear
+clear-done = Removed this plugin's records from {count} item(s); everything else in Extra is untouched. These items stay unwritten until refreshed.
+clear-none = No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until refreshed.
+
 notify-scholar-blocked = Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.
 
 error-no-selection = Select at least one item first.

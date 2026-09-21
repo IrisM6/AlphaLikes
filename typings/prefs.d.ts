@@ -55,6 +55,7 @@ declare namespace _ZoteroTypes {
       "citationRangeFilterEnabled": boolean;
       "citationRangeFilterMin": number;
       "citationRangeFilterMax": number;
+      "clearedItemIDs": string;
     };
   }
 }

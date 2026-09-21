@@ -9,6 +9,7 @@ import {
   type CitationSourceKey,
 } from "./citations";
 import {
+  CELL_CLEARED,
   CELL_LOADING,
   CELL_UNAVAILABLE,
   fromSortableValue,
@@ -294,6 +295,14 @@ export function renderLikeCell(
     cell.title = t("cell-unavailable");
   }
 
+  // A cleared item renders as an empty cell on purpose: the plugin's records
+  // are gone, and nothing is read for it until the user asks for a refresh.
+  // The tooltip is what keeps that from looking like a paper with no data.
+  if (text === CELL_CLEARED) {
+    visual.textContent = "";
+    cell.title = t("cell-cleared");
+  }
+
   return cell;
 }
 
@@ -458,6 +467,12 @@ export function renderCitationCell(
   // An empty cell because Google Scholar is waiting out a human check says so,
   // and says how long until the next attempt: otherwise it is indistinguishable
   // from a paper that genuinely has no citations anywhere.
+  if (text === CELL_CLEARED) {
+    visual.textContent = "";
+    cell.title = t("cell-cleared");
+    return cell;
+  }
+
   if (decorations.includes(CITATIONS_BLOCKED_MARKER)) {
     const status = getService().getScholarBlockStatus();
     cell.title = t("cell-scholar-blocked", {
