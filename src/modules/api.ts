@@ -22,6 +22,14 @@ export interface AlphaLikesAPI {
    * the renderer cannot drift apart.
    */
   styleColors(style: string): BandColors;
+  /**
+   * One real attempt at both reads, written down as text.
+   *
+   * The settings pane copies the result to the clipboard: what the reads do
+   * depends on the machine's network and proxy, so "it does not work" needs the
+   * machine's own facts rather than a description of them.
+   */
+  diagnose(): Promise<string>;
   version: string;
 }
 
@@ -30,6 +38,7 @@ export function createPluginAPI(version: string): AlphaLikesAPI {
     searchArxiv: (paper: PaperMetadata) => getService().searchArxiv(paper),
     parseArxivID: (value: string) => extractIDFromLooseText(value),
     styleColors: (style: string) => styleAccents(style),
+    diagnose: () => getService().diagnose(),
     version,
   };
 }

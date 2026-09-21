@@ -368,6 +368,31 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(cell.title, "");
     });
 
+    it("says why a read failed instead of only showing N/A", function () {
+      // "N/A" is the same whether the site refused the request, rate-limited
+      // it, or answered with a page that had no number in it, so the reason
+      // travels with the cell value and is spelled out in the tooltip.
+      const plain = renderLikeCell(
+        CELL_UNAVAILABLE,
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      const refused = renderLikeCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["http-403"]),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.isTrue(
+        refused.title.length > plain.title.length,
+        "the tooltip has to add the reason, or a refusal looks like a paper " +
+          "with nothing to show",
+      );
+      assert.include(refused.title, "403");
+      assert.isNotEmpty(plain.title, "an empty cell still explains itself");
+      assert.notInclude(plain.title, "403");
+    });
+
     it("dot keeps a short number as a circle", function () {
       setPref("colorEnabled", true);
       useStyle("dot");
@@ -441,6 +466,17 @@ describe("AlphaLikes column rendering", function () {
       // point of marking the cell.
       assert.include(cell.title, "Google Scholar");
       assert.match(cell.title, /\d+ 分钟|minutes/);
+    });
+
+    it("says why a citation read failed, not just that it did", function () {
+      const cell = renderCitationCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["http-429"]),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
+      assert.include(cell.title, "429");
     });
 
     it("keeps the plain explanation when nothing is blocked", function () {

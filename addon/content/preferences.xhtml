@@ -790,5 +790,39 @@
         style="width: 6em"
       />
     </hbox>
+
+    <hbox align="center">
+      <button
+        id="alphalikes-diagnose"
+        data-l10n-id="pref-diagnose"
+        label="诊断读取"
+      />
+    </hbox>
+    <description data-l10n-id="pref-diagnose-note" style="opacity: 0.8"
+      >读取不出来时点这里：它会用当前设置真的请求一次 alphaXiv 与 Google
+      Scholar，并把请求地址、状态码、页面开头、代理设置复制到剪贴板。</description
+    >
+    <description
+      id="alphalikes-diagnose-running"
+      data-l10n-id="pref-diagnose-running"
+      hidden="true"
+      style="opacity: 0.8"
+      >正在请求…</description
+    >
+    <description
+      id="alphalikes-diagnose-copied"
+      data-l10n-id="pref-diagnose-copied"
+      hidden="true"
+      style="opacity: 0.8"
+      >诊断信息已复制到剪贴板，直接粘贴发给我即可。</description
+    >
+    <description
+      id="alphalikes-diagnose-failed"
+      data-l10n-id="pref-diagnose-failed"
+      hidden="true"
+      style="opacity: 0.8"
+      >诊断没能完成；请到「帮助 → 调试输出日志」里找 [AlphaLikes]
+      开头的行。</description
+    >
   </groupbox>
 </vbox>

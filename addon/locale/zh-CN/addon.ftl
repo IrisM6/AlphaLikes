@@ -20,6 +20,15 @@ cell-filtered = 已被点赞数范围筛选隐藏
 cell-trend = 相比上次快照 {delta} 个赞（当前 {likes}）
 cell-high-impact = 位于本领域同年份的前 10%
 cell-citations-unavailable = 没有找到该条目的引用数据
+cell-unavailable-reason = 读取失败：{reason} 稍后会自动重试
+cell-citations-unavailable-reason = 读取失败：{reason} 稍后会自动重试
+failure-http-403 = 请求被站点拒绝（HTTP 403）
+failure-http-429 = 请求过于频繁（HTTP 429）
+failure-http-4xx = 请求被拒绝（HTTP 4xx）
+failure-http-5xx = 对方服务器错误（HTTP 5xx）
+failure-network = 请求没有到达站点（网络、DNS、代理或超时）
+failure-empty = 对方返回了空响应
+failure-no-count = 页面能打开，但里面没有那个数字
 cell-cleared = 本插件写在这个条目里的记录已被清除；右键 →「刷新 alphaXiv 点赞」或「刷新引用数」可以重新读取
 cell-quantile-high = 在当前列表中属于高赞
 cell-quantile-low = 在当前列表中属于低赞
@@ -157,6 +166,13 @@ pref-citations-source-s2 =
     .label = Semantic Scholar
 pref-citations-source-note = 数字只来自勾选的来源，不会用没勾的来源顶替。选一个时，有就是有、没有就是「暂无」；选多个时全部读取，显示其中最大的那个（悬停可以看到数字来自谁）。三个来源的口径并不一致——Google Scholar 收录预印本、学位论文与书籍，和 OpenAlex 的数字可能差一倍，所以默认只勾 Google Scholar。
 pref-citations-s2-note = Semantic Scholar 未提供 key 时会限流，遇到 429 会跳过并保留下次机会。
+# 读取诊断：面板上的按钮真的去请求一次，结果复制到剪贴板。
+pref-diagnose = 诊断读取
+pref-diagnose-note = 读取不出来时点这里：它会用当前设置真的请求一次 alphaXiv 与 Google Scholar，并把请求地址、状态码、页面开头和代理设置复制到剪贴板。
+pref-diagnose-running = 正在请求…
+pref-diagnose-copied = 诊断信息已复制到剪贴板，直接粘贴发给我即可。
+pref-diagnose-failed = 诊断没能完成；请到「帮助 → 调试输出日志」里找 [AlphaLikes] 开头的行。
+
 pref-refresh-title = 刷新与网络
 pref-refresh-desc = 右键任意条目可以分别选择「刷新 alphaXiv 点赞」或「刷新引用数」（列里先显示「…」，完成后弹一条结果提示）；此外缓存也可以按时间自动过期。
 pref-refresh-ttl = 缓存多少天后重新读取点赞数（0 = 不自动）

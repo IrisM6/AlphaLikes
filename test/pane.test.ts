@@ -163,6 +163,27 @@ function click(
   el.dispatchEvent(new win.MouseEvent("click", event));
 }
 
+/** Whichever diagnostic status line is currently visible, if any. */
+function diagnoseStatus(doc: Document): string {
+  for (const id of [
+    "alphalikes-diagnose-running",
+    "alphalikes-diagnose-copied",
+    "alphalikes-diagnose-failed",
+  ]) {
+    const element = doc.getElementById(id);
+    if (element && !element.hasAttribute("hidden")) return id;
+  }
+  return "";
+}
+
+/** Waits for `check` to hold, up to a few seconds. */
+async function waitFor(check: () => boolean): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline && !check()) {
+    await Zotero.Promise.delay(50);
+  }
+}
+
 function colorInputs(doc: Document): Element[] {
   return Array.from(doc.querySelectorAll(".alphalikes-color-input"));
 }
@@ -360,6 +381,47 @@ describe("AlphaLikes settings pane", function () {
       "#9FB3BF",
       "the colour box still shows the colour that was there before",
     );
+  });
+
+  it("offers a diagnostic button that reports where the report went", async function () {
+    // The user cannot find Zotero's debug log, so the failure has to be
+    // readable from the pane itself: pressing this makes the plugin run one
+    // real request per read and copies the report, and the pane says which of
+    // the three things happened.
+    const button = doc.getElementById("alphalikes-diagnose");
+    assert.isOk(button, "the pane offers no way to find out why a read failed");
+    assert.equal(diagnoseStatus(doc), "", "no status line before the click");
+
+    const instance = Zotero[config.addonInstance] as {
+      api: { diagnose(): Promise<string> };
+    };
+    const original = instance.api.diagnose;
+    const calls: string[] = [];
+
+    try {
+      instance.api.diagnose = async () => {
+        calls.push("diagnose");
+        return "AlphaLikes read diagnostic - plugin test";
+      };
+      click(win, doc, button as Element);
+
+      await waitFor(() => calls.length > 0);
+      assert.lengthOf(calls, 1, "the button has to run the diagnostic");
+
+      await waitFor(() => diagnoseStatus(doc) !== "");
+      const status = diagnoseStatus(doc);
+      assert.oneOf(status, [
+        "alphalikes-diagnose-copied",
+        "alphalikes-diagnose-failed",
+      ]);
+      assert.notEqual(
+        status,
+        "alphalikes-diagnose-running",
+        "the running line has to be replaced by the outcome",
+      );
+    } finally {
+      instance.api.diagnose = original;
+    }
   });
 
   it("shows the style's colours when nothing has been edited", function () {

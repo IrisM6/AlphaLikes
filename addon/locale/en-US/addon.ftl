@@ -22,6 +22,15 @@ cell-filtered = Hidden by the like-count filter
 cell-trend = {delta} likes since the previous snapshot (currently {likes})
 cell-high-impact = In the top 10% of its field and year
 cell-cleared = This plugin's records were cleared from this item; refresh the likes or the citations to read them again.
+cell-unavailable-reason = The read failed: {reason} It retries later.
+cell-citations-unavailable-reason = The read failed: {reason} It retries later.
+failure-http-403 = the site refused the request (HTTP 403).
+failure-http-429 = the site is rate limiting (HTTP 429).
+failure-http-4xx = the request was refused (HTTP 4xx).
+failure-http-5xx = the site answered with a server error (HTTP 5xx).
+failure-network = the request never reached the site (network, DNS, proxy or timeout).
+failure-empty = the site answered with an empty response.
+failure-no-count = the page arrived but the number was not in it.
 cell-citations-unavailable = No citation count found for this item
 cell-quantile-high = High for the items in view
 cell-quantile-low = Low for the items in view
@@ -160,6 +169,14 @@ pref-citations-source-s2 =
     .label = Semantic Scholar
 pref-citations-source-note = The number only ever comes from the sources that are ticked. With one source: its count, or nothing. With several: all of them are read and the largest is shown (hover to see which source it came from). The three providers do not measure the same thing - Google Scholar indexes preprints, theses and books that OpenAlex does not, and the two figures for one paper can differ twofold - so only Google Scholar is ticked by default.
 pref-citations-s2-note = Semantic Scholar rate-limits requests without an API key; a 429 is skipped and retried later.
+# The read diagnostic: the button in this pane makes one real request each and
+# copies the report to the clipboard.
+pref-diagnose = Run the read diagnostic
+pref-diagnose-note = When a read fails, press this: it makes one real request to alphaXiv and Google Scholar with the current settings, and copies the URLs, statuses, page openings and proxy settings to the clipboard.
+pref-diagnose-running = Requesting…
+pref-diagnose-copied = The diagnostic report is on the clipboard; paste it into the message.
+pref-diagnose-failed = The diagnostic could not finish; look for the lines starting with [AlphaLikes] in Help → Debug Output Logging.
+
 pref-refresh-title = Refreshing and network
 pref-refresh-desc = The context menu can re-read like counts and citation counts separately (the cells show "…" while it runs, then a summary appears); the cache can also expire on its own.
 pref-refresh-ttl = Re-fetch cached like counts after (days, 0 = never)

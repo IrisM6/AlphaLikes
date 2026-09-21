@@ -23,6 +23,17 @@ export const MESSAGES = {
   "cell-trend": "{delta} likes since the previous snapshot (currently {likes})",
   "cell-high-impact": "In the top 10% of its field and year",
   "cell-citations-unavailable": "No citation count found for this item",
+  "cell-unavailable-reason": "The read failed: {reason} It retries later.",
+  "cell-citations-unavailable-reason":
+    "The read failed: {reason} It retries later.",
+  "failure-http-403": "the site refused the request (HTTP 403).",
+  "failure-http-429": "the site is rate limiting (HTTP 429).",
+  "failure-http-4xx": "the request was refused (HTTP 4xx).",
+  "failure-http-5xx": "the site answered with a server error (HTTP 5xx).",
+  "failure-network":
+    "the request never reached the site (network, DNS, proxy or timeout).",
+  "failure-empty": "the site answered with an empty response.",
+  "failure-no-count": "the page arrived but the number was not in it.",
   "cell-cleared":
     "This plugin's records were cleared from this item. Refresh the likes or the citations to read them again.",
   "cell-scholar-blocked":

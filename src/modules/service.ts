@@ -7,6 +7,7 @@
  * the like count) invalidates the tree when it finishes.
  */
 
+import pkg from "../../package.json";
 import {
   ARXIV_ID_KEY,
   buildAlphaXivURL,
@@ -57,17 +58,32 @@ import {
   type LikesSnapshot,
   type TrendDelta,
 } from "./history";
-import { PacedRequester } from "./http";
+import {
+  googleConsentStored,
+  hostOf,
+  parseHTMLBody,
+  PacedRequester,
+  userAgentFor,
+} from "./http";
+import {
+  describeProxy,
+  formatDiagnosis,
+  trimBodyHead,
+  type DiagnosisInput,
+  type HttpProbe,
+} from "./diagnose";
 import { t } from "./l10n";
 import { openExternal, toast } from "./notify";
 import {
   CELL_CLEARED,
   CELL_LOADING,
   CELL_UNAVAILABLE,
+  failureReasonFrom,
   fromSortableValue,
   parseLikesFromDocument,
   toSortableValue,
   withValueDecorations,
+  type FailureReason,
 } from "./likes";
 import {
   getCitationAppearance,
@@ -114,12 +130,12 @@ const RESOLUTION_CACHE_TTL_MISS_MS = 10 * 60_000;
 type ItemState =
   | { kind: "loading" }
   | { kind: "success"; arxivID: string; likes: number }
-  | { kind: "failed"; retryAfter: number };
+  | { kind: "failed"; retryAfter: number; reason: FailureReason };
 
 type CitationState =
   | { kind: "loading" }
   | { kind: "success"; counts: CitationCounts }
-  | { kind: "failed"; retryAfter: number };
+  | { kind: "failed"; retryAfter: number; reason: FailureReason };
 
 interface ResolutionCacheEntry {
   candidates: ArxivCandidate[];
@@ -816,9 +832,12 @@ export class AlphaLikesService {
         };
       }
       if (state.retryAfter > Date.now()) {
+        // A failed citation read used to blank the cell, which is
+        // indistinguishable from a paper with no citations anywhere: it says
+        // "N/A" and carries the reason for the tooltip instead.
         return {
-          value: "",
-          text: "",
+          value: withValueDecorations(CELL_UNAVAILABLE, [state.reason]),
+          text: CELL_UNAVAILABLE,
           count: null,
           highImpact: false,
           source: null,
@@ -907,10 +926,14 @@ export class AlphaLikesService {
       if (this.disposed) return false;
 
       if (counts === null) {
-        if (this.isScholarBlocked()) this.scholarBlockedItems.add(item.id);
+        const blocked = this.isScholarBlocked();
+        if (blocked) this.scholarBlockedItems.add(item.id);
         this.citationStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+          // A block is a refusal by Google, which is the 403 case; anything
+          // else means the sources answered but had no number for this paper.
+          reason: blocked ? "http-403" : "no-count",
         });
         return false;
       }
@@ -923,6 +946,7 @@ export class AlphaLikesService {
         this.citationStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+          reason: failureReasonFrom(error),
         });
         this.debug(`citation lookup failed for item ${item.id}: ${error}`);
       }
@@ -1246,7 +1270,9 @@ export class AlphaLikesService {
       }
       if (state.kind === "loading") return CELL_LOADING;
       if (state.kind === "failed" && state.retryAfter > Date.now()) {
-        return CELL_UNAVAILABLE;
+        // The reason rides along with the value: it is the only channel the
+        // renderer has, and "N/A" on its own says nothing about what to fix.
+        return withValueDecorations(CELL_UNAVAILABLE, [state.reason]);
       }
       // A failed lookup whose cooldown elapsed falls through and is retried.
     }
@@ -1264,7 +1290,9 @@ export class AlphaLikesService {
     if (state) {
       if (state.kind === "success") return toSortableValue(state.likes);
       if (state.kind === "loading") return CELL_LOADING;
-      if (state.retryAfter > Date.now()) return CELL_UNAVAILABLE;
+      if (state.retryAfter > Date.now()) {
+        return withValueDecorations(CELL_UNAVAILABLE, [state.reason]);
+      }
     }
 
     if (!this.disposed) {
@@ -1379,6 +1407,7 @@ export class AlphaLikesService {
         this.itemStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+          reason: "no-count",
         });
         return false;
       }
@@ -1402,6 +1431,7 @@ export class AlphaLikesService {
         this.itemStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+          reason: failureReasonFrom(error),
         });
         this.debug(`failed to fetch likes for ${arxivID}: ${error}`);
       }
@@ -1534,15 +1564,224 @@ export class AlphaLikesService {
       this.itemStates.set(item.id, {
         kind: "failed",
         retryAfter: Date.now() + RESOLUTION_RETRY_DELAY_MS,
+        reason: "no-count",
       });
     } catch (error) {
       this.debug(`arXiv lookup failed for item ${item.id}: ${error}`);
       this.itemStates.set(item.id, {
         kind: "failed",
         retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+        reason: failureReasonFrom(error),
       });
     } finally {
       if (!this.disposed) refreshItemTrees();
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Diagnostics
+  // -------------------------------------------------------------------------
+
+  /**
+   * Runs one real attempt at each read for what is selected, and writes down
+   * everything that decided the outcome.
+   *
+   * "It does not read" is not something that can be fixed from a distance: the
+   * answer depends on the machine's network, its proxy settings, and what the
+   * two sites choose to do with that particular address. The report is meant to
+   * be pasted into a message, so it carries the exact URLs, the exact headers,
+   * the status, the exception and the first characters of each answer - plus
+   * the settings that decide where the reads go at all.
+   *
+   * It never touches the cache: a probe failure cannot cost the user a count.
+   */
+  async diagnose(items?: Zotero.Item[]): Promise<string> {
+    // An explicit list wins even when it is empty: the caller knows what it
+    // selected, and a test can ask for "nothing".
+    const chosen = items ?? this.selectedItems();
+    const targets = chosen.slice(0, 2);
+    const items_: string[] = [];
+    const probes: HttpProbe[] = [];
+    const notes: string[] = [];
+
+    if (!targets.length) {
+      notes.push(
+        "no item was selected - select one or two papers and run the diagnostic again",
+      );
+    }
+    if (chosen.length > 2) {
+      notes.push("only the first 2 items were probed");
+    }
+
+    for (const item of targets) {
+      const arxivID = this.getItemArxivID(item);
+      const title = safeGetField(item, "title").trim();
+      const extra = safeGetField(item, "extra");
+      const cached = readCachedLikes(extra);
+
+      items_.push(`"${title}" (id ${item.id}, ${item.itemType})`);
+      items_.push(
+        `   arxiv id: ${arxivID ?? "(none)"}; cleared: ${
+          this.isCleared(item) ? "yes" : "no"
+        }; likes cache: ${cached ?? "none"}; citations cache: ${
+          readCitations(extra) ? "yes" : "no"
+        }`,
+      );
+
+      if (arxivID) {
+        probes.push(await this.probeLikes(arxivID));
+      }
+
+      const searchTitle = (readScholarTitle(extra) || title).trim();
+      if (searchTitle.length >= 10) {
+        probes.push(await this.probeScholar(searchTitle));
+      }
+    }
+
+    const sourcePrefs = getCitationSourcePreferences().join(",") || "(none)";
+    const settings = [
+      `citation sources: ${sourcePrefs}`,
+      `citation column: ${getCitationPrefs().enabled ? "on" : "off"}, cache ${
+        getCitationPrefs().cacheTtlDays
+      } day(s)`,
+      `auto-match non-arXiv items: ${
+        getPref("autoResolveNonArxiv") ? "on" : "off"
+      } (adopt at ${getPref("autoAcceptPercent")}%)`,
+      `request interval ${getPref("requestIntervalMs")}ms, timeout ${getPref(
+        "requestTimeoutMs",
+      )}ms, likes cache ${
+        getPref("cacheTtlDays") === 0
+          ? "no automatic expiry"
+          : `${getPref("cacheTtlDays")} day(s)`
+      }`,
+    ];
+
+    notes.push(
+      "this report is one real request per read; no cache and no setting was changed",
+    );
+    if (this.isScholarBlocked()) {
+      const status = this.getScholarBlockStatus();
+      notes.push(
+        `Google Scholar is in its wait period: about ${Math.max(
+          1,
+          status.minutesLeft,
+        )} minute(s) left, attempt ${status.attempts}`,
+      );
+    }
+
+    const agent =
+      (Zotero.getMainWindow() as unknown as Window | null)?.navigator
+        ?.userAgent ?? "";
+
+    const input: DiagnosisInput = {
+      pluginVersion: String(pkg.version),
+      zoteroVersion: Zotero.version,
+      gecko: /rv:(\d+)/.exec(agent)?.[1] ?? "unknown",
+      platform: String(
+        (Services as unknown as { appinfo?: { OS?: string } })?.appinfo?.OS ??
+          "unknown",
+      ),
+      proxy: describeProxy(),
+      consentCookie: googleConsentStored(),
+      items: items_,
+      settings,
+      probes,
+      notes,
+    };
+
+    return formatDiagnosis(input);
+  }
+
+  private selectedItems(): Zotero.Item[] {
+    try {
+      const win = Zotero.getMainWindow();
+      const pane = (
+        win as unknown as {
+          ZoteroPane?: { getSelectedItems?: () => Zotero.Item[] };
+        }
+      ).ZoteroPane;
+      return pane?.getSelectedItems?.() ?? [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** One alphaXiv page fetch, described for the report. */
+  private async probeLikes(arxivID: string): Promise<HttpProbe> {
+    const url = buildAlphaXivURL(arxivID);
+    const label = "alphaXiv likes";
+    const accept = "text/html,application/xhtml+xml";
+    const attempt = await this.probePage(url, accept, label);
+    if (attempt.status === null) return attempt.probe;
+
+    const likes = parseLikesFromDocument(parseHTMLBody(attempt.body));
+    attempt.probe.verdict =
+      likes === null
+        ? "the page loaded but carries no like count (markup may have changed)"
+        : `like count found: ${likes}`;
+    return attempt.probe;
+  }
+
+  /** One Scholar search, described for the report. */
+  private async probeScholar(title: string): Promise<HttpProbe> {
+    const url = googleScholarCitationSearchURL(title);
+    const label = "Google Scholar citations";
+    const accept = "text/html,application/xhtml+xml";
+    const attempt = await this.probePage(url, accept, label);
+    if (attempt.status === null) return attempt.probe;
+
+    if (attempt.probe.status !== null && attempt.probe.status >= 400) {
+      attempt.probe.verdict =
+        "Google refused the request (treated as the human check)";
+      return attempt.probe;
+    }
+
+    const count = googleScholarCitationCount(attempt.body);
+    const hits = googleScholarResultBlocks(attempt.body).length;
+    if (isGoogleInterstitial(attempt.body) && hits === 0) {
+      attempt.probe.verdict =
+        "captcha / consent page - the answer carries no results";
+    } else if (hits > 0) {
+      attempt.probe.verdict = `results page: ${hits} result block(s), first Cited by ${
+        count ?? "unparsed"
+      }`;
+    } else {
+      attempt.probe.verdict = "neither a results page nor a challenge page";
+    }
+    return attempt.probe;
+  }
+
+  private async probePage(
+    url: string,
+    accept: string,
+    label: string,
+  ): Promise<{ probe: HttpProbe; body: string; status: number | null }> {
+    const host = hostOf(url);
+    const probe: HttpProbe = {
+      label,
+      url,
+      userAgent: userAgentFor(host),
+      status: null,
+      error: null,
+      bodyLength: 0,
+      bodyHead: "",
+      verdict: "",
+    };
+
+    try {
+      const page = await this.requester.requestPage(url, accept);
+      probe.status = page.status;
+      if (page.userAgent) probe.userAgent = page.userAgent;
+      probe.bodyLength = page.body.length;
+      probe.bodyHead = trimBodyHead(page.body);
+      if (page.status >= 400) {
+        probe.verdict = `HTTP ${page.status} - the body above is what came back`;
+      }
+      return { probe, body: page.body, status: page.status };
+    } catch (error) {
+      probe.error = error instanceof Error ? error.message : String(error);
+      probe.verdict = "the request never reached the site";
+      return { probe, body: "", status: null };
     }
   }
 

@@ -155,6 +155,33 @@ describe("the Google Scholar request", function () {
     );
   });
 
+  it("calls Zotero's own request as a method, which is what it needs", async function () {
+    // The regression that broke the likes *and* the Scholar reads in the same
+    // release: `const send = Zotero.HTTP.request; send(...)` hands the method
+    // around without its receiver, and Zotero's request needs it
+    // (`this._requestInternal`, `this.isWriteMethod`). Every production request
+    // then threw before any network traffic, while the tests - which inject a
+    // transport - never touched that path.
+    const requester = new PacedRequester({ timeoutMs: 3_000, intervalMs: 0 });
+
+    let message = "";
+    try {
+      // Nothing listens on this port, so the request is expected to fail - at
+      // the network layer, which is the part that proves the call got there.
+      await requester.requestPage("http://127.0.0.1:1/alphalikes-probe");
+    } catch (error) {
+      message = String(error instanceof Error ? error.message : error);
+    }
+
+    assert.notInclude(message, "_requestInternal");
+    assert.notInclude(message, "isWriteMethod");
+    assert.notInclude(
+      message,
+      "not a function",
+      "a missing receiver must not be what fails the request",
+    );
+  });
+
   it("stores the consent cookie even when nothing has been read yet", function () {
     // Exposed so the failure mode is visible: a jar that refuses the cookie
     // is reported as `false` here rather than silently costing every result.

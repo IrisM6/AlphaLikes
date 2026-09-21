@@ -12,10 +12,12 @@ import {
   CELL_CLEARED,
   CELL_LOADING,
   CELL_UNAVAILABLE,
+  failureReasonIn,
   fromSortableValue,
   splitValueDecorations,
+  type FailureReason,
 } from "./likes";
-import { t } from "./l10n";
+import { t, type MessageId } from "./l10n";
 import {
   colorBucket,
   getCitationAppearance,
@@ -292,7 +294,7 @@ export function renderLikeCell(
   }
 
   if (text === CELL_UNAVAILABLE) {
-    cell.title = t("cell-unavailable");
+    cell.title = failureTooltip(decorations, "cell-unavailable");
   }
 
   // A cleared item renders as an empty cell on purpose: the plugin's records
@@ -480,9 +482,28 @@ export function renderCitationCell(
     });
     cell.classList.add("alphalikes-citation-blocked");
   } else if (text === CELL_UNAVAILABLE) {
-    cell.title = t("cell-citations-unavailable");
+    cell.title = failureTooltip(decorations, "cell-citations-unavailable");
   }
   return cell;
+}
+
+/**
+ * The tooltip for an empty cell.
+ *
+ * "N/A" says nothing about what went wrong, and the reason travels in the cell
+ * value precisely so it can be turned into a sentence here: a refusal, a rate
+ * limit, a dead network and a changed page all look identical otherwise.
+ */
+function failureTooltip(decorations: string[], fallback: MessageId): string {
+  const reason: FailureReason | null = failureReasonIn(decorations);
+  if (!reason) return t(fallback);
+
+  return t(
+    fallback === "cell-unavailable"
+      ? "cell-unavailable-reason"
+      : "cell-citations-unavailable-reason",
+    { reason: t(`failure-${reason}` as MessageId) },
+  );
 }
 
 /** Maps the provider key carried in the cell data to its display name. */

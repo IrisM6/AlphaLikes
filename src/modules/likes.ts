@@ -136,6 +136,65 @@ export function isStatusValue(value: string): boolean {
   );
 }
 
+/**
+ * Why a cell is empty, as a short code that travels in the cell value.
+ *
+ * Every failed read renders the same "N/A", and the reason only exists in the
+ * service, which the renderer cannot reach: `dataProvider` and `renderCell`
+ * trade a single string, so the code rides along in the decorations. Codes
+ * rather than messages, because the renderer is the only place that can
+ * translate them.
+ */
+export const FAILURE_REASONS = [
+  /** 403: refused outright, which is usually a regional or bot check. */
+  "http-403",
+  /** 429: rate limited. */
+  "http-429",
+  /** Any other 4xx. */
+  "http-4xx",
+  /** 5xx: the other side is having a bad day. */
+  "http-5xx",
+  /** The request never produced a response: DNS, proxy, TLS, timeout. */
+  "network",
+  /** A 2xx with an empty body. */
+  "empty",
+  /** The page arrived, but the number was not in it. */
+  "no-count",
+] as const;
+
+export type FailureReason = (typeof FAILURE_REASONS)[number];
+
+export function isFailureReason(
+  value: string | undefined,
+): value is FailureReason {
+  return (
+    value !== undefined &&
+    (FAILURE_REASONS as readonly string[]).includes(value)
+  );
+}
+
+/** Turns whatever a request threw into one of the codes above. */
+export function failureReasonFrom(error: unknown): FailureReason {
+  const message = error instanceof Error ? error.message : String(error);
+  const status = /HTTP\s+(\d{3})/.exec(message);
+
+  if (status) {
+    const code = Number.parseInt(status[1], 10);
+    if (code === 403) return "http-403";
+    if (code === 429) return "http-429";
+    return code >= 500 ? "http-5xx" : "http-4xx";
+  }
+  if (/empty response/i.test(message)) return "empty";
+  return "network";
+}
+
+/** The reason a cell value carries, when it carries one. */
+export function failureReasonIn(
+  decorations: readonly string[],
+): FailureReason | null {
+  return decorations.find(isFailureReason) ?? null;
+}
+
 export function isArxivAbsURL(url: string): boolean {
   return /arxiv\.org\/abs\//i.test(url || "");
 }

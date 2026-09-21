@@ -26,7 +26,6 @@ const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const REFRESH_CITATIONS_ID = "alphalikes-refresh-citations";
 const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
-const CLEAR_SEPARATOR_ID = "alphalikes-clear-separator";
 const CLEAR_ID = "alphalikes-clear-data";
 
 type WindowWithAlert = Window & {
@@ -229,14 +228,13 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       void clearSelectedItems(win);
     });
 
+    // One group, in the order the actions are usually wanted: read, read,
+    // verify, and - last - take this plugin's records back out of `Extra`.
     popup.append(
       createSeparator(doc, SEPARATOR_ID),
       refresh,
       refreshCitations,
       openScholar,
-      // The clear action deletes data rather than showing it, so it sits apart
-      // from the three reading actions above.
-      createSeparator(doc, CLEAR_SEPARATOR_ID),
       clear,
     );
 
@@ -267,7 +265,6 @@ export function unregisterItemMenu(win: Window): void {
       REFRESH_ID,
       REFRESH_CITATIONS_ID,
       OPEN_SCHOLAR_ID,
-      CLEAR_SEPARATOR_ID,
       CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();

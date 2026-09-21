@@ -25,13 +25,34 @@ export type HttpTransport = (
   method: string,
   url: string,
   options: Record<string, unknown>,
-) => Promise<{ status: number; response?: string; responseText?: string }>;
+) => Promise<{
+  status: number;
+  // `XMLHttpRequest.responseText` is `string | null`, and a real transport is
+  // whatever Zotero hands back, so the shape matches that rather than a tidier
+  // one of our own.
+  response?: string | null;
+  responseText?: string | null;
+}>;
 
 export interface RequesterOptions {
   timeoutMs: number;
   intervalMs: number;
-  /** Defaults to `Zotero.HTTP.request`. */
+  /** Defaults to `Zotero.HTTP.request`, bound to its owner. */
   transport?: HttpTransport;
+}
+
+/**
+ * Binds a transport so that the receiver survives being passed around.
+ *
+ * `Zotero.HTTP.request` is a method of `Zotero.HTTP`, not a free function:
+ * inside it, `this` carries `_requestInternal`, the exception constructors and
+ * `isWriteMethod`. Passing the bare reference to a variable and calling it left
+ * `this` undefined, so *every* request threw before any network traffic - the
+ * likes and the Scholar reads broke in the same release - and the tests did not
+ * see it, because they inject a transport and never touch the default one.
+ */
+export function bindTransport(host: { request: HttpTransport }): HttpTransport {
+  return (method, url, options) => host.request(method, url, options);
 }
 
 interface PacingState {
@@ -72,6 +93,24 @@ export function userAgentFor(host: string): string {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) " +
     "Gecko/20100101 Firefox/115.0"
   );
+}
+
+/** Whether Google's consent cookie is in Zotero's own cookie jar. */
+export function googleConsentStored(): boolean {
+  try {
+    const jar = Services.cookies.getCookiesFromHost(
+      "scholar.google.com",
+      {},
+    ) as unknown as Array<{ name: string; value: string }>;
+
+    return jar.some(
+      (cookie) =>
+        cookie.name === GOOGLE_CONSENT_COOKIE.name &&
+        cookie.value === GOOGLE_CONSENT_COOKIE.value,
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -156,7 +195,13 @@ function getDOMParserConstructor(): typeof DOMParser {
   return constructor;
 }
 
-function hostOf(url: string): string {
+/** Parses HTML text the same way `requestHTML` does. */
+export function parseHTMLBody(body: string): Document {
+  const Parser = getDOMParserConstructor();
+  return new Parser().parseFromString(body, "text/html");
+}
+
+export function hostOf(url: string): string {
   try {
     return new URL(url).hostname;
   } catch {
@@ -234,19 +279,21 @@ export class PacedRequester {
   async requestPage(
     url: string,
     accept = "application/json, text/plain, */*",
-  ): Promise<{ status: number; body: string }> {
+  ): Promise<{ status: number; body: string; userAgent: string }> {
     const host = hostOf(url);
     const google = isGoogleHost(host);
     if (google) ensureGoogleConsent();
 
     return this.enqueue(host, async () => {
+      const userAgent = userAgentFor(host);
       const headers: Record<string, string> = {
         Accept: accept,
-        "User-Agent": userAgentFor(host),
+        "User-Agent": userAgent,
       };
+      // Scholar localises its results, and the plugin parses the English page.
       if (google) headers["Accept-Language"] = "en-US,en;q=0.9";
 
-      const send = this.options.transport ?? Zotero.HTTP.request;
+      const send = this.options.transport ?? bindTransport(Zotero.HTTP);
       const response = await send("GET", url, {
         timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
         responseType: "text",
@@ -259,7 +306,11 @@ export class PacedRequester {
           ? response.response
           : response.responseText;
 
-      return { status: Number(response.status) || 0, body: body ?? "" };
+      return {
+        status: Number(response.status) || 0,
+        body: body ?? "",
+        userAgent,
+      };
     });
   }
 
@@ -305,8 +356,6 @@ export class PacedRequester {
   /** Raw HTML document, used for the alphaXiv page scrape. */
   async requestHTML(url: string): Promise<Document> {
     const body = await this.requestText(url, "text/html,application/xhtml+xml");
-
-    const Parser = getDOMParserConstructor();
-    return new Parser().parseFromString(body, "text/html");
+    return parseHTMLBody(body);
   }
 }

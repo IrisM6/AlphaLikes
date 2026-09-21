@@ -653,6 +653,93 @@
   }
 
   // -------------------------------------------------------------------------
+  // Read diagnostic
+  // -------------------------------------------------------------------------
+
+  /**
+   * Runs one real attempt at both reads and copies the report.
+   *
+   * The point of the button is that a failure cannot be described from memory
+   * and cannot be debugged from here: the report carries the machine's own
+   * facts - the URLs, the headers, the statuses, the exception, the proxy the
+   * request went through - so the user only has to paste it.
+   */
+  function wireDiagnose(doc) {
+    var button = doc.getElementById("alphalikes-diagnose");
+    if (!button) return 0;
+
+    var status = {
+      running: doc.getElementById("alphalikes-diagnose-running"),
+      copied: doc.getElementById("alphalikes-diagnose-copied"),
+      failed: doc.getElementById("alphalikes-diagnose-failed"),
+    };
+
+    function showStatus(name) {
+      Object.keys(status).forEach(function (key) {
+        var element = status[key];
+        if (!element) return;
+        if (key === name) element.removeAttribute("hidden");
+        else element.setAttribute("hidden", "true");
+      });
+    }
+
+    showStatus("");
+
+    button.addEventListener("command", function () {
+      var api = apiOf();
+      if (!api || typeof api.diagnose !== "function") {
+        Zotero.logError(
+          new Error("[AlphaLikes] the diagnostic is not available"),
+        );
+        return;
+      }
+
+      button.disabled = true;
+      showStatus("running");
+
+      Promise.resolve()
+        .then(function () {
+          return api.diagnose();
+        })
+        .then(function (report) {
+          var text = String(report || "");
+          // The debug log is the fallback: a user who cannot find the copied
+          // text still has the whole report in 帮助 → 调试输出日志.
+          Zotero.debug("[AlphaLikes] 读取诊断\n" + text);
+          try {
+            Zotero.Utilities.Internal.copyTextToClipboard(text);
+            showStatus("copied");
+          } catch (copyError) {
+            Zotero.logError(copyError);
+            showStatus("failed");
+          }
+        })
+        .catch(function (error) {
+          Zotero.logError(
+            new Error("[AlphaLikes] diagnostic failed: " + error),
+          );
+          showStatus("failed");
+        })
+        .then(function () {
+          button.disabled = false;
+        });
+    });
+
+    return 1;
+  }
+
+  /** The plugin instance, as the scaffold's bootstrap exposes it. */
+  function apiOf() {
+    try {
+      var instance = Zotero.AlphaLikes;
+      if (instance && instance.api) return instance.api;
+    } catch (error) {
+      Zotero.debug("[AlphaLikes] api unavailable: " + error);
+    }
+    return null;
+  }
+
+  // -------------------------------------------------------------------------
   // Citation sources
   // -------------------------------------------------------------------------
 
@@ -771,6 +858,7 @@
       syncStyleColors(doc);
       wireSources(doc);
       wireAppearanceLink(doc);
+      wireDiagnose(doc);
     } catch (error) {
       Zotero.logError(
         new Error("[AlphaLikes] settings pane setup failed: " + error),
