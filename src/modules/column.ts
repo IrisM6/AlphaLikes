@@ -293,7 +293,11 @@ export function renderLikeCell(
     return cell;
   }
 
+  // An item this plugin has no count for is left visually blank: a cell full
+  // of "N/A" is noise to read past, and the tooltip is where the reason
+  // belongs anyway.
   if (text === CELL_UNAVAILABLE) {
+    visual.textContent = "";
     cell.title = failureTooltip(decorations, "cell-unavailable");
   }
 
@@ -473,6 +477,12 @@ export function renderCitationCell(
     visual.textContent = "";
     cell.title = t("cell-cleared");
     return cell;
+  }
+
+  // Nothing read, nothing shown - the same rule as the like column. The
+  // tooltip carries the reason, including which failure it was.
+  if (text === CELL_UNAVAILABLE) {
+    visual.textContent = "";
   }
 
   if (decorations.includes(CITATIONS_BLOCKED_MARKER)) {

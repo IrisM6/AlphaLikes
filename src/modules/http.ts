@@ -49,6 +49,15 @@ export type HttpTransport = (
 export interface RequesterOptions {
   timeoutMs: number;
   intervalMs: number;
+  /**
+   * Minimum gap between two Google Scholar reads, on top of `intervalMs`.
+   *
+   * The site is the one place where the gap is part of the answer rather than
+   * politeness: a rhythm no person has is what "unusual traffic" is made of.
+   * Tests that need two Scholar reads inside one session set this to zero and
+   * drive the pacing logic (and the queue they share) without the wait.
+   */
+  scholarIntervalMs?: number;
   /** Defaults to `Zotero.HTTP.request`, bound to its owner. */
   transport?: HttpTransport;
   /** Defaults to Zotero's hidden browser; injected in tests. */
@@ -179,13 +188,58 @@ export function matchGeckoVersion(agent: string, major: number | null): string {
  * forced to the engine actually in use so the string cannot contradict the
  * headers around it.
  */
+export function stripAppToken(agent: string): string {
+  return agent.replace(/\s*Zotero\/\S+/, "").trim();
+}
+
+/**
+ * The User-Agent a Google request goes out with.
+ *
+ * It has to be the agent this Zotero actually sends, with one thing taken
+ * back out: the application's own name. Every request Zotero makes carries
+ * `Zotero/<version>` unless the host is registered otherwise - it is how
+ * zotero.org knows the client - and a site that decides what it may read by
+ * looking at the client reads that suffix as "not a browser". Google Scholar
+ * answers the same search from the same address with a results page in a
+ * browser and with `429 unusual traffic` to a request whose agent ends in
+ * `Zotero/9.0.6`, which is exactly the difference between the page the user
+ * opens and the page the plugin was being refused.
+ *
+ * `Zotero.VersionHeader` is the application's own answer to this: it holds the
+ * plain agent (`getPlainFirefoxUA`) and the list of hosts that must not see
+ * the suffix (`registerPlainUAHost`, used for the hosts Zotero itself has to
+ * pass Cloudflare's checks on). Both are used here when present, so what the
+ * plugin says it sends and what goes out are the same string.
+ */
 export function browserUserAgent(): string {
   const major = geckoMajorVersion();
+  const versionHeader = (
+    Zotero as unknown as {
+      VersionHeader?: {
+        getPlainFirefoxUA?: () => string;
+      };
+    }
+  ).VersionHeader;
+
+  try {
+    const plain = versionHeader?.getPlainFirefoxUA?.();
+    if (plain) return stripAppToken(plain);
+  } catch {
+    // Fall through to the window's own agent.
+  }
 
   try {
     const agent = Zotero.getMainWindow()?.navigator?.userAgent;
-    if (agent && /Firefox\//.test(agent))
-      return matchGeckoVersion(agent, major);
+    if (agent) {
+      const stripped = stripAppToken(matchGeckoVersion(agent, major));
+      if (/Firefox\//.test(stripped)) return stripped;
+      // `... Gecko/20100101 Zotero/9.0.6` loses its only browser token with
+      // the suffix, so the engine's own name goes back where it belongs.
+      return stripped.replace(
+        /Gecko\/\d+/,
+        (gecko) => `${gecko} Firefox/${major ?? 115}.0`,
+      );
+    }
   } catch {
     // Fall through to the static string below.
   }
@@ -195,6 +249,89 @@ export function browserUserAgent(): string {
       "Gecko/20100101 Firefox/115.0",
     major,
   );
+}
+
+/** Hosts already registered with Zotero as needing the plain agent. */
+const plainUAHosts = new Set<string>();
+
+/**
+ * Makes every request to `host` - this plugin's or the application's - go out
+ * without the `Zotero/<version>` suffix.
+ *
+ * Zotero's own reason for having this is Cloudflare: a check that has been
+ * passed stays passed only while the agent stays the same, and a check cannot
+ * be passed at all with the application's name in it. Google is the same kind
+ * of gatekeeper, so the Scholar hosts are registered the same way, before the
+ * first request to them, and the registration is remembered for the session.
+ */
+export function usePlainUserAgentFor(host: string): void {
+  if (plainUAHosts.has(host)) return;
+  plainUAHosts.add(host);
+
+  try {
+    (
+      Zotero as unknown as {
+        VersionHeader?: { registerPlainUAHost?: (host: string) => void };
+      }
+    ).VersionHeader?.registerPlainUAHost?.(host);
+    Zotero.debug(`[AlphaLikes] ${host} 的请求不再携带 Zotero 标识`);
+  } catch {
+    // Older builds without the hook: the agent we send is plain already.
+  }
+}
+
+/**
+ * The hosts a Google session's cookies live in, most specific first.
+ *
+ * `scholar.google.com` sets its own (`GSP`, `GOOGLE_ABUSE_EXEMPTION`), the
+ * parent domain carries the rest (`NID`, `SOCS`, `_GRECAPTCHA`).
+ */
+export const GOOGLE_COOKIE_HOSTS = [
+  "scholar.google.com",
+  ".google.com",
+  "www.google.com",
+  "google.com",
+  "accounts.google.com",
+  "consent.google.com",
+] as const;
+
+/**
+ * Forgets everything Google remembers about this client.
+ *
+ * A jar Google has marked keeps being answered with `429` however slowly the
+ * reads are made and however long the waits are, while the same search in a
+ * browser with a jar Google has not marked opens normally. Dropping the jar is
+ * therefore the closest thing to arriving as a browser that was never here,
+ * and it is the user's call, so it lives behind a menu entry rather than in a
+ * retry path.
+ *
+ * @returns how many cookies were removed
+ */
+export function clearGoogleCookies(): number {
+  let removed = 0;
+
+  for (const host of GOOGLE_COOKIE_HOSTS) {
+    let cookies: Array<{ host: string; name: string; path: string }> = [];
+    try {
+      cookies = Services.cookies.getCookiesFromHost(
+        host,
+        {},
+      ) as unknown as typeof cookies;
+    } catch {
+      continue;
+    }
+
+    for (const cookie of cookies) {
+      try {
+        Services.cookies.remove(cookie.host, cookie.name, cookie.path, {});
+        removed += 1;
+      } catch {
+        // Already gone, or a jar that refuses this one: not worth a failure.
+      }
+    }
+  }
+
+  return removed;
 }
 
 export function userAgentFor(host: string): string {
@@ -470,7 +607,10 @@ export class PacedRequester {
       return Math.max(base, ARXIV_API_INTERVAL_MS);
     }
     if (/(^|\.)scholar\.google\.com$/i.test(host)) {
-      return Math.max(base, GOOGLE_SCHOLAR_INTERVAL_MS);
+      return Math.max(
+        base,
+        this.options.scholarIntervalMs ?? GOOGLE_SCHOLAR_INTERVAL_MS,
+      );
     }
     return base;
   }
@@ -523,7 +663,10 @@ export class PacedRequester {
   ): Promise<{ status: number; body: string; userAgent: string }> {
     const host = hostOf(url);
     const google = isGoogleHost(host);
-    if (google) ensureGoogleConsent();
+    if (google) {
+      usePlainUserAgentFor(host);
+      ensureGoogleConsent();
+    }
 
     return this.enqueue(host, async () => {
       const userAgent = userAgentFor(host);
@@ -579,6 +722,7 @@ export class PacedRequester {
     options: { compare?: boolean } = {},
   ): Promise<ScholarPage> {
     const host = hostOf(url);
+    usePlainUserAgentFor(host);
     ensureGoogleConsent();
 
     return this.enqueue(host, async () => {

@@ -87,6 +87,9 @@ function makeRequester(options: {
   return new PacedRequester({
     timeoutMs: 5_000,
     intervalMs: 0,
+    // Two Scholar reads inside one session are the point of these tests, and
+    // the production gap between them is fifteen seconds.
+    scholarIntervalMs: 0,
     transport: options.transport,
     pageLoader: options.loader,
   });

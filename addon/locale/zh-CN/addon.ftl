@@ -13,6 +13,7 @@ column-citations-label = 引用数
 menu-refresh = 刷新 alphaXiv 点赞
 menu-refresh-citations = 刷新引用数
 menu-open-scholar = 打开 Google Scholar 验证页
+menu-reset-google = 重置谷歌会话（清除 Google Cookie 后重试）
 
 cell-loading = 正在从 alphaXiv 读取…
 cell-unavailable = 没有找到该条目的 alphaXiv 点赞
@@ -67,9 +68,11 @@ menu-clear = 清除本插件写入的 Extra 记录
 notify-clear-title = AlphaLikes · 清除
 clear-done = 已清除 {count} 个条目中本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
 clear-none = 选中的条目里没有本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
+reset-google-done = 已清除 {cookies} 个 Google Cookie，正在重新读取引用数。
 
 notify-scholar-blocked = Google Scholar 要求人机验证，引用数暂时无法读取。约 {minutes} 分钟后会自动重试；也可以右键 →「打开 Google Scholar 验证页」先自己完成验证。
-notify-scholar-rate-limited = Google Scholar 对当前网络地址限流，引用数暂时无法读取。约 {minutes} 分钟后会自动重试。这类限制按 IP 生效：本机浏览器里做同样的搜索也会被挡，等待通常是最有效的办法。
+notify-scholar-paused = Google Scholar 连续多次要求人机验证，已停止自动重试（继续重试只会让它的判定更差）。请右键 →「打开 Google Scholar 验证页」自己完成一次，或「重置谷歌会话」后再试。
+notify-scholar-rate-limited = Google Scholar 对 Zotero 的这次读取限流（429），引用数暂时无法读取。约 {minutes} 分钟后会自动重试。如果一直失败，用右键 →「重置谷歌会话」清掉 Zotero 这边的 Google Cookie 再试一次——那等同于换一个从没来过的浏览器。
 
 error-no-selection = 请先选择至少一个条目。
 error-single-selection = 该操作只能用于单个条目。

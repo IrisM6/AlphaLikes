@@ -17,8 +17,12 @@ export const ARXIV_API_INTERVAL_MS = 3_000;
 /**
  * Google Scholar has no API and answers automated reads with a captcha once
  * they look too dense, so its calls are spaced further apart than the rest.
+ *
+ * A person reading a handful of papers in a browser takes far longer than this
+ * between one search and the next; five seconds is a rhythm no one has. The
+ * wait is what keeps a library of fifty items from looking like a crawl.
  */
-export const GOOGLE_SCHOLAR_INTERVAL_MS = 5_000;
+export const GOOGLE_SCHOLAR_INTERVAL_MS = 15_000;
 
 /**
  * Google Scholar's front page.

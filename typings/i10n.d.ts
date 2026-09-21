@@ -38,10 +38,12 @@ export type FluentMessageId =
   | 'menu-open-scholar'
   | 'menu-refresh'
   | 'menu-refresh-citations'
+  | 'menu-reset-google'
   | 'notify-clear-title'
   | 'notify-refresh-citations-title'
   | 'notify-refresh-likes-title'
   | 'notify-scholar-blocked'
+  | 'notify-scholar-paused'
   | 'notify-scholar-rate-limited'
   | 'notify-scholar-title'
   | 'pref-appearance-desc'
@@ -139,4 +141,5 @@ export type FluentMessageId =
   | 'refresh-joining'
   | 'refresh-likes-updated'
   | 'refresh-nothing'
-  | 'refresh-skipped';
+  | 'refresh-skipped'
+  | 'reset-google-done';

@@ -15,6 +15,7 @@ column-citations-label = Citations
 menu-refresh = Refresh alphaXiv Likes
 menu-refresh-citations = Refresh citation counts
 menu-open-scholar = Open the Google Scholar verification page
+menu-reset-google = Reset the Google session (clear Google cookies, then retry)
 
 cell-loading = Loading from alphaXiv…
 cell-unavailable = No alphaXiv likes found for this item
@@ -70,9 +71,11 @@ menu-clear = Clear this plugin's Extra records
 notify-clear-title = AlphaLikes · clear
 clear-done = Removed this plugin's records from {count} item(s); everything else in Extra is untouched. These items stay unwritten until refreshed.
 clear-none = No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until refreshed.
+reset-google-done = Cleared {cookies} Google cookie(s); re-reading the citation counts now.
 
-notify-scholar-rate-limited = Google Scholar is rate limiting this network address, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; the limit applies to the address, so the same search in this machine's browser is limited too, and waiting is usually what clears it.
+notify-scholar-rate-limited = Google Scholar rate limited (429) this read from Zotero, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; if it keeps failing, the context menu can reset the Google session, which is the same thing as arriving in a browser that was never here.
 notify-scholar-blocked = Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.
+notify-scholar-paused = Google Scholar has asked for a human check several times in a row, so the automatic retries have stopped - retrying only makes its verdict worse. Open the check once yourself from the context menu, or reset the Google session and try again.
 
 error-no-selection = Select at least one item first.
 error-single-selection = This action works on a single item only.

@@ -51,6 +51,12 @@ interface Stub {
   scholarStatus: number;
   /** Set to hold the next request open until `release` is called. */
   hold: boolean;
+  /**
+   * With `hold`, the number of requests that still answer immediately: the
+   * first ones land, the ones after that wait. Used to watch a batch fill in
+   * row by row.
+   */
+  holdAfter: number | null;
   release: (() => void) | null;
 }
 
@@ -64,6 +70,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     failScholar: false,
     scholarStatus: 200,
     hold: false,
+    holdAfter: null,
     release: null,
   };
   const target = service as { requester: Record<string, unknown> };
@@ -71,6 +78,9 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
 
   function gate(): Promise<void> {
     if (!state.hold) return Promise.resolve();
+    if (state.holdAfter !== null && state.served.length <= state.holdAfter) {
+      return Promise.resolve();
+    }
     return new Promise<void>((resolve) => {
       state.release = resolve;
     });
@@ -201,6 +211,72 @@ describe("AlphaLikes refresh", function () {
       await running;
 
       assert.equal(fromSortableValue(service.getCellData(item)), "333");
+    });
+
+    it("fills in each row as it is read, not at the end of the batch", async function () {
+      // Two items of its own: a refresh writes what it read into `Extra`, so
+      // borrowing the shared item would move the values the other tests in
+      // this block hand on to each other.
+      const make = async (id: string, title: string) => {
+        const created = new Zotero.Item("journalArticle");
+        created.libraryID = Zotero.Libraries.userLibraryID;
+        created.setField("title", title);
+        created.setField("date", "2026-09-21");
+        created.setField(
+          "extra",
+          upsertLikesCache(`alphaxiv_arxiv_id: ${id}`, 111),
+        );
+        await created.saveTx();
+        return created;
+      };
+
+      const first = await make("2401.00003", "AlphaLikes pace probe (first)");
+      const second = await make("2401.00004", "AlphaLikes pace probe (second)");
+
+      try {
+        stub = stubRequester(service, 777);
+        // The first read answers, the second is held open: if the cells only
+        // left their loading marker when the whole batch was done, the first
+        // row would still be reading "…" here.
+        stub.hold = true;
+        stub.holdAfter = 1;
+
+        const running = service.refreshItems([first, second]);
+
+        for (
+          let waited = 0;
+          waited < 80 &&
+          fromSortableValue(service.getCellData(first)) !== "777";
+          waited += 1
+        ) {
+          await Zotero.Promise.delay(25);
+        }
+
+        assert.equal(
+          fromSortableValue(service.getCellData(first)),
+          "777",
+          "the row that has been read shows its count straight away",
+        );
+        assert.equal(
+          fromSortableValue(service.getCellData(second)),
+          CELL_LOADING,
+          "the row still being read keeps its loading marker",
+        );
+
+        stub.hold = false;
+        stub.release?.();
+        await running;
+
+        assert.equal(fromSortableValue(service.getCellData(second)), "777");
+      } finally {
+        for (const created of [first, second]) {
+          try {
+            await created.eraseTx();
+          } catch {
+            // The library may already be gone when the run tears down.
+          }
+        }
+      }
     });
 
     it("keeps the old count when the re-read fails", async function () {

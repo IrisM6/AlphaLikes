@@ -79,6 +79,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 
@@ -105,6 +106,48 @@ describe("the Google Scholar request", function () {
     assert.notProperty(opening, "Referer");
   });
 
+  it("keeps the application's own name out of the request", async function () {
+    const { captured, transport } = stubTransport({
+      status: 200,
+      response: "<html><body></body></html>",
+    });
+    const requester = new PacedRequester({
+      timeoutMs: 5_000,
+      intervalMs: 0,
+      scholarIntervalMs: 0,
+      transport,
+    });
+
+    await requester.requestPage(
+      "https://scholar.google.com/scholar?hl=en&as_sdt=0,5&q=probe",
+      "text/html,application/xhtml+xml",
+    );
+
+    const agent = headersOf(captured)["User-Agent"];
+    assert.notInclude(
+      agent,
+      "Zotero/",
+      "every Zotero request carries Zotero/<version> unless the host is " +
+        "registered otherwise, and that suffix is exactly what a site that " +
+        'screens clients reads as "not a browser"',
+    );
+    assert.match(agent, /Firefox\/\d+\.0/);
+
+    // Zotero's own mechanism, and the reason for registering at all: it also
+    // covers the requests this plugin does not make itself - the hidden
+    // browser's navigation among them.
+    const versionHeader = (
+      Zotero as unknown as {
+        VersionHeader?: { _plainUAHosts?: Set<string> };
+      }
+    ).VersionHeader;
+    assert.isOk(versionHeader, "Zotero exposes VersionHeader");
+    assert.isTrue(
+      versionHeader?._plainUAHosts?.has("scholar.google.com"),
+      "the Scholar host is registered for the plain user agent",
+    );
+  });
+
   it("looks like the browser next to it, and brings the consent cookie", async function () {
     const { captured, transport } = stubTransport({
       status: 200,
@@ -113,6 +156,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 
@@ -152,6 +196,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 
@@ -192,6 +237,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 
@@ -216,6 +262,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 
@@ -277,6 +324,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
+      scholarIntervalMs: 0,
       transport,
     });
 

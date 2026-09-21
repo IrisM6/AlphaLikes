@@ -62,6 +62,7 @@ import {
 } from "./history";
 import {
   browserUserAgent,
+  clearGoogleCookies,
   cookieNames,
   googleConsentStored,
   hostOf,
@@ -168,6 +169,18 @@ const CITATION_TITLE_MATCH_MIN = 0.85;
  * asking for a person, and the notice explains what to do about it.
  */
 const SCHOLAR_ANNOUNCE_AFTER = 3;
+
+/**
+ * How many blocks in one episode before the automatic retries stop.
+ *
+ * The delay already doubles up to two hours, so this is not about speed: it is
+ * about not doing the one thing that is certain to be useless. Every automatic
+ * retry is another automated request to the site that just said it does not
+ * want them, and the counter only grows - the reported episode had reached
+ * attempt 31. Past this point the plugin waits for a person instead: the menu
+ * offers the check itself and a clean Google session.
+ */
+const SCHOLAR_MAX_ATTEMPTS = 4;
 
 /** Bounds on the population sample, so a huge library stays responsive. */
 const MIN_QUANTILE_VALUES = 5;
@@ -393,6 +406,8 @@ export class AlphaLikesService {
   private scholarBlockedItems = new Set<number>();
   /** One notification per block episode, not one per paper. */
   private scholarBlockAnnounced = false;
+  /** True once the automatic retries have been given up on, per episode. */
+  private scholarRetryPaused = false;
 
   /**
    * Latest like count seen for each item the column has rendered. This is the
@@ -742,6 +757,20 @@ export class AlphaLikesService {
       );
     }
 
+    if (attempts >= SCHOLAR_MAX_ATTEMPTS) {
+      // Retrying again would only add another automated request to the pile
+      // Google is refusing. Say so once and stop.
+      if (!this.scholarRetryPaused) {
+        this.scholarRetryPaused = true;
+        this.debug(
+          `Google Scholar has refused ${attempts} attempts in a row; ` +
+            `automatic retries stop until the user acts`,
+        );
+        toast(t("notify-scholar-title"), t("notify-scholar-paused"));
+      }
+      return;
+    }
+
     this.scheduleScholarRetry(delay);
   }
 
@@ -784,6 +813,35 @@ export class AlphaLikesService {
     }
     this.scholarBlock = null;
     this.scholarBlockAnnounced = false;
+    this.scholarRetryPaused = false;
+  }
+
+  /**
+   * Throws away the Google session the reads have been going through.
+   *
+   * The block is what the plugin saw; the cookies are what Google remembers
+   * about this client. A jar Google has marked keeps being answered with `429`
+   * however slowly the reads are paced - the same search in the browser next
+   * to it, on the same machine and address, opens normally - so dropping the
+   * jar is the closest thing to arriving as a browser that was never here.
+   * It is the user's decision to make, hence a menu entry, and it is reported
+   * back so the notice can say what happened.
+   */
+  async resetGoogleSession(): Promise<{ cookies: number; items: number }> {
+    const cookies = clearGoogleCookies();
+    this.clearScholarBlock();
+
+    const items = [...this.scholarBlockedItems]
+      .map((id) => Zotero.Items.get(id))
+      .filter((item): item is Zotero.Item => Boolean(item));
+    this.scholarBlockedItems.clear();
+
+    if (items.length && !this.disposed) await this.refreshCitations(items);
+
+    this.debug(
+      `[AlphaLikes] 已清除 ${cookies} 个 Google Cookie 并重试 ${items.length} 个条目`,
+    );
+    return { cookies, items: items.length };
   }
 
   /**
@@ -993,6 +1051,9 @@ export class AlphaLikesService {
       }
       return false;
     } finally {
+      // Same as the like column: this item's answer is shown the moment it is
+      // read, while the items still being read keep their loading marker.
+      this.refreshingCitations.delete(item.id);
       if (!this.disposed) refreshItemTrees();
     }
   }
@@ -1486,6 +1547,11 @@ export class AlphaLikesService {
       }
       return false;
     } finally {
+      // The number is in `Extra` by now, so the cell leaves the loading marker
+      // here - per item - instead of when the whole batch has finished. A
+      // refresh of twenty items fills in twenty times, not once at the end,
+      // and a like count never waits for the citations of the same item.
+      this.refreshingLikes.delete(item.id);
       if (!this.disposed) refreshItemTrees();
       if (options.force) this.staleRefreshing.delete(item.id);
     }

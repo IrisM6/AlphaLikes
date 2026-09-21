@@ -174,6 +174,36 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(visual.textContent, "…");
       assert.equal(visual.style.color, "");
     });
+
+    it("leaves a cell with no count empty rather than showing N/A", function () {
+      const cell = renderLikeCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["no-count"]),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      const visual = cell.firstElementChild as HTMLElement;
+
+      assert.equal(
+        visual.textContent,
+        "",
+        "an item without a count is blank; the reason belongs in the tooltip, " +
+          "not in the reading column",
+      );
+      assert.notInclude(visual.textContent, "N/A");
+      assert.isNotEmpty(cell.title, "the tooltip still explains what happened");
+    });
+
+    it("leaves a citation cell with no count empty too", function () {
+      const cell = renderCitationCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["no-count"]),
+        { className: "col-alphaxiv_citations" },
+        testDocument(),
+      ) as HTMLElement;
+      const visual = cell.firstElementChild as HTMLElement;
+
+      assert.equal(visual.textContent, "");
+      assert.isNotEmpty(cell.title);
+    });
   });
 
   describe("trend decoration", function () {
@@ -461,7 +491,11 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
 
-      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
+      assert.equal(
+        (cell.firstElementChild as HTMLElement).textContent,
+        "",
+        "the cell is blank while the check is outstanding; the tooltip says why",
+      );
       // The tooltip says why and when the next attempt is, which is the whole
       // point of marking the cell.
       assert.include(cell.title, "Google Scholar");
@@ -475,7 +509,7 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
 
-      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
+      assert.equal((cell.firstElementChild as HTMLElement).textContent, "");
       assert.include(cell.title, "429");
     });
 
@@ -506,13 +540,14 @@ describe("AlphaLikes column rendering", function () {
       assert.equal(visual.style.background, "rgb(245, 245, 245)");
     });
 
-    it("still renders a status marker", function () {
+    it("still renders a status marker, blank rather than N/A", function () {
       const cell = renderCitationCell(
-        "N/A",
+        CELL_UNAVAILABLE,
         CITATION_COLUMN,
         testDocument(),
       ) as HTMLElement;
-      assert.equal((cell.firstElementChild as HTMLElement).textContent, "N/A");
+      assert.equal((cell.firstElementChild as HTMLElement).textContent, "");
+      assert.isTrue(cell.title.length > 0, "the tooltip still explains it");
     });
   });
 });

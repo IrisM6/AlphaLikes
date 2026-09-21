@@ -26,6 +26,7 @@ const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const REFRESH_CITATIONS_ID = "alphalikes-refresh-citations";
 const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
+const RESET_GOOGLE_ID = "alphalikes-reset-google";
 const CLEAR_ID = "alphalikes-clear-data";
 
 type WindowWithAlert = Window & {
@@ -186,6 +187,29 @@ async function clearSelectedItems(win: Window): Promise<void> {
   }
 }
 
+/**
+ * Throws away Zotero's Google session and reads the blocked items again.
+ *
+ * The entry exists because the two halves of a Scholar block live in different
+ * places: the wait is the plugin's, the marking is Google's, and it is carried
+ * by Zotero's own cookie jar. A user whose browser shows the very same search
+ * while the plugin is refused has no way to hand that session over - dropping
+ * the jar is the closest thing to it, and it is offered rather than done
+ * silently, because it signs the application out of Google.
+ */
+async function resetGoogleSession(win: Window): Promise<void> {
+  try {
+    const summary = await getService().resetGoogleSession();
+    toast(
+      t("notify-scholar-title"),
+      t("reset-google-done", { cookies: summary.cookies }),
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    notify(win, `${t("progress-error")} ${message}`);
+  }
+}
+
 /** Opens the paper's own Scholar search in the browser. */
 function openScholarVerification(win: Window): void {
   const items = selectedItems(win);
@@ -224,6 +248,15 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       },
     );
 
+    const resetGoogle = createMenuItem(
+      doc,
+      RESET_GOOGLE_ID,
+      t("menu-reset-google"),
+      () => {
+        void resetGoogleSession(win);
+      },
+    );
+
     const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
       void clearSelectedItems(win);
     });
@@ -235,6 +268,7 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       refresh,
       refreshCitations,
       openScholar,
+      resetGoogle,
       clear,
     );
 
@@ -249,6 +283,9 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       (refreshCitations as HTMLElement).hidden =
         count === 0 || !citationPrefs.enabled;
       (openScholar as HTMLElement).hidden =
+        !citationPrefs.enabled || !findsScholar;
+      // Same condition as the check itself: both are about Google Scholar.
+      (resetGoogle as HTMLElement).hidden =
         !citationPrefs.enabled || !findsScholar;
       (clear as HTMLElement).hidden = count === 0;
     });
@@ -265,6 +302,7 @@ export function unregisterItemMenu(win: Window): void {
       REFRESH_ID,
       REFRESH_CITATIONS_ID,
       OPEN_SCHOLAR_ID,
+      RESET_GOOGLE_ID,
       CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();
