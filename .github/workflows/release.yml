@@ -19,3 +19,28 @@ jobs:
       build: "npm run build"
       release: "npm run release"
     secrets: inherit
+
+  # The release job writes the body from the conventional commits since the
+  # previous tag and gives up with "_No significant changes._" when that range
+  # is empty — which it always is on the shallow checkout a runner makes. Every
+  # release up to 1.6.0 therefore shipped an empty body, on the release page and
+  # in the marketplace listing, which shows the body. This job puts the newest
+  # CHANGELOG.md section in its place.
+  release-notes:
+    name: Release notes from CHANGELOG.md
+    needs:
+      - create-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Update the release body
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          node scripts/release-notes.mjs > /tmp/release-notes.md
+          gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/release-notes.md
