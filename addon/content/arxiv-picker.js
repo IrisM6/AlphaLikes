@@ -139,12 +139,30 @@
     row.appendChild(radio);
     row.appendChild(details);
 
-    row.addEventListener("click", function () {
+    function onPick(event) {
+      if (event) event.preventDefault();
       selectRadio(radio);
       selectedID = candidate.arxivID;
       if (elements.manualInput) elements.manualInput.value = "";
       hideManualError();
       updateApplyState();
+    }
+
+    // The click is handled on the row, on every child of it and once more in
+    // the capture phase. One bubble listener would normally be enough, but a
+    // result that cannot be picked is exactly the complaint this dialog exists
+    // to answer, so nothing is left to chance here.
+    row.addEventListener("click", onPick, true);
+    row.addEventListener("click", onPick);
+    row.addEventListener("dblclick", function (event) {
+      onPick(event);
+      applyAndClose();
+    });
+    [radio, details, title, meta, evidence].forEach(function (node) {
+      node.addEventListener("click", onPick);
+    });
+    radio.addEventListener("command", function () {
+      onPick(null);
     });
 
     return { row: row, radio: radio, candidate: candidate };
@@ -272,30 +290,43 @@
     });
   }
 
+  /**
+   * Runs a search and repopulates the list.
+   *
+   * Shared by the 搜索 button and the automatic search the dialog runs as it
+   * opens: making the user ask twice for the thing the menu item promised is
+   * how "it found the paper but shows nothing" happens.
+   */
+  function runSearch() {
+    if (typeof request.searchAgain !== "function") return;
+
+    elements.searchAgain.disabled = true;
+    if (elements.apply) elements.apply.disabled = true;
+    setStatus(text("searching", "Searching…"));
+
+    request
+      .searchAgain(request.paper)
+      .then(function (results) {
+        candidates = results || [];
+        render();
+        setStatus(
+          candidates.length
+            ? ""
+            : text("none", "No candidate reached the confidence threshold."),
+        );
+      })
+      .catch(function (error) {
+        var message = String((error && error.message) || error);
+        setStatus(text("searchFailed", "The search failed.") + " " + message);
+      })
+      .then(function () {
+        elements.searchAgain.disabled = false;
+        updateApplyState();
+      });
+  }
+
   if (elements.searchAgain) {
-    elements.searchAgain.addEventListener("command", function () {
-      if (typeof request.searchAgain !== "function") return;
-
-      elements.searchAgain.disabled = true;
-      if (elements.apply) elements.apply.disabled = true;
-      setStatus(text("searching", "Searching…"));
-
-      request
-        .searchAgain(request.paper)
-        .then(function (results) {
-          candidates = results || [];
-          render();
-          setStatus("");
-        })
-        .catch(function (error) {
-          var message = String((error && error.message) || error);
-          setStatus(text("searchFailed", "The search failed.") + " " + message);
-        })
-        .then(function () {
-          elements.searchAgain.disabled = false;
-          updateApplyState();
-        });
-    });
+    elements.searchAgain.addEventListener("command", runSearch);
   }
 
   // -------------------------------------------------------------------------
@@ -344,10 +375,16 @@
     hideManualError();
     setStatus("");
 
-    try {
-      if (elements.manualInput) elements.manualInput.focus();
-    } catch {
-      // Focus is a nicety only.
+    // The dialog is opened to look up a paper, so the lookup happens as it
+    // opens rather than after a second click on 搜索.
+    if (request.autoSearch && !candidates.length) {
+      runSearch();
+    } else {
+      try {
+        if (elements.manualInput) elements.manualInput.focus();
+      } catch {
+        // Focus is a nicety only.
+      }
     }
   }
 

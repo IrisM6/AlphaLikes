@@ -4,7 +4,11 @@
  * Everything in this module is pure so it can be unit tested outside Zotero.
  */
 
-import { CITATIONS_ANY_LINE_RE, CITATIONS_UPDATED_LINE_RE } from "./citations";
+import {
+  CITATIONS_ANY_LINE_RE,
+  CITATIONS_UPDATED_LINE_RE,
+  SCHOLAR_TITLE_ANY_LINE_RE,
+} from "./citations";
 import { HISTORY_ANY_LINE_RE } from "./history";
 
 export const CACHE_KEY = "alphaxiv_likes";
@@ -232,6 +236,7 @@ const OWNED_LINE_RES = [
   HISTORY_ANY_LINE_RE,
   CITATIONS_ANY_LINE_RE,
   CITATIONS_UPDATED_LINE_RE,
+  SCHOLAR_TITLE_ANY_LINE_RE,
 ];
 
 /** Removes every line AlphaLikes owns, leaving the rest of `Extra` intact. */

@@ -24,6 +24,11 @@ import {
   googleScholarResultBlocks,
   googleScholarResultTitle,
   isHighImpact,
+  parseGoogleScholarResults,
+  readScholarTitle,
+  scholarTitleSearchURL,
+  upsertScholarTitle,
+  type ScholarResult,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
@@ -67,7 +72,7 @@ import {
 } from "./likes";
 import {
   getCitationPrefs,
-  getCitationSourcePreference,
+  getCitationSourcePreferences,
   getColorScheme,
   getPref,
   getRangeFilter,
@@ -131,6 +136,14 @@ const QUANTILE_REFRESH_MS = 2_000;
 /** Title similarity an OpenAlex search hit must reach to be trusted. */
 const CITATION_TITLE_MATCH_MIN = 0.85;
 
+/**
+ * How many automatic retries a Scholar block gets before the user is told.
+ *
+ * Two retries cover a transient rate limit; needing a third means Google is
+ * asking for a person, and the notice explains what to do about it.
+ */
+const SCHOLAR_ANNOUNCE_AFTER = 3;
+
 /** Bounds on the population sample, so a huge library stays responsive. */
 const MIN_QUANTILE_VALUES = 5;
 
@@ -149,6 +162,35 @@ export interface EffectiveThresholds {
   /** Which rule produced them, for the cell's tooltip. */
   source: "threshold" | "quantile";
   sampleSize: number;
+}
+
+/**
+ * What an explicit refresh did, so the menu can report it.
+ *
+ * A refresh that quietly leaves the old numbers in place is indistinguishable
+ * from a refresh that failed, which is what the action is for: the summary
+ * says how many counts were actually re-read.
+ */
+/** The result of a manual Google Scholar search, as the picker needs it. */
+export interface ScholarLookup {
+  results: ScholarResult[];
+  /** Google answered with a human check instead of results. */
+  blocked: boolean;
+  /** The search URL, so a browser can be opened on the same query. */
+  url: string;
+  /** Non-empty when the request itself failed. */
+  error: string;
+}
+
+export interface RefreshSummary {
+  /** Items the action was applied to. */
+  total: number;
+  /** Counts that came back and were stored. */
+  updated: number;
+  /** Items whose count could not be read; their old value is kept. */
+  failed: number;
+  /** Items that have nothing to look counts up with yet. */
+  skipped: number;
 }
 
 export interface BatchResolutionResult {
@@ -175,16 +217,16 @@ export interface ItemTrend {
 }
 
 /**
- * The provider whose count is displayed, and the only one that is asked.
+ * The providers whose counts may be shown - exactly the chosen ones.
  *
  * This used to be a preference-first list with the rest of the authority order
  * behind it, which meant choosing Google Scholar still showed OpenAlex numbers
- * whenever Scholar had nothing to say. The two counts are not the same
- * measurement - Scholar counts preprints, theses and books that OpenAlex does
- * not - so that is a wrong answer rather than a graceful fallback.
+ * whenever Scholar had nothing to say. Now only the selected providers are
+ * asked: one provider means its number or an empty cell, several mean the
+ * largest of their counts. Nothing outside the selection is ever substituted.
  */
 function citationOrder(): CitationSourceKey[] {
-  return citationProviderOrder(getCitationSourcePreference());
+  return citationProviderOrder(getCitationSourcePreferences());
 }
 
 function isSameYearOrAdjacent(a: number | null, b: number | null): boolean {
@@ -293,6 +335,16 @@ export class AlphaLikesService {
   private inFlightLikes = new Map<string, Promise<number | null>>();
   private inFlightResolution = new Map<string, Promise<ArxivCandidate[]>>();
   private staleRefreshing = new Set<number>();
+  /**
+   * Items an explicit refresh is currently re-reading, per column.
+   *
+   * The cached value stays in `Extra` while the refresh runs, so a failed
+   * re-read cannot cost the user the number they already had; these items are
+   * simply shown as loading until the fresh value (or the old one) is back.
+   * Two sets, because refreshing citations must not blank the likes column.
+   */
+  private refreshingLikes = new Set<number>();
+  private refreshingCitations = new Set<number>();
   private stopObservingPrefs: (() => void) | null = null;
   private disposed = false;
 
@@ -487,14 +539,35 @@ export class AlphaLikesService {
     };
   }
 
-  /** The page a user can open to clear the check themselves. */
-  scholarVerificationURL(): string {
+  /**
+   * The page a user can open to clear the check themselves.
+   *
+   * With an item at hand this is that paper's own Scholar search - already
+   * filled in and already run - rather than Scholar's front page, because a
+   * blank search box leaves the user to retype a title the plugin knows. The
+   * remembered result, when there is one, is searched for instead: the user
+   * said that is the paper whose count belongs to this item.
+   */
+  scholarVerificationURL(item?: Zotero.Item | null): string {
+    if (item) {
+      const title = this.scholarSearchTitle(item);
+      if (title) return scholarTitleSearchURL(title);
+    }
     return this.scholarBlock?.url ?? GOOGLE_SCHOLAR_HOME;
   }
 
   /** Opens that page in the default browser. */
-  openScholarVerification(): void {
-    openExternal(this.scholarVerificationURL());
+  openScholarVerification(item?: Zotero.Item | null): void {
+    openExternal(this.scholarVerificationURL(item));
+  }
+
+  /** The title Scholar is asked about: the picked result, else the item's. */
+  private scholarSearchTitle(item: Zotero.Item): string {
+    const pinned = readScholarTitle(safeGetField(item, "extra"));
+    if (pinned) return pinned;
+
+    const title = safeGetField(item, "title").trim();
+    return title.length >= 10 ? title : "";
   }
 
   /**
@@ -508,8 +581,11 @@ export class AlphaLikesService {
   /**
    * Records a block and schedules the automatic retry.
    *
-   * The user is told once per episode, because the cell would otherwise just
-   * stay empty with no explanation and no way to help.
+   * The first couple of blocks are handled silently: they are usually ordinary
+   * rate limiting that clears itself, and a notice for every one of them would
+   * be noise. Only when the automatic retries have failed often enough that
+   * the check looks like it needs a person is the user told - once per episode,
+   * with the retry time and a way to clear it themselves.
    */
   private noteScholarBlock(url: string): void {
     const attempts = (this.scholarBlock?.attempts ?? 0) + 1;
@@ -517,11 +593,16 @@ export class AlphaLikesService {
     this.scholarBlock = { attempts, until: Date.now() + delay, url };
 
     if (!this.scholarBlockAnnounced) {
+      this.debug(
+        `Google Scholar asked for a human check; retrying in ${Math.round(
+          delay / 60_000,
+        )} minutes`,
+      );
+    }
+
+    if (!this.scholarBlockAnnounced && attempts >= SCHOLAR_ANNOUNCE_AFTER) {
       this.scholarBlockAnnounced = true;
       const minutes = Math.round(delay / 60_000);
-      this.debug(
-        `Google Scholar asked for a human check; retrying in ${minutes} minutes`,
-      );
       toast(
         t("notify-scholar-title"),
         t("notify-scholar-blocked", { minutes }),
@@ -608,6 +689,16 @@ export class AlphaLikesService {
         highImpact: false,
         source: null,
       };
+
+    if (this.refreshingCitations.has(item.id)) {
+      return {
+        value: CELL_LOADING,
+        text: CELL_LOADING,
+        count: null,
+        highImpact: false,
+        source: null,
+      };
+    }
 
     const extra = safeGetField(item, "extra");
     const cached = readCitations(extra);
@@ -716,12 +807,12 @@ export class AlphaLikesService {
     void this.populateCitations(item).catch(() => undefined);
   }
 
-  private async populateCitations(item: Zotero.Item): Promise<void> {
+  private async populateCitations(item: Zotero.Item): Promise<boolean> {
     const arxivID = this.getItemArxivID(item);
 
     try {
       const counts = await this.fetchCitations(item, arxivID);
-      if (this.disposed) return;
+      if (this.disposed) return false;
 
       if (counts === null) {
         if (this.isScholarBlocked()) this.scholarBlockedItems.add(item.id);
@@ -729,11 +820,12 @@ export class AlphaLikesService {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
         });
-        return;
+        return false;
       }
 
       this.citationStates.set(item.id, { kind: "success", counts });
       await this.writeExtra(item, (extra) => upsertCitations(extra, counts));
+      return true;
     } catch (error) {
       if (!this.disposed) {
         this.citationStates.set(item.id, {
@@ -742,6 +834,7 @@ export class AlphaLikesService {
         });
         this.debug(`citation lookup failed for item ${item.id}: ${error}`);
       }
+      return false;
     } finally {
       if (!this.disposed) refreshItemTrees();
     }
@@ -766,8 +859,12 @@ export class AlphaLikesService {
     const existing = this.inFlightCitations.get(key);
     if (existing) return existing;
 
-    const request = this.collectCitations(paper, arxivID).finally(() =>
-      this.inFlightCitations.delete(key),
+    // A picked Scholar result replaces the title we search Scholar for; the
+    // cache key stays the item's own metadata so the pin survives a rename.
+    const scholarTitle = readScholarTitle(safeGetField(item, "extra"));
+
+    const request = this.collectCitations(paper, arxivID, scholarTitle).finally(
+      () => this.inFlightCitations.delete(key),
     );
 
     this.inFlightCitations.set(key, request);
@@ -777,32 +874,47 @@ export class AlphaLikesService {
   private async collectCitations(
     paper: PaperMetadata,
     arxivID: string | null,
+    scholarTitle: string | null,
   ): Promise<CitationCounts | null> {
     const prefs = getResolverPrefs();
-    const source = getCitationSourcePreference();
     let merged: CitationCounts = {};
     let answered = false;
 
-    if (source === "googleScholar") {
-      const scholar = await this.collectGoogleScholarCitation(paper);
-      if (scholar !== null) {
-        merged = { ...merged, googleScholar: scholar };
-        answered = true;
-      }
-    } else if (source === "semanticScholar") {
-      const url = semanticScholarCitationURL({
-        doi: paper.doi,
-        arxivID: arxivID ?? undefined,
-      });
-      if (url) {
-        const payload = await this.safeJSON("Semantic Scholar citations", url);
-        const counts = citationCountsFromSemanticScholar(payload);
-        if (counts) {
-          merged = { ...merged, ...counts };
+    // Every selected provider is asked; the column then shows the largest
+    // count among the ones that answered. A provider that fails or has no
+    // record simply does not contribute - it is never replaced by another.
+    for (const source of citationOrder()) {
+      if (source === "googleScholar") {
+        const scholar = await this.collectGoogleScholarCitation(
+          paper,
+          scholarTitle,
+        );
+        if (scholar !== null) {
+          merged = { ...merged, googleScholar: scholar };
           answered = true;
         }
+        continue;
       }
-    } else if (source === "openAlex") {
+
+      if (source === "semanticScholar") {
+        const url = semanticScholarCitationURL({
+          doi: paper.doi,
+          arxivID: arxivID ?? undefined,
+        });
+        if (url) {
+          const payload = await this.safeJSON(
+            "Semantic Scholar citations",
+            url,
+          );
+          const counts = citationCountsFromSemanticScholar(payload);
+          if (counts) {
+            merged = { ...merged, ...counts };
+            answered = true;
+          }
+        }
+        continue;
+      }
+
       const openAlex = await this.collectOpenAlexCitations(paper, prefs);
       if (openAlex) {
         merged = { ...merged, ...openAlex };
@@ -825,20 +937,23 @@ export class AlphaLikesService {
    */
   private async collectGoogleScholarCitation(
     paper: PaperMetadata,
+    pinnedTitle: string | null,
   ): Promise<number | null> {
-    if (!paper.title || paper.title.length < 10) return null;
+    const expected = (pinnedTitle || paper.title || "").trim();
+    if (expected.length < 10) return null;
     if (this.isScholarBlocked()) return null;
 
+    const url = googleScholarCitationSearchURL(expected);
     const html = await this.safeText(
       "Google Scholar citations",
-      googleScholarCitationSearchURL(paper.title),
+      url,
       "text/html,application/xhtml+xml",
     );
     if (!html) return null;
 
     const verdict = googleScholarCitationCount(html);
     if (verdict === -1) {
-      this.noteScholarBlock(googleScholarCitationSearchURL(paper.title));
+      this.noteScholarBlock(url);
       return null;
     }
     if (verdict === null) return null;
@@ -853,7 +968,7 @@ export class AlphaLikesService {
     this.clearScholarBlock();
 
     const similarity = Math.max(
-      ...titles.map((title) => titleSimilarity(paper.title, title)),
+      ...titles.map((title) => titleSimilarity(expected, title)),
     );
     return similarity >= CITATION_TITLE_MATCH_MIN ? verdict : null;
   }
@@ -922,21 +1037,144 @@ export class AlphaLikesService {
   }
 
   /**
-   * Re-reads citations, ignoring the cached value and any failure cooldown.
+   * Re-reads citation counts, ignoring the cached value and any cooldown.
+   *
+   * Separate from the like-count refresh on purpose: the two move on very
+   * different timescales, and a user who wants fresh citations does not
+   * necessarily want to re-read every like count as well. A pending Scholar
+   * block is dropped first, because asking is exactly what this action means.
    */
-  async refreshCitations(items: Zotero.Item[]): Promise<void> {
+  async refreshCitations(items: Zotero.Item[]): Promise<RefreshSummary> {
+    const targets = items.filter(Boolean);
+    const summary: RefreshSummary = {
+      total: targets.length,
+      updated: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    if (!targets.length) return summary;
+
     this.clearScholarBlock();
 
-    for (const item of items.filter(Boolean)) {
+    for (const item of targets) {
       this.citationStates.delete(item.id);
+      this.refreshingCitations.add(item.id);
     }
     refreshItemTrees();
 
-    for (const item of items.filter(Boolean)) {
-      if (this.disposed) return;
-      if (!this.hasCitationKey(item)) continue;
-      await this.populateCitations(item);
+    try {
+      for (const item of targets) {
+        if (this.disposed) break;
+        if (!this.hasCitationKey(item)) {
+          summary.skipped += 1;
+          continue;
+        }
+
+        const updated = await this.populateCitations(item);
+        if (updated) summary.updated += 1;
+        else summary.failed += 1;
+      }
+    } finally {
+      for (const item of targets) this.refreshingCitations.delete(item.id);
+      if (!this.disposed) refreshItemTrees();
     }
+
+    return summary;
+  }
+
+  // -------------------------------------------------------------------------
+  // Google Scholar: choosing a result by hand
+  // -------------------------------------------------------------------------
+
+  /**
+   * Runs a Scholar search for one item and returns the results as a list.
+   *
+   * This is what the picker shows: the search is already done, so the dialog
+   * opens with the paper's own title in it rather than an empty form. A human
+   * check is reported as such - the caller offers to open the search in a
+   * browser - instead of being mistaken for "no such paper".
+   */
+  async scholarResults(item: Zotero.Item): Promise<ScholarLookup> {
+    const title = this.scholarSearchTitle(item);
+    if (!title) {
+      return {
+        results: [],
+        blocked: false,
+        url: GOOGLE_SCHOLAR_HOME,
+        error: "",
+      };
+    }
+
+    const url = scholarTitleSearchURL(title);
+    try {
+      const html = await this.requester.requestText(
+        url,
+        "text/html,application/xhtml+xml",
+      );
+
+      if (googleScholarCitationCount(html) === -1) {
+        this.noteScholarBlock(url);
+        return { results: [], blocked: true, url, error: "" };
+      }
+
+      this.clearScholarBlock();
+      return {
+        results: parseGoogleScholarResults(html),
+        blocked: false,
+        url,
+        error: "",
+      };
+    } catch (error) {
+      this.debug(`Google Scholar search failed: ${error}`);
+      return {
+        results: [],
+        blocked: false,
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  /**
+   * Adopts one Scholar result for an item.
+   *
+   * The result's title is remembered so later lookups search for that paper
+   * rather than for the item's own title - otherwise the next refresh would
+   * happily match whatever Scholar ranks first again and undo the choice. The
+   * count itself is stored like any other Scholar reading, so a later refresh
+   * simply refreshes it.
+   */
+  async applyScholarResult(
+    item: Zotero.Item,
+    result: ScholarResult,
+  ): Promise<void> {
+    const title = (result.title || "").trim();
+
+    await this.writeExtra(item, (extra) => {
+      const pinned = upsertScholarTitle(extra, title);
+      return result.count === null
+        ? pinned
+        : upsertCitations(pinned, { googleScholar: result.count });
+    });
+
+    this.clearScholarBlock();
+    this.citationStates.delete(item.id);
+    refreshItemTrees();
+
+    await this.populateCitations(item);
+  }
+
+  /** Forgets the picked Scholar result, going back to the item's own title. */
+  async clearScholarResult(item: Zotero.Item): Promise<void> {
+    await this.writeExtra(item, (extra) => upsertScholarTitle(extra, ""));
+    this.citationStates.delete(item.id);
+    refreshItemTrees();
+    await this.populateCitations(item);
+  }
+
+  /** The Scholar result title remembered for this item, if any. */
+  getScholarPinnedTitle(item: Zotero.Item): string | null {
+    return readScholarTitle(safeGetField(item, "extra"));
   }
 
   private computeCellValue(item: Zotero.Item): string {
@@ -950,6 +1188,10 @@ export class AlphaLikesService {
   }
 
   private cellForKnownID(item: Zotero.Item, arxivID: string): string {
+    // An explicit refresh ignores the stored value until the new one is here,
+    // so the user can see that something is happening.
+    if (this.refreshingLikes.has(item.id)) return CELL_LOADING;
+
     const extra = safeGetField(item, "extra");
     const cached = readCachedLikes(extra);
 
@@ -1086,15 +1328,15 @@ export class AlphaLikesService {
     item: Zotero.Item,
     arxivID: string,
     options: { force?: boolean } = {},
-  ): Promise<void> {
+  ): Promise<boolean> {
     try {
       const likes = await this.fetchLikes(arxivID);
-      if (this.disposed) return;
+      if (this.disposed) return false;
 
       // The item may have been edited while waiting in the paced queue.
       if (this.getItemArxivID(item) !== arxivID) {
         this.itemStates.delete(item.id);
-        return;
+        return false;
       }
 
       if (likes === null) {
@@ -1102,7 +1344,7 @@ export class AlphaLikesService {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
         });
-        return;
+        return false;
       }
 
       this.itemStates.set(item.id, { kind: "success", arxivID, likes });
@@ -1118,6 +1360,7 @@ export class AlphaLikesService {
           historyDays,
         ),
       );
+      return true;
     } catch (error) {
       if (!this.disposed) {
         this.itemStates.set(item.id, {
@@ -1126,6 +1369,7 @@ export class AlphaLikesService {
         });
         this.debug(`failed to fetch likes for ${arxivID}: ${error}`);
       }
+      return false;
     } finally {
       if (!this.disposed) refreshItemTrees();
       if (options.force) this.staleRefreshing.delete(item.id);
@@ -1194,9 +1438,34 @@ export class AlphaLikesService {
     return request;
   }
 
-  /** Runs the resolver for arbitrary metadata (used by the picker dialog). */
-  async searchArxiv(paper: PaperMetadata): Promise<ArxivCandidate[]> {
-    return this.getCandidatesForPaper(paper, true);
+  /**
+   * Runs the resolver for arbitrary metadata (used by the picker dialog).
+   *
+   * `minScore` lowers the display floor for the manual picker: the automatic
+   * path hides weak matches on purpose, while a user looking at the list is
+   * the right judge of a match the scorer was unsure about.
+   */
+  async searchArxiv(
+    paper: PaperMetadata,
+    options: { minScore?: number } = {},
+  ): Promise<ArxivCandidate[]> {
+    const key = this.resolutionKey(paper);
+    const request = findArxivCandidates(paper, this.resolverDeps(), options)
+      .then((candidates) => {
+        this.resolutionCache.set(key, {
+          candidates,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + RESOLUTION_CACHE_TTL_SUCCESS_MS,
+        });
+        return candidates;
+      })
+      .finally(() => this.inFlightResolution.delete(key));
+
+    const inFlight = this.inFlightResolution.get(key);
+    if (inFlight) return inFlight;
+
+    this.inFlightResolution.set(key, request);
+    return request;
   }
 
   private async resolveItem(
@@ -1267,16 +1536,27 @@ export class AlphaLikesService {
 
   /**
    * Re-reads like counts, ignoring the cached value and any failure cooldown.
-   * Items without an arXiv ID get another resolution attempt.
+   *
+   * Items without an arXiv ID get another resolution attempt. The cached count
+   * stays in `Extra` while this runs - a failed re-read must not cost a number
+   * that was correct a minute ago - but the cells are held on the loading
+   * marker so the refresh is visible instead of looking like nothing happened.
    */
-  async refreshItems(items: Zotero.Item[]): Promise<void> {
+  async refreshItems(items: Zotero.Item[]): Promise<RefreshSummary> {
     const targets = items.filter(Boolean);
-    if (!targets.length) return;
+    const summary: RefreshSummary = {
+      total: targets.length,
+      updated: 0,
+      failed: 0,
+      skipped: 0,
+    };
+    if (!targets.length) return summary;
 
     for (const item of targets) {
       this.itemStates.delete(item.id);
       this.pendingByItem.delete(item.id);
       this.staleRefreshing.delete(item.id);
+      this.refreshingLikes.add(item.id);
 
       if (!this.getItemArxivID(item)) {
         this.resolutionCache.delete(
@@ -1286,20 +1566,30 @@ export class AlphaLikesService {
     }
     refreshItemTrees();
 
-    for (const item of targets) {
-      if (this.disposed) return;
+    try {
+      for (const item of targets) {
+        if (this.disposed) break;
 
-      const arxivID = this.getItemArxivID(item);
-      if (arxivID) {
-        await this.populateLikes(item, arxivID, { force: true });
-      } else {
-        await this.resolveItem(item, { force: true });
+        const arxivID = this.getItemArxivID(item);
+        if (arxivID) {
+          const updated = await this.populateLikes(item, arxivID, {
+            force: true,
+          });
+          if (updated) summary.updated += 1;
+          else summary.failed += 1;
+        } else {
+          await this.resolveItem(item, { force: true });
+          // A newly resolved ID already fetched its count on the way in.
+          if (this.getItemArxivID(item)) summary.updated += 1;
+          else summary.skipped += 1;
+        }
       }
+    } finally {
+      for (const item of targets) this.refreshingLikes.delete(item.id);
+      if (!this.disposed) refreshItemTrees();
     }
 
-    // Citation counts move far more slowly than likes, but a manual refresh is
-    // an explicit "re-read everything", so they are included.
-    if (getCitationPrefs().enabled) await this.refreshCitations(targets);
+    return summary;
   }
 
   /**

@@ -12,11 +12,14 @@ import {
   googleScholarResultBlocks,
   googleScholarResultTitle,
   isHighImpact,
+  readScholarTitle,
+  upsertScholarTitle,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
   openAlexWorkInfo,
   parseCitationsLine,
+  parseGoogleScholarResults,
   primaryCitationCount,
   primaryCitationSource,
   readCitations,
@@ -25,6 +28,7 @@ import {
   stripCitations,
   upsertCitations,
 } from "../src/modules/citations";
+import { stripAlphaLikesData } from "../src/modules/arxiv-id";
 
 const OTHER_EXTRA = "arXiv: 2301.12345\nPublisher: ACM";
 
@@ -124,13 +128,13 @@ describe("AlphaLikes citations", function () {
   });
 
   describe("provider selection", function () {
-    it("takes the first provider in the order it is given", function () {
+    it("shows the largest count among the chosen providers", function () {
       assert.equal(
         primaryCitationCount({ openAlex: 5, semanticScholar: 9 }, [
           "openAlex",
           "semanticScholar",
         ]),
-        5,
+        9,
       );
       assert.equal(
         primaryCitationCount(
@@ -139,22 +143,7 @@ describe("AlphaLikes citations", function () {
         ),
         800,
       );
-      assert.isNull(primaryCitationCount(null, CITATION_AUTHORITY_ORDER));
-      assert.isNull(
-        primaryCitationCount({ influential: 3 }, CITATION_AUTHORITY_ORDER),
-      );
-    });
-
-    it("falls through only when the order says it may", function () {
-      // Walking the authority order still falls through...
-      assert.equal(
-        primaryCitationCount({ openAlex: 500, semanticScholar: 400 }, [
-          "googleScholar",
-          "openAlex",
-          "semanticScholar",
-        ]),
-        500,
-      );
+      // A provider that did not answer simply does not contribute.
       assert.equal(
         primaryCitationCount({ semanticScholar: 400 }, [
           "googleScholar",
@@ -163,16 +152,24 @@ describe("AlphaLikes citations", function () {
         ]),
         400,
       );
+      assert.isNull(primaryCitationCount(null, CITATION_AUTHORITY_ORDER));
+      assert.isNull(
+        primaryCitationCount({ influential: 3 }, CITATION_AUTHORITY_ORDER),
+      );
     });
 
-    it("honours an explicit order", function () {
+    it("ignores providers outside the chosen set", function () {
       const counts = {
-        googleScholar: 800,
-        openAlex: 500,
+        googleScholar: 10,
+        openAlex: 5000,
         semanticScholar: 400,
       };
-      assert.equal(primaryCitationCount(counts, ["semanticScholar"]), 400);
-      // Providers outside the list are ignored, not guessed at.
+      assert.equal(primaryCitationCount(counts, ["googleScholar"]), 10);
+      assert.equal(
+        primaryCitationCount(counts, ["googleScholar", "semanticScholar"]),
+        400,
+      );
+      // The percentile flags are not counts and never win.
       assert.isNull(
         primaryCitationCount({ influential: 2 }, ["googleScholar"]),
       );
@@ -182,9 +179,16 @@ describe("AlphaLikes citations", function () {
       );
     });
 
-    it("names the provider that produced the displayed count", function () {
+    it("names the provider whose number is displayed", function () {
       assert.equal(
         primaryCitationSource({ googleScholar: 1, openAlex: 2 }, [
+          "googleScholar",
+          "openAlex",
+        ]),
+        "openAlex",
+      );
+      assert.equal(
+        primaryCitationSource({ googleScholar: 9, openAlex: 2 }, [
           "googleScholar",
           "openAlex",
         ]),
@@ -195,6 +199,21 @@ describe("AlphaLikes citations", function () {
         "openAlex",
       );
       assert.isNull(primaryCitationSource({ infl: 1 }, ["googleScholar"]));
+      // A tie goes to the broader index, so the source line is deterministic.
+      assert.equal(
+        primaryCitationSource({ googleScholar: 7, openAlex: 7 }, [
+          "googleScholar",
+          "openAlex",
+        ]),
+        "googleScholar",
+      );
+    });
+
+    it("agrees between the count and the source it names", function () {
+      const counts = { googleScholar: 12, openAlex: 340, semanticScholar: 90 };
+      const order = ["googleScholar", "openAlex", "semanticScholar"];
+      assert.equal(primaryCitationCount(counts, order), 340);
+      assert.equal(primaryCitationSource(counts, order), "openAlex");
     });
 
     it("treats only the field-normalised percentile as high impact", function () {
@@ -214,6 +233,7 @@ describe("AlphaLikes citations", function () {
       assert.deepEqual(citationProviderOrder("semanticScholar"), [
         "semanticScholar",
       ]);
+      assert.deepEqual(citationProviderOrder(["openAlex"]), ["openAlex"]);
     });
 
     it("shows nothing rather than another provider's number", function () {
@@ -226,11 +246,116 @@ describe("AlphaLikes citations", function () {
       assert.isNull(primaryCitationSource(counts, order));
     });
 
+    it("keeps the chosen order canonical whatever order it is given", function () {
+      assert.deepEqual(
+        citationProviderOrder(["semanticScholar", "googleScholar"]),
+        ["googleScholar", "semanticScholar"],
+      );
+      assert.deepEqual(
+        citationProviderOrder([
+          "semanticScholar",
+          "openAlex",
+          "googleScholar",
+          "openAlex",
+        ]),
+        ["googleScholar", "openAlex", "semanticScholar"],
+      );
+    });
+
+    it("falls back to reading all providers when nothing is selected", function () {
+      // An empty selection would leave the column permanently empty with no
+      // explanation, so it reads as the default instead.
+      assert.deepEqual(citationProviderOrder([]), [
+        "googleScholar",
+        "openAlex",
+        "semanticScholar",
+      ]);
+    });
+
     it("marks a blocked cell so it does not read as empty", function () {
       assert.isString(CITATIONS_BLOCKED_MARKER);
       assert.notEqual(CITATIONS_BLOCKED_MARKER, "");
       // The marker travels in the pipe-separated decoration list.
       assert.notInclude(CITATIONS_BLOCKED_MARKER, "|");
+    });
+  });
+
+  describe("choosing a Scholar record by hand", function () {
+    const html = `
+      <div class="gs_r gs_or gs_scl"><div class="gs_ri">
+        <h3 class="gs_rt"><a href="/url?q=https://example.org/a&amp;sa=U">First Paper</a></h3>
+        <div class="gs_a">A. Author, B. Author - Journal, 2021 - example.org</div>
+        <div class="gs_fl"><a href="/scholar?cites=999">Cited by 42</a></div>
+      </div></div>
+      <div class="gs_r gs_or gs_scl"><div class="gs_ri">
+        <h3 class="gs_rt"><span>[PDF]</span> <a href="https://arxiv.org/abs/2101.00001">Second Paper</a></h3>
+        <div class="gs_a">C. Author - arXiv, 2021</div>
+        <div class="gs_fl"><a href="#">Related articles</a></div>
+      </div></div>`;
+
+    it("lists every result with its own count", function () {
+      const results = parseGoogleScholarResults(html);
+
+      assert.lengthOf(results, 2);
+      assert.equal(results[0].title, "First Paper");
+      assert.equal(results[0].count, 42);
+      assert.include(results[0].meta, "2021");
+      assert.equal(results[1].title, "Second Paper");
+      assert.isNull(results[1].count, "a result without a count says so");
+    });
+
+    it("unwraps Scholar's own link wrapper", function () {
+      const results = parseGoogleScholarResults(html);
+      // `/url?q=…` holds the target; Scholar's own trailing parameters are
+      // not part of the link.
+      assert.equal(results[0].url, "https://example.org/a");
+      assert.equal(results[1].url, "https://arxiv.org/abs/2101.00001");
+    });
+
+    it("returns nothing for a page without results", function () {
+      assert.deepEqual(parseGoogleScholarResults(""), []);
+      assert.deepEqual(
+        parseGoogleScholarResults("<html><body>nothing</body></html>"),
+        [],
+      );
+    });
+  });
+
+  describe("the Scholar record kept for an item", function () {
+    it("round-trips a title through Extra", function () {
+      const extra = "alphaxiv_arxiv_id: 2401.00001";
+      const next = upsertScholarTitle(extra, "A Paper, With Punctuation: Yes");
+
+      assert.equal(readScholarTitle(next), "A Paper, With Punctuation: Yes");
+      assert.include(next, "alphaxiv_arxiv_id: 2401.00001");
+    });
+
+    it("replaces the stored title instead of appending", function () {
+      const first = upsertScholarTitle("", "First Choice");
+      const second = upsertScholarTitle(first, "Second Choice");
+
+      assert.equal(readScholarTitle(second), "Second Choice");
+      assert.notInclude(second, "First Choice");
+      assert.lengthOf(second.split("\n"), 1);
+    });
+
+    it("forgets the title when asked to clear it", function () {
+      const pinned = upsertScholarTitle(
+        "alphaxiv_likes: 12",
+        "Some Result Title",
+      );
+      const cleared = upsertScholarTitle(pinned, "");
+
+      assert.isNull(readScholarTitle(cleared));
+      assert.include(cleared, "alphaxiv_likes: 12");
+    });
+
+    it("is removed by the clear-data action", function () {
+      const extra = upsertScholarTitle("title: keep me", "Pinned Result");
+      const stripped = stripAlphaLikesData(extra);
+
+      assert.notInclude(stripped, "Pinned Result");
+      assert.include(stripped, "keep me");
     });
   });
 

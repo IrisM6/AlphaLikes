@@ -14,6 +14,8 @@ column-label = alphaXiv Likes
 column-citations-label = Citations
 menu-find-arxiv = Find arXiv ID…
 menu-refresh = Refresh alphaXiv Likes
+menu-refresh-citations = Refresh citation counts
+menu-pick-scholar = Choose the Google Scholar record…
 menu-clear = Clear AlphaLikes data
 menu-open-scholar = Open the Google Scholar verification page
 
@@ -153,7 +155,7 @@ pref-citations-desc = Citation counts come from Google Scholar, OpenAlex and Sem
 pref-citations-enabled =
     .label = Show the Citations column and look counts up
 pref-citations-ttl = Re-read after (days, 0 = read once)
-pref-citations-scholar-note = Google Scholar has no public API, so the plugin reads the “Cited by” figure from its results page. Google may ask for a human check or rate-limit the requests: when that happens no other provider's number is substituted. The plugin pauses, tells you once, and retries automatically after about 10 minutes, doubling the wait on every further block (up to 2 hours). “Open the Google Scholar verification page” in the context menu lets you answer the check in your browser, after which one refresh is enough. Reading too often makes a block more likely, so do not set the request interval very low.
+pref-citations-scholar-note = Google Scholar has no public API, so the plugin reads the "Cited by" number from its results page. When Google asks for a human check or rate-limits the reads, the plugin handles it first: it pauses, then retries automatically after 10 minutes, then 20, then 40 (up to two hours), and the first two retries pass silently. Only a third consecutive block raises a notice, saying how long the wait is and how to clear the check. Another provider's number is never substituted.
 pref-citations-source = Citation source
 pref-citations-source-scholar =
     .label = Google Scholar (default)
@@ -161,10 +163,10 @@ pref-citations-source-openalex =
     .label = OpenAlex
 pref-citations-source-s2 =
     .label = Semantic Scholar
-pref-citations-source-note = Only the chosen source's count is shown, and no other provider stands in for it: the three figures are not the same measurement (Google Scholar indexes preprints, theses and books, and can differ from OpenAlex by a factor of two). Google Scholar is the default because its coverage is widest; while it is waiting out a human check the column says “none yet” rather than showing a number from somewhere else. Hovering names the source.
+pref-citations-source-note = The number only ever comes from the sources that are ticked. With one source: its count, or nothing. With several: all of them are read and the largest is shown (hover to see which source it came from). The three providers do not measure the same thing - Google Scholar indexes preprints, theses and books that OpenAlex does not, and the two figures for one paper can differ twofold - so only Google Scholar is ticked by default.
 pref-citations-s2-note = Semantic Scholar rate-limits requests without an API key; a 429 is skipped and retried later.
 pref-refresh-title = Refreshing and network
-pref-refresh-desc = Right-click any item and choose “Refresh alphaXiv Likes” to re-read the counts. Cached values can also expire on their own.
+pref-refresh-desc = The context menu can re-read like counts and citation counts separately (the cells show "…" while it runs, then a summary appears); the cache can also expire on its own.
 pref-refresh-ttl = Re-fetch cached like counts after (days, 0 = never)
 pref-refresh-interval = Minimum delay between requests to the same host (ms)
 pref-refresh-timeout = Request timeout (ms)
@@ -176,3 +178,36 @@ pref-filter-enabled =
 pref-filter-min = Minimum likes
 pref-filter-max = Maximum likes (0 = no upper bound)
 
+scholar-picker-title = Choose the Google Scholar record
+scholar-picker-heading = Results for the paper's title
+scholar-picker-subheading = Pick the record whose citation count should be shown for this item. The choice is remembered, so later refreshes keep using it.
+scholar-picker-pinned = Currently used: {title}
+scholar-picker-empty = This search returned no results.
+scholar-picker-blocked = Google answered with a human check instead of results. Clear it in your browser, then press Search again.
+scholar-picker-error = The search failed: {message}
+scholar-picker-search = Search again
+scholar-picker-searching = Searching Google Scholar…
+scholar-picker-open = Open the search in the browser
+scholar-picker-apply = Use this record's citation count
+scholar-picker-clear = Forget the chosen record
+scholar-picker-cancel = Cancel
+scholar-picker-count = Cited by {count}
+scholar-picker-count-unknown = No citation count shown
+scholar-picker-nomatch = (no title)
+pref-color-swatches = Every colour box has a row of swatches next to it; click one instead of typing.
+pref-citation-appearance-title = Citations appearance
+pref-citation-appearance-desc = Citation counts and like counts usually differ by orders of magnitude, so one set of thresholds rarely suits both. With "follow the likes" ticked, both columns look the same and a single set of values in Appearance / Colours / Range is enough. Untick it to give the Citations column its own style, colours and range filter.
+pref-citation-appearance-linked =
+    .label = Citations follow the likes appearance
+pref-citation-appearance-style = Citations display style
+pref-citation-color-enabled =
+    .label = Colour the citation counts
+pref-citation-color-high-threshold = High-citation threshold
+pref-citation-color-low-threshold = Low-citation threshold
+pref-citation-color-mid = Mid-range colour (empty keeps the theme colour)
+pref-citation-filter-enabled =
+    .label = Enable the citation-count range filter
+pref-citation-filter-min = Fewest citations
+pref-citation-filter-max = Most citations (0 = no limit)
+pref-citation-filter-note = Like the like-count filter: out-of-range rows stay visible, just dimmed.
+pref-citations-sources = Citation sources (several may be selected; the largest count is shown)

@@ -28,11 +28,11 @@ pref("cacheTtlDays", 0);
 
 // --- Appearance -----------------------------------------------------------
 //
-// plain | minimal | badge | glass | ring | bookmark | morandi | academic |
-// elegant | fresh | playful | outline | split | dot
+// plain | badge | ring | bookmark | morandi | academic | fresh | playful |
+// outline | split | dot
 //
-// The first five are shape-only and tint with the colours below; the rest
-// carry their own palette for every band.
+// The shape-only styles tint with the colours below; the palette styles carry
+// their own colours for every band.
 
 pref("likeStyle", "badge");
 
@@ -81,6 +81,28 @@ pref("quantileHighPercent", 80);
 pref("citationsEnabled", true);
 // 0 keeps whatever was read once.
 pref("citationCacheTtlDays", 7);
-// auto | googleScholar | openAlex | semanticScholar. `auto` walks the
-// providers from the broadest index to the narrowest.
+// One or more of googleScholar | openAlex | semanticScholar, comma separated.
+// One source is strict (its number or none); several are all read and the
+// largest count is shown. Nothing outside this list is ever substituted.
+pref("citationSourcePreferences", "googleScholar");
+// Kept only to migrate an install that chose a source in 1.6.0 or earlier;
+// nothing reads it once the list above has been written.
 pref("citationSourcePreference", "googleScholar");
+
+// --- Citations: appearance -------------------------------------------------
+//
+// Linked (the default) means the Citations column reuses the likes style,
+// colours and range filter. Unlinked gives it its own, because the two figures
+// often live on different scales.
+
+pref("appearanceLinked", true);
+pref("citationStyle", "badge");
+pref("citationColorEnabled", true);
+pref("citationHighLikesColor", "#1a7f37");
+pref("citationLowLikesColor", "#9aa0a6");
+pref("citationMidLikesColor", "");
+pref("citationHighLikesThreshold", 100);
+pref("citationLowLikesThreshold", 10);
+pref("citationRangeFilterEnabled", false);
+pref("citationRangeFilterMin", 0);
+pref("citationRangeFilterMax", 0);

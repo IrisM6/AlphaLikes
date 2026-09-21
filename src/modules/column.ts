@@ -20,6 +20,7 @@ import {
   colorBucket,
   getCitationPrefs,
   getColorScheme,
+  getCitationAppearance,
   getLikeStyle,
   getRangeFilter,
   getTrendPrefs,
@@ -464,15 +465,38 @@ export function renderCitationCell(
 
   const { decorations } = splitValueDecorations(data);
   const text = fromSortableValue(data);
-  const style = getLikeStyle();
-  const scheme = getColorScheme();
+
+  // The Citations column has its own style, colours and range filter; by
+  // default they are the likes ones, so there is a single place to edit.
+  const appearance = getCitationAppearance();
+  const style = appearance.style;
+  const scheme = appearance as unknown as ColorScheme;
 
   const visual = doc.createElement("span");
   visual.textContent = text;
   cell.appendChild(visual);
 
   if (NUMERIC_CELL_RE.test(text)) {
+    const count = Number.parseInt(text, 10);
     const highImpact = decorations.includes(HIGH_IMPACT_MARKER);
+
+    if (appearance.filter.enabled && !isWithinRange(count, appearance.filter)) {
+      cell.style.opacity = "0.45";
+      cell.title = t("cell-filtered");
+      const accent = scheme.enabled ? scheme.low : "";
+      if (accent) visual.style.color = accent;
+      applyLikeStyle(
+        visual,
+        style,
+        accent,
+        "low",
+        doc,
+        t("cell-split-prefix-citations"),
+      );
+      if (highImpact) appendHighImpact(cell, visual, doc);
+      return cell;
+    }
+
     const band: Band = highImpact ? "high" : "mid";
     const accent = scheme.enabled
       ? effectiveColor(highImpact ? "high" : "mid", scheme)

@@ -162,6 +162,7 @@ export function rankCandidates(
   paper: PaperMetadata,
   raw: RawCandidate[],
   prefs: Pick<ResolverPrefs, "autoAccept" | "confirm">,
+  minScore: number = MIN_DISPLAY_SCORE,
 ): ArxivCandidate[] {
   const matchInput: MatchInput = {
     title: paper.title,
@@ -206,7 +207,7 @@ export function rankCandidates(
   }
 
   return [...best.values()]
-    .filter((candidate) => candidate.score >= MIN_DISPLAY_SCORE)
+    .filter((candidate) => candidate.score >= minScore)
     .sort((a, b) => b.score - a.score)
     .slice(0, MAX_CANDIDATES);
 }
@@ -683,6 +684,7 @@ async function attempt<T>(
 export async function findArxivCandidates(
   paper: PaperMetadata,
   deps: ResolverDeps,
+  options: { minScore?: number } = {},
 ): Promise<ArxivCandidate[]> {
   const raw: RawCandidate[] = [];
   let searchMetadata: PaperMetadata = paper;
@@ -691,7 +693,7 @@ export async function findArxivCandidates(
     const { candidate, metadata } = await resolveByDoi(paper.doi, deps);
     if (candidate) {
       // An authoritative DOI hit answers the question outright.
-      return rankCandidates(paper, [candidate], deps.prefs);
+      return rankCandidates(paper, [candidate], deps.prefs, options.minScore);
     }
     // Crossref may know the canonical title of a DOI the other providers miss,
     // which makes the title search noticeably more reliable.
@@ -706,5 +708,5 @@ export async function findArxivCandidates(
   }
 
   raw.push(...(await searchByTitle(searchMetadata, deps)));
-  return rankCandidates(paper, raw, deps.prefs);
+  return rankCandidates(paper, raw, deps.prefs, options.minScore);
 }

@@ -16,6 +16,8 @@ export const MESSAGES = {
   "menu-find-arxiv": "Find arXiv ID…",
   "menu-refresh": "Refresh alphaXiv Likes",
   "menu-clear": "Clear AlphaLikes data",
+  "menu-refresh-citations": "Refresh citation counts",
+  "menu-pick-scholar": "Choose the Google Scholar record…",
   "menu-open-scholar": "Open the Google Scholar verification page",
 
   "cell-loading": "Loading from alphaXiv…",
@@ -36,6 +38,20 @@ export const MESSAGES = {
   "cell-split-prefix": "likes",
   "cell-split-prefix-citations": "cited",
   "cell-citation-source": "Source: {source}",
+
+  // --- Refresh summaries ---------------------------------------------------
+  "notify-refresh-likes-title": "AlphaLikes · likes",
+  "notify-refresh-citations-title": "AlphaLikes · citations",
+  "refresh-likes-updated": "Re-read {updated} like count(s)",
+  "refresh-citations-updated": "Re-read {updated} citation count(s)",
+  "refresh-failed": "{failed} could not be read (the previous value is kept)",
+  "refresh-skipped": "{skipped} have no DOI or arXiv ID to look up",
+  "refresh-nothing": "Nothing to refresh.",
+  "refresh-joining": "; ",
+  "scholar-picked":
+    "The chosen Google Scholar record is now the source of this item's citation count.",
+  "scholar-cleared":
+    "The chosen Google Scholar record was forgotten; the item's own title is used again.",
 
   // --- Batch actions -------------------------------------------------------
   "menu-batch-find": "Find arXiv IDs for all selected",
@@ -77,6 +93,26 @@ export const MESSAGES = {
   "picker-confidence-high": "High confidence",
   "picker-confidence-medium": "Needs your confirmation",
   "picker-confidence-low": "Low confidence",
+
+  // --- Google Scholar record picker ----------------------------------------
+  "scholar-picker-title": "Choose the Google Scholar record",
+  "scholar-picker-heading": "Results for the paper's title",
+  "scholar-picker-subheading":
+    "Pick the record whose citation count should be shown for this item. The choice is remembered, so later refreshes use it.",
+  "scholar-picker-pinned": "Currently used: {title}",
+  "scholar-picker-empty": "This search returned no results.",
+  "scholar-picker-blocked":
+    "Google answered with a human check instead of results. Open the search in your browser, clear the check, then press Search again.",
+  "scholar-picker-error": "The search failed: {message}",
+  "scholar-picker-search": "Search again",
+  "scholar-picker-searching": "Searching Google Scholar…",
+  "scholar-picker-open": "Open the search in the browser",
+  "scholar-picker-apply": "Use this record's citation count",
+  "scholar-picker-clear": "Forget the chosen record",
+  "scholar-picker-cancel": "Cancel",
+  "scholar-picker-count": "Cited by {count}",
+  "scholar-picker-count-unknown": "No citation count shown",
+  "scholar-picker-nomatch": "(no title)",
 } as const;
 
 export type MessageId = keyof typeof MESSAGES;
@@ -168,6 +204,28 @@ export function t(id: MessageId, args?: Record<string, unknown>): string {
  * Every string the picker dialog needs, handed over as plain data because the
  * dialog runs outside the bundled plugin scope.
  */
+/** Strings for the Google Scholar record picker dialog. */
+export function scholarPickerStrings(): Record<string, string> {
+  return {
+    title: t("scholar-picker-title"),
+    heading: t("scholar-picker-heading"),
+    subheading: t("scholar-picker-subheading"),
+    pinned: t("scholar-picker-pinned"),
+    empty: t("scholar-picker-empty"),
+    blocked: t("scholar-picker-blocked"),
+    error: t("scholar-picker-error"),
+    search: t("scholar-picker-search"),
+    searching: t("scholar-picker-searching"),
+    open: t("scholar-picker-open"),
+    apply: t("scholar-picker-apply"),
+    clear: t("scholar-picker-clear"),
+    cancel: t("scholar-picker-cancel"),
+    count: t("scholar-picker-count"),
+    countUnknown: t("scholar-picker-count-unknown"),
+    noTitle: t("scholar-picker-nomatch"),
+  };
+}
+
 export function pickerStrings(): Record<string, string> {
   return {
     title: t("picker-title"),

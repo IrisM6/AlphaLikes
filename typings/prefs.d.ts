@@ -39,7 +39,19 @@ declare namespace _ZoteroTypes {
       "quantileHighPercent": number;
       "citationsEnabled": boolean;
       "citationCacheTtlDays": number;
+      "citationSourcePreferences": string;
       "citationSourcePreference": string;
+      "appearanceLinked": boolean;
+      "citationStyle": string;
+      "citationColorEnabled": boolean;
+      "citationHighLikesColor": string;
+      "citationLowLikesColor": string;
+      "citationMidLikesColor": string;
+      "citationHighLikesThreshold": number;
+      "citationLowLikesThreshold": number;
+      "citationRangeFilterEnabled": boolean;
+      "citationRangeFilterMin": number;
+      "citationRangeFilterMax": number;
     };
   }
 }

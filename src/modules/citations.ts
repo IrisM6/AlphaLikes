@@ -10,6 +10,15 @@
 
 export const CITATIONS_KEY = "alphaxiv_citations";
 export const CITATIONS_UPDATED_KEY = "alphaxiv_citations_updated";
+/**
+ * The Scholar result the user picked for this item, by its exact title.
+ *
+ * Google Scholar has no identifier for a result that survives a title search,
+ * so the chosen result is remembered by the title it carried. Later lookups
+ * search for that title instead of the item's own, which is what keeps the
+ * choice from being undone by the next refresh.
+ */
+export const SCHOLAR_TITLE_KEY = "alphaxiv_scholar_title";
 
 const CITATIONS_LINE_RE = new RegExp(
   String.raw`^\s*${CITATIONS_KEY}\s*:\s*([^\r\n]*)$`,
@@ -179,6 +188,45 @@ export function upsertCitations(
 }
 
 /** Removes both citation lines, leaving the rest of `Extra` intact. */
+/** The Scholar title pinned for this item, or `null`. */
+export function readScholarTitle(extra: string): string | null {
+  const match = (extra || "").match(
+    new RegExp(String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:\s*(.+?)\s*$`, "im"),
+  );
+  const value = match ? match[1].trim() : "";
+  return value || null;
+}
+
+/** Stores (or clears, with an empty value) the pinned Scholar result title. */
+export function upsertScholarTitle(extra: string, title: string): string {
+  const withoutLine = stripScholarTitle(extra);
+  const value = (title || "").trim();
+  if (!value) return withoutLine;
+
+  const line = `${SCHOLAR_TITLE_KEY}: ${value}`;
+  const base = withoutLine.replace(/[\r\n]+$/, "");
+  return base ? `${base}\n${line}` : line;
+}
+
+/** Removes the pinned Scholar title line. */
+export function stripScholarTitle(extra: string): string {
+  return (extra || "")
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        !new RegExp(String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:`, "i").test(line),
+    )
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^[\r\n]+|[\r\n]+$/g, "");
+}
+
+/** Matches the pinned Scholar title line as a whole, for "clear data". */
+export const SCHOLAR_TITLE_ANY_LINE_RE = new RegExp(
+  String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:[^\r\n]*$`,
+  "im",
+);
+
 export function stripCitations(extra: string): string {
   return (extra || "")
     .split(/\r?\n/)
@@ -239,30 +287,51 @@ export function scholarRetryDelayMs(
 }
 
 /**
- * The provider whose count is shown, as an order of one.
+ * The providers whose counts may be shown, normalised.
  *
- * `primaryCitationCount` walks an order and takes the first provider with a
- * value, which is what made "use Google Scholar" fall back to OpenAlex. The
- * column passes this instead: a provider that has nothing leaves the cell
- * empty, and nothing silently stands in for it.
+ * A single provider is strict: its number, or an empty cell. Several providers
+ * all get read, and the largest of their counts is shown - the choice of set
+ * is the user's, so the biggest figure in it is the one they asked for. The
+ * order is canonical, which fixes ties in favour of the more inclusive index.
  */
 export function citationProviderOrder(
-  preference: CitationSourceKey,
+  preference: CitationSourceKey | readonly CitationSourceKey[],
 ): CitationSourceKey[] {
-  return [preference];
+  const requested = Array.isArray(preference) ? preference : [preference];
+  const wanted = new Set(requested);
+
+  const ordered = CITATION_AUTHORITY_ORDER.filter((key) => wanted.has(key));
+  return ordered.length ? ordered : [...CITATION_AUTHORITY_ORDER];
+}
+
+/**
+ * The count the column shows, and where it came from.
+ *
+ * With one provider this is that provider's number or nothing at all; with
+ * several it is the largest count among the ones that answered. `null` when no
+ * chosen provider has a value - which the caller renders as "unknown", never
+ * as someone else's number.
+ */
+export function primaryCitation(
+  counts: CitationCounts | null,
+  order: readonly CitationSourceKey[],
+): { count: number; source: CitationSourceKey } | null {
+  if (!counts) return null;
+
+  let best: { count: number; source: CitationSourceKey } | null = null;
+  for (const key of order) {
+    const value = counts[key];
+    if (value === undefined) continue;
+    if (!best || value > best.count) best = { count: value, source: key };
+  }
+  return best;
 }
 
 export function primaryCitationCount(
   counts: CitationCounts | null,
   order: readonly CitationSourceKey[],
 ): number | null {
-  if (!counts) return null;
-
-  for (const key of order) {
-    const value = counts[key];
-    if (value !== undefined) return value;
-  }
-  return null;
+  return primaryCitation(counts, order)?.count ?? null;
 }
 
 /** Which provider produced the displayed count, or `null`. */
@@ -270,12 +339,7 @@ export function primaryCitationSource(
   counts: CitationCounts | null,
   order: readonly CitationSourceKey[],
 ): CitationSourceKey | null {
-  if (!counts) return null;
-
-  for (const key of order) {
-    if (counts[key] !== undefined) return key;
-  }
-  return null;
+  return primaryCitation(counts, order)?.source ?? null;
 }
 
 /**
@@ -441,6 +505,106 @@ export function googleScholarResultBlocks(html: string): string[] {
     .split(/(?=<div[^>]*class="[^"]*\bgs_r\b)/i)
     .slice(1)
     .filter((block) => /gs_ri/.test(block));
+}
+
+/** One entry of a Scholar results page, as the picker dialog needs it. */
+export interface ScholarResult {
+  title: string;
+  /** "Cited by" count for this result, or `null` when Scholar shows none. */
+  count: number | null;
+  /** Authors, venue and year line, for telling near-identical titles apart. */
+  meta: string;
+  /** Link to the result (Scholar's own link wrapper is unwrapped). */
+  url: string;
+}
+
+/** Reads the "Cited by N" count of a single result block. */
+export function googleScholarResultCount(block: string): number | null {
+  const match = (block || "").match(
+    /(?:Cited by\s*|被引用次数[:：]\s*)([\d,]+)/i,
+  );
+  if (!match) return null;
+
+  const value = Number.parseInt(match[1].replace(/,/g, ""), 10);
+  return Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+/** Reads the author/venue/year line of a single result block. */
+export function googleScholarResultMeta(block: string): string {
+  const match = (block || "").match(
+    /<div[^>]*class="[^"]*gs_a[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
+  );
+  if (!match) return "";
+  return decodeScholarText(match[1]);
+}
+
+/**
+ * Reads the first link of a result block.
+ *
+ * Scholar wraps external links in `/url?q=` and keeps internal ones relative,
+ * so both shapes are unwrapped here; anything unparseable is dropped rather
+ * than shown as a broken link.
+ */
+export function googleScholarResultURL(block: string): string {
+  const match = (block || "").match(
+    /<h3[^>]*class="[^"]*gs_rt[^"]*"[^>]*>([\s\S]*?)<\/h3>/i,
+  );
+  const href = match ? match[1].match(/href="([^"]+)"/i) : null;
+  if (!href) return "";
+
+  return unwrapScholarLink(href[1]);
+}
+
+function unwrapScholarLink(raw: string): string {
+  const value = (raw || "").replace(/&amp;/g, "&").trim();
+  if (!value) return "";
+
+  if (value.startsWith("/url?")) {
+    const query = value.slice(value.indexOf("?") + 1);
+    for (const pair of query.split("&")) {
+      const [key, ...rest] = pair.split("=");
+      if (key === "q") {
+        try {
+          return decodeURIComponent(rest.join("="));
+        } catch {
+          return "";
+        }
+      }
+    }
+    return "";
+  }
+
+  if (value.startsWith("/")) return `https://scholar.google.com${value}`;
+  return /^https?:/i.test(value) ? value : "";
+}
+
+function decodeScholarText(html: string): string {
+  return (html || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** The results of a Scholar page, in the order Scholar ranked them. */
+export function parseGoogleScholarResults(html: string): ScholarResult[] {
+  return googleScholarResultBlocks(html)
+    .map((block) => ({
+      title: googleScholarResultTitle(block),
+      count: googleScholarResultCount(block),
+      meta: googleScholarResultMeta(block),
+      url: googleScholarResultURL(block),
+    }))
+    .filter((result) => Boolean(result.title));
+}
+
+/** The Scholar search URL for a title, used as the query and as the fallback. */
+export function scholarTitleSearchURL(title: string): string {
+  return googleScholarCitationSearchURL(title);
 }
 
 // ---------------------------------------------------------------------------

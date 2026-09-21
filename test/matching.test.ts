@@ -236,6 +236,51 @@ describe("AlphaLikes title matching", function () {
       );
       assert.isNull(selectBest(weak, THRESHOLDS));
     });
+
+    it("offers weak matches to the manual picker", function () {
+      // The picker exists for the cases the automatic score is unsure about.
+      // Filtering its list with the automatic floor is what made a search that
+      // did return something look like a search that found nothing.
+      const raw = [
+        candidate({ title: "Gravitational Waves", authors: [], year: 2016 }),
+      ];
+
+      assert.lengthOf(rankCandidates(paper(), raw, THRESHOLDS), 0);
+      assert.lengthOf(
+        rankCandidates(paper(), raw, THRESHOLDS, 0.2),
+        1,
+        "a lower floor keeps the candidate selectable",
+      );
+      assert.lengthOf(
+        rankCandidates(paper(), raw, THRESHOLDS, 0),
+        1,
+        "the picker's own floor is the only filter left",
+      );
+    });
+
+    it("still ranks the kept candidates best first", function () {
+      const raw = [
+        // A different record: same real paper, wrong arXiv ID, no authors and
+        // only part of the title.
+        candidate({
+          arxivID: "1602.00001",
+          title: "Gravitational Waves",
+          authors: [],
+          year: 2016,
+        }),
+        candidate({
+          title:
+            "Observation of Gravitational Waves from a Binary Black Hole Merger",
+          authors: ["B. P. Abbott", "R. Abbott"],
+          year: 2016,
+        }),
+      ];
+
+      const ranked = rankCandidates(paper(), raw, THRESHOLDS, 0.2);
+      assert.lengthOf(ranked, 2, "both records are offered to the user");
+      assert.equal(ranked[0].arxivID, "1602.03837");
+      assert.isAbove(ranked[0].score, ranked[1].score);
+    });
   });
 
   describe("provider payloads", function () {

@@ -79,11 +79,31 @@ export type ColorMode = "threshold" | "quantile";
  */
 export type CitationSourcePreference = CitationSource;
 
-const CITATION_SOURCE_PREFERENCES: readonly CitationSourcePreference[] = [
-  "googleScholar",
-  "openAlex",
-  "semanticScholar",
-];
+/** Every provider a user may choose, in the order the settings pane lists them. */
+export const CITATION_SOURCE_PREFERENCES: readonly CitationSourcePreference[] =
+  ["googleScholar", "openAlex", "semanticScholar"];
+
+/**
+ * The providers whose counts are read, in canonical order.
+ *
+ * Several providers may be chosen at once; the column then shows the largest
+ * count any of them reports, because the user asked for exactly that set and
+ * neither figure is "more correct" than the other. A single provider stays
+ * strict: its number, or none.
+ */
+export function parseCitationSourceList(
+  raw: string,
+): CitationSourcePreference[] {
+  const picked = String(raw || "")
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part): part is CitationSourcePreference =>
+      CITATION_SOURCE_PREFERENCES.includes(part as CitationSourcePreference),
+    );
+
+  const unique = new Set(picked);
+  return CITATION_SOURCE_PREFERENCES.filter((source) => unique.has(source));
+}
 
 export const PREF_DEFAULTS = {
   /** Look up arXiv IDs for items that have none. */
@@ -146,9 +166,45 @@ export const PREF_DEFAULTS = {
   citationsEnabled: true,
   /** Re-read citation counts after this many days (`0` disables). */
   citationCacheTtlDays: 7,
-  /** Read counts from Google Scholar. Best-effort: Google rate-limits reads. */
-  /** Which provider's count is displayed. */
+  /**
+   * Which providers' counts may be shown, comma separated.
+   *
+   * One provider means "this one or nothing". Several mean "read all of them
+   * and show the largest count", which is what a user wants when they consider
+   * one of several figures acceptable.
+   */
+  citationSourcePreferences: "googleScholar",
+  /**
+   * The single-source preference of 1.6.0 and earlier.
+   *
+   * Kept only so an upgraded install keeps the source it had chosen; the pane
+   * writes the list above, and nothing reads this once that list is set.
+   */
   citationSourcePreference: "googleScholar" as CitationSourcePreference,
+
+  // --- Citations: appearance ------------------------------------------------
+  /**
+   * Whether the Citations column reuses the likes appearance.
+   *
+   * Linked (the default) is the old behaviour: the likes style, colours and
+   * range filter apply to both columns, and there is a single place to edit
+   * them. Unlinked gives the Citations column its own style, colours and
+   * filter, which is what a user wants when likes and citations are read on
+   * very different scales.
+   */
+  appearanceLinked: true,
+  /** Style for the Citations column, used when the appearance is unlinked. */
+  citationStyle: "badge" as LikeStyle,
+  citationColorEnabled: true,
+  citationHighLikesColor: "#1a7f37",
+  citationLowLikesColor: "#9aa0a6",
+  /** Empty string keeps Zotero's theme colour. */
+  citationMidLikesColor: "",
+  citationHighLikesThreshold: 100,
+  citationLowLikesThreshold: 10,
+  citationRangeFilterEnabled: false,
+  citationRangeFilterMin: 0,
+  citationRangeFilterMax: 0,
 } as const;
 
 export type PrefName = keyof typeof PREF_DEFAULTS;
@@ -272,11 +328,15 @@ const RETIRED_STYLES: Record<string, LikeStyle> = {
   elegant: "academic",
 };
 
+/** Reads a style preference, falling back to `fallback` for unknown values. */
+export function styleFromPref(raw: string, fallback: LikeStyle): LikeStyle {
+  if (LIKE_STYLES.includes(raw as LikeStyle)) return raw as LikeStyle;
+  return RETIRED_STYLES[raw] ?? fallback;
+}
+
 /** Reads the display style, falling back to the default for unknown values. */
 export function getLikeStyle(): LikeStyle {
-  const raw = String(getPref("likeStyle"));
-  if (LIKE_STYLES.includes(raw as LikeStyle)) return raw as LikeStyle;
-  return RETIRED_STYLES[raw] ?? (PREF_DEFAULTS.likeStyle as LikeStyle);
+  return styleFromPref(String(getPref("likeStyle")), PREF_DEFAULTS.likeStyle);
 }
 
 /**
@@ -295,17 +355,32 @@ export const AUTHORITY_ORDER: readonly CitationSource[] = [
 export type CitationSource = "googleScholar" | "openAlex" | "semanticScholar";
 
 /**
- * Reads which provider's count should be shown.
+ * Reads which providers' counts may be shown.
  *
  * A value written by an older version (`auto`, from when choosing a source
  * meant "try this one first") is no longer valid and reads as the default, so
  * an upgraded install stops mixing providers without the user doing anything.
+ * When the list has never been written, the single-source preference of 1.6.0
+ * decides, which is what keeps an upgrade from silently changing the source.
  */
-export function getCitationSourcePreference(): CitationSourcePreference {
-  const raw = getPref("citationSourcePreference");
-  return CITATION_SOURCE_PREFERENCES.includes(raw as CitationSourcePreference)
-    ? (raw as CitationSourcePreference)
-    : (PREF_DEFAULTS.citationSourcePreference as CitationSourcePreference);
+export function getCitationSourcePreferences(): CitationSourcePreference[] {
+  const configured = parseCitationSourceList(
+    getPref("citationSourcePreferences"),
+  );
+  if (configured.length) return configured;
+
+  const legacy = getPref("citationSourcePreference");
+  return CITATION_SOURCE_PREFERENCES.includes(
+    legacy as CitationSourcePreference,
+  )
+    ? [legacy as CitationSourcePreference]
+    : [...PREF_DEFAULTS.citationSourcePreferences.split(",")]
+        .map((part) => part.trim())
+        .filter((part): part is CitationSourcePreference =>
+          CITATION_SOURCE_PREFERENCES.includes(
+            part as CitationSourcePreference,
+          ),
+        );
 }
 
 export interface TrendPrefs {
@@ -346,6 +421,69 @@ export function getColorScheme(): ColorScheme {
     pending: getPref("pendingColor").trim(),
     highThreshold,
     lowThreshold,
+  };
+}
+
+/**
+ * The look of the Citations column.
+ *
+ * `linked` means the likes appearance is reused, so there is one place to edit
+ * and the two columns always match; unlinked values come from the citation
+ * preferences. Citations colour by the fixed cut-offs only - a percentile is
+ * meaningless for a sample of citation counts the column does not collect.
+ */
+export interface CitationAppearance {
+  linked: boolean;
+  style: LikeStyle;
+  enabled: boolean;
+  high: string;
+  low: string;
+  mid: string;
+  highThreshold: number;
+  lowThreshold: number;
+  filter: RangeFilter;
+}
+
+export function getCitationAppearance(): CitationAppearance {
+  const linked = getPref("appearanceLinked");
+  const scheme = getColorScheme();
+  const highThreshold = Math.max(
+    0,
+    Math.floor(
+      linked ? scheme.highThreshold : getPref("citationHighLikesThreshold"),
+    ),
+  );
+  const lowThreshold = Math.min(
+    highThreshold,
+    Math.max(
+      0,
+      Math.floor(
+        linked ? scheme.lowThreshold : getPref("citationLowLikesThreshold"),
+      ),
+    ),
+  );
+
+  return {
+    linked,
+    style: linked
+      ? getLikeStyle()
+      : styleFromPref(
+          String(getPref("citationStyle")),
+          PREF_DEFAULTS.citationStyle,
+        ),
+    enabled: linked ? scheme.enabled : getPref("citationColorEnabled"),
+    high: linked ? scheme.high : getPref("citationHighLikesColor").trim(),
+    low: linked ? scheme.low : getPref("citationLowLikesColor").trim(),
+    mid: linked ? scheme.mid : getPref("citationMidLikesColor").trim(),
+    highThreshold,
+    lowThreshold,
+    filter: linked
+      ? getRangeFilter()
+      : {
+          enabled: getPref("citationRangeFilterEnabled"),
+          min: Math.max(0, Math.floor(getPref("citationRangeFilterMin"))),
+          max: Math.max(0, Math.floor(getPref("citationRangeFilterMax"))),
+        },
   };
 }
 

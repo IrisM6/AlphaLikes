@@ -288,7 +288,12 @@
         style="width: 6em"
       />
       <label data-l10n-id="pref-color-high">颜色</label>
-      <html:input type="text" preference="highLikesColor" style="width: 9em" />
+      <html:input
+        class="alphalikes-color-input"
+        type="text"
+        preference="highLikesColor"
+        style="width: 9em"
+      />
     </hbox>
 
     <hbox align="center">
@@ -301,25 +306,227 @@
         style="width: 6em"
       />
       <label data-l10n-id="pref-color-low">颜色</label>
-      <html:input type="text" preference="lowLikesColor" style="width: 9em" />
+      <html:input
+        class="alphalikes-color-input"
+        type="text"
+        preference="lowLikesColor"
+        style="width: 9em"
+      />
     </hbox>
 
     <hbox align="center">
       <label data-l10n-id="pref-color-mid"
         >中间区间颜色（留空则使用主题色）</label
       >
-      <html:input type="text" preference="midLikesColor" style="width: 9em" />
+      <html:input
+        class="alphalikes-color-input"
+        type="text"
+        preference="midLikesColor"
+        style="width: 9em"
+      />
     </hbox>
 
     <hbox align="center">
       <label data-l10n-id="pref-color-pending">「请确认匹配」标记颜色</label>
-      <html:input type="text" preference="pendingColor" style="width: 9em" />
+      <html:input
+        class="alphalikes-color-input"
+        type="text"
+        preference="pendingColor"
+        style="width: 9em"
+      />
     </hbox>
 
+    <description data-l10n-id="pref-color-swatches" style="opacity: 0.8">
+      每个颜色框旁边都会显示一排色块，直接点一下就能选，不必手输。
+    </description>
+
     <description data-l10n-id="pref-color-hint" style="opacity: 0.8">
-      可以使用任意 CSS 颜色：#1a7f37、green、rgb(26 127
+      也可以手输任意 CSS 颜色：#1a7f37、green、rgb(26 127
       55)。分位数模式按当前列表里的点赞数排名，样本太少时自动退回固定阈值。
     </description>
+  </groupbox>
+
+  <groupbox>
+    <label
+      ><html:h2 data-l10n-id="pref-citation-appearance-title"
+        >引用数外观</html:h2
+      ></label
+    >
+    <description
+      data-l10n-id="pref-citation-appearance-desc"
+      style="opacity: 0.8"
+    >
+      引用数和点赞数往往差着数量级，同一套阈值常常不好用。勾选「跟随点赞」时两列外观完全一致，只在「外观」「颜色」「只看高赞」里设置一次即可；取消勾选后，下面这一组只作用于「引用数」列。
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-appearance-linked"
+      preference="appearanceLinked"
+      data-l10n-id="pref-citation-appearance-linked"
+      label="引用数跟随点赞的外观设置"
+      native="true"
+    />
+
+    <vbox id="alphalikes-citation-appearance" hidden="true" style="gap: 6px">
+      <hbox align="center">
+        <label
+          id="alphalikes-citation-style-label"
+          data-l10n-id="pref-citation-appearance-style"
+          control="alphalikes-pref-citation-style"
+          >引用数显示样式</label
+        >
+        <menulist
+          id="alphalikes-pref-citation-style"
+          preference="citationStyle"
+          native="true"
+        >
+          <menupopup>
+          <menuitem
+            value="plain"
+            data-l10n-id="pref-style-plain"
+            label="纯文本"
+          />
+          <menuitem
+            value="badge"
+            data-l10n-id="pref-style-badge"
+            label="玻璃胶囊"
+          />
+          <menuitem
+            value="ring"
+            data-l10n-id="pref-style-ring"
+            label="玻璃圆形"
+          />
+          <menuitem
+            value="bookmark"
+            data-l10n-id="pref-style-bookmark"
+            label="侧边强调块"
+          />
+          <menuitem
+            value="morandi"
+            data-l10n-id="pref-style-morandi"
+            label="莫兰迪低饱和"
+          />
+          <menuitem
+            value="academic"
+            data-l10n-id="pref-style-academic"
+            label="学术严谨"
+          />
+          <menuitem
+            value="fresh"
+            data-l10n-id="pref-style-fresh"
+            label="淡雅清新"
+          />
+          <menuitem
+            value="playful"
+            data-l10n-id="pref-style-playful"
+            label="活泼明快"
+          />
+          <menuitem
+            value="outline"
+            data-l10n-id="pref-style-outline"
+            label="细边框描边"
+          />
+          <menuitem
+            value="split"
+            data-l10n-id="pref-style-split"
+            label="双色拼接"
+          />
+          <menuitem
+            value="dot"
+            data-l10n-id="pref-style-dot"
+            label="数字角标"
+          />
+          </menupopup>
+        </menulist>
+      </hbox>
+
+      <checkbox
+        id="alphalikes-pref-citation-colors"
+        preference="citationColorEnabled"
+        data-l10n-id="pref-citation-color-enabled"
+        label="为引用数着色"
+        native="true"
+      />
+
+      <hbox align="center">
+        <label data-l10n-id="pref-citation-color-high-threshold">高引阈值</label>
+        <html:input
+          type="number"
+          preference="citationHighLikesThreshold"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+        <label data-l10n-id="pref-color-high">颜色</label>
+        <html:input
+          class="alphalikes-color-input"
+          type="text"
+          preference="citationHighLikesColor"
+          style="width: 9em"
+        />
+      </hbox>
+
+      <hbox align="center">
+        <label data-l10n-id="pref-citation-color-low-threshold">低引阈值</label>
+        <html:input
+          type="number"
+          preference="citationLowLikesThreshold"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+        <label data-l10n-id="pref-color-low">颜色</label>
+        <html:input
+          class="alphalikes-color-input"
+          type="text"
+          preference="citationLowLikesColor"
+          style="width: 9em"
+        />
+      </hbox>
+
+      <hbox align="center">
+        <label data-l10n-id="pref-citation-color-mid"
+          >中间区间颜色（留空则使用主题色）</label
+        >
+        <html:input
+          class="alphalikes-color-input"
+          type="text"
+          preference="citationMidLikesColor"
+          style="width: 9em"
+        />
+      </hbox>
+
+      <checkbox
+        id="alphalikes-pref-citation-range"
+        preference="citationRangeFilterEnabled"
+        data-l10n-id="pref-citation-filter-enabled"
+        label="启用引用数范围筛选"
+        native="true"
+      />
+
+      <hbox align="center">
+        <label data-l10n-id="pref-citation-filter-min">最少引用数</label>
+        <html:input
+          type="number"
+          preference="citationRangeFilterMin"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+        <label data-l10n-id="pref-citation-filter-max">最多引用数（0 = 不限制）</label>
+        <html:input
+          type="number"
+          preference="citationRangeFilterMax"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+      </hbox>
+
+      <description data-l10n-id="pref-citation-filter-note" style="opacity: 0.8">
+        与点赞数的范围筛选一样：范围之外的条目仍然显示，只是整格变淡。
+      </description>
+    </vbox>
   </groupbox>
 
   <groupbox>
@@ -399,49 +606,45 @@
       style="opacity: 0.8"
     >
       Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited
-      by」数字。Google
-      可能会要求人机验证或限流：这时插件会暂停读取、弹一条提示，并在约 10
-      分钟后自动重试（继续被拦则翻倍，最长 2
-      小时），不会用别的来源顶替这个数字。读取过于频繁更容易被拦，因此请不要把刷新间隔调得太小。
+      by」数字。Google 要求人机验证或限流时，插件先自己处理：暂停读取，并按 10
+      分钟、20 分钟、40 分钟……（最长 2 小时）自动重试，前两次不打扰你；连续第三次仍被拦住才弹一条提示，说明还要等多久、以及如何自己完成验证。任何情况下都不会用别的来源顶替这个数字。
     </description>
 
-    <hbox align="center">
-      <label
-        id="alphalikes-pref-citation-source-label"
-        data-l10n-id="pref-citations-source"
-        control="alphalikes-pref-citation-source"
-        >显示哪一个来源的引用数</label
-      >
-      <menulist
-        id="alphalikes-pref-citation-source"
-        preference="citationSourcePreference"
+    <description data-l10n-id="pref-citations-sources" style="opacity: 0.8">
+      引用数来源（可以多选；多选时显示其中最大的数字）
+    </description>
+
+    <hbox id="alphalikes-citation-sources" style="gap: 16px">
+      <checkbox
+        id="alphalikes-source-googleScholar"
+        class="alphalikes-citation-source"
+        data-source="googleScholar"
+        data-l10n-id="pref-citations-source-scholar"
+        label="Google Scholar（默认）"
         native="true"
-      >
-        <menupopup>
-          <menuitem
-            value="googleScholar"
-            data-l10n-id="pref-citations-source-scholar"
-            label="Google Scholar（默认）"
-          />
-          <menuitem
-            value="openAlex"
-            data-l10n-id="pref-citations-source-openalex"
-            label="OpenAlex"
-          />
-          <menuitem
-            value="semanticScholar"
-            data-l10n-id="pref-citations-source-s2"
-            label="Semantic Scholar"
-          />
-        </menupopup>
-      </menulist>
+      />
+      <checkbox
+        id="alphalikes-source-openAlex"
+        class="alphalikes-citation-source"
+        data-source="openAlex"
+        data-l10n-id="pref-citations-source-openalex"
+        label="OpenAlex"
+        native="true"
+      />
+      <checkbox
+        id="alphalikes-source-semanticScholar"
+        class="alphalikes-citation-source"
+        data-source="semanticScholar"
+        data-l10n-id="pref-citations-source-s2"
+        label="Semantic Scholar"
+        native="true"
+      />
     </hbox>
 
     <description data-l10n-id="pref-citations-source-note" style="opacity: 0.8">
-      只显示所选来源的数字，不会用其他来源顶替：三个来源的口径并不一致（例如
-      Google Scholar 收录预印本、学位论文与书籍，和 OpenAlex
-      的数字可能差一倍）。默认为收录最广的 Google
-      Scholar；它被人机验证拦住时会暂停重试（有提示），此时该列显示「暂无」而不是别的来源的数字。
+      数字只来自勾选的来源，不会用没勾的来源顶替。选一个时，有就是有、没有就是「暂无」；选多个时全部读取，显示其中最大的那个（悬停可以看到数字来自谁）。三个来源的口径并不一致——Google
+      Scholar 收录预印本、学位论文与书籍，和 OpenAlex
+      的数字可能差一倍，所以默认只勾 Google Scholar。
     </description>
 
     <description data-l10n-id="pref-citations-s2-note" style="opacity: 0.8">
@@ -454,8 +657,8 @@
       ><html:h2 data-l10n-id="pref-refresh-title">刷新与网络</html:h2></label
     >
     <description data-l10n-id="pref-refresh-desc" style="opacity: 0.8">
-      右键任意条目选择「刷新 alphaXiv
-      点赞」可以重新读取；缓存也可以按时间自动过期。
+      右键任意条目可以分别选择「刷新 alphaXiv
+      点赞」或「刷新引用数」（列里先显示「…」，完成后弹一条结果提示）；此外缓存也可以按时间自动过期。
     </description>
 
     <hbox align="center">
