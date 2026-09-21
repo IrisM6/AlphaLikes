@@ -41,6 +41,7 @@ cell-split-prefix = 赞
 cell-split-prefix-citations = 引
 cell-citation-source = 来源：{source}
 cell-scholar-blocked = Google Scholar 要求人机验证，约 {minutes} 分钟后会自动重试；右键 →「打开 Google Scholar 验证页」可以自己先完成验证
+cell-scholar-rate-limited = Google Scholar 对当前网络地址限流（HTTP 429），约 {minutes} 分钟后会自动重试。这类限制按地址生效，不是插件被针对
 # --- 刷新结果提示 -----------------------------------------------------------
 
 notify-refresh-likes-title = AlphaLikes · 点赞
@@ -68,6 +69,7 @@ clear-done = 已清除 {count} 个条目中本插件写入的 Extra 记录，其
 clear-none = 选中的条目里没有本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
 
 notify-scholar-blocked = Google Scholar 要求人机验证，引用数暂时无法读取。约 {minutes} 分钟后会自动重试；也可以右键 →「打开 Google Scholar 验证页」先自己完成验证。
+notify-scholar-rate-limited = Google Scholar 对当前网络地址限流，引用数暂时无法读取。约 {minutes} 分钟后会自动重试。这类限制按 IP 生效：本机浏览器里做同样的搜索也会被挡，等待通常是最有效的办法。
 
 error-no-selection = 请先选择至少一个条目。
 error-single-selection = 该操作只能用于单个条目。
@@ -174,7 +176,7 @@ pref-diagnose-copied = 诊断信息已复制到剪贴板，直接粘贴发给我
 pref-diagnose-failed = 诊断没能完成；请到「帮助 → 调试输出日志」里找 [AlphaLikes] 开头的行。
 
 pref-refresh-title = 刷新与网络
-pref-refresh-desc = 右键任意条目可以分别选择「刷新 alphaXiv 点赞」或「刷新引用数」（列里先显示「…」，完成后弹一条结果提示）；此外缓存也可以按时间自动过期。
+pref-refresh-desc = 右键任意条目可以分别选择「刷新 alphaXiv 点赞」或「刷新引用数」（列里先显示「…」，完成后弹一条结果提示）；此外缓存也可以按时间自动过期。 Google Scholar 每次读之间至少间隔 5 秒，并且每次会话会先像浏览器一样打开一次 scholar.google.com（用来带上 Google 自己的 cookie）。
 pref-refresh-ttl = 缓存多少天后重新读取点赞数（0 = 不自动）
 pref-refresh-interval = 同一域名请求的最小间隔（毫秒）
 pref-refresh-timeout = 请求超时（毫秒）

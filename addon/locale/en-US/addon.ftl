@@ -42,6 +42,7 @@ cell-quantile-title = {label} — high from {high} likes, low up to {low} (ranke
 cell-split-prefix = likes
 cell-split-prefix-citations = cited
 cell-citation-source = Source: {source}
+cell-scholar-rate-limited = Google Scholar is rate limiting this network address (HTTP 429); retrying automatically in about {minutes} minutes. The limit applies to the address, not to this plugin.
 cell-scholar-blocked = Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.
 # --- Refresh summaries ------------------------------------------------------
 
@@ -70,6 +71,7 @@ notify-clear-title = AlphaLikes · clear
 clear-done = Removed this plugin's records from {count} item(s); everything else in Extra is untouched. These items stay unwritten until refreshed.
 clear-none = No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until refreshed.
 
+notify-scholar-rate-limited = Google Scholar is rate limiting this network address, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; the limit applies to the address, so the same search in this machine's browser is limited too, and waiting is usually what clears it.
 notify-scholar-blocked = Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.
 
 error-no-selection = Select at least one item first.
@@ -178,7 +180,7 @@ pref-diagnose-copied = The diagnostic report is on the clipboard; paste it into 
 pref-diagnose-failed = The diagnostic could not finish; look for the lines starting with [AlphaLikes] in Help → Debug Output Logging.
 
 pref-refresh-title = Refreshing and network
-pref-refresh-desc = The context menu can re-read like counts and citation counts separately (the cells show "…" while it runs, then a summary appears); the cache can also expire on its own.
+pref-refresh-desc = The context menu can re-read like counts and citation counts separately (the cells show "…" while it runs, then a summary appears); the cache can also expire on its own. Scholar reads are spaced at least 5 seconds apart, and each session opens scholar.google.com once the way a browser does, so Google's own cookies come along.
 pref-refresh-ttl = Re-fetch cached like counts after (days, 0 = never)
 pref-refresh-interval = Minimum delay between requests to the same host (ms)
 pref-refresh-timeout = Request timeout (ms)

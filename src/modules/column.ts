@@ -477,9 +477,13 @@ export function renderCitationCell(
 
   if (decorations.includes(CITATIONS_BLOCKED_MARKER)) {
     const status = getService().getScholarBlockStatus();
-    cell.title = t("cell-scholar-blocked", {
-      minutes: Math.max(1, status.minutesLeft),
-    });
+    // Rate limiting and a refusal are different answers from Google, and the
+    // tooltip is the only place the difference reaches the user: one is worth
+    // opening a browser for, the other is worth waiting out.
+    const minutes = Math.max(1, status.minutesLeft);
+    cell.title = status.rateLimited
+      ? t("cell-scholar-rate-limited", { minutes })
+      : t("cell-scholar-blocked", { minutes });
     cell.classList.add("alphalikes-citation-blocked");
   } else if (text === CELL_UNAVAILABLE) {
     cell.title = failureTooltip(decorations, "cell-citations-unavailable");

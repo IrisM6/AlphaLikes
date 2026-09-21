@@ -36,6 +36,8 @@ export const MESSAGES = {
   "failure-no-count": "the page arrived but the number was not in it.",
   "cell-cleared":
     "This plugin's records were cleared from this item. Refresh the likes or the citations to read them again.",
+  "cell-scholar-rate-limited":
+    "Google Scholar is rate limiting this network address (HTTP 429); retrying automatically in about {minutes} minutes. The limit applies to the address, not to this plugin.",
   "cell-scholar-blocked":
     "Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.",
   "cell-quantile-high": "High for the items in view",
@@ -71,6 +73,8 @@ export const MESSAGES = {
     "No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until a refresh.",
 
   "notify-scholar-title": "AlphaLikes · Google Scholar",
+  "notify-scholar-rate-limited":
+    "Google Scholar is rate limiting this network address, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; the limit applies to the address, so the same search in this machine's browser is limited too, and waiting is usually what clears it.",
   "notify-scholar-blocked":
     "Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.",
 

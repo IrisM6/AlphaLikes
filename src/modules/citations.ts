@@ -248,7 +248,7 @@ export const CITATION_AUTHORITY_ORDER: readonly CitationSourceKey[] = [
 export const CITATIONS_BLOCKED_MARKER = "scholarBlocked";
 
 /** The site whose human check blocks the count. */
-export const GOOGLE_SCHOLAR_HOME = "https://scholar.google.com/";
+export { GOOGLE_SCHOLAR_HOME } from "./constants";
 
 /**
  * How long to leave Google Scholar alone after it asks for a human check.
@@ -437,6 +437,18 @@ export function googleScholarCitationSearchURL(title: string): string {
  * handled exactly like the "sorry" page rather than as a hard error.
  */
 export const CITATION_REJECTED_STATUSES = new Set([403, 429, 503]);
+
+/**
+ * Statuses that mean "too many requests from this address".
+ *
+ * Google uses 429 for its own rate limiting and 503 when it wants the client
+ * to slow down, while a 403 is the "sorry" refusal. The difference is worth
+ * keeping: the notice the user gets says either "slow down" or "prove you are
+ * a person", and only one of those is worth opening a browser for.
+ */
+export function isRateLimitStatus(status: number): boolean {
+  return status === 429 || status === 503;
+}
 
 /** True when the page is one of Google's block or consent interstitials. */
 export function isGoogleInterstitial(page: string): boolean {

@@ -9,6 +9,7 @@
 import pkg from "../../package.json";
 import {
   ARXIV_API_INTERVAL_MS,
+  GOOGLE_SCHOLAR_HOME,
   GOOGLE_SCHOLAR_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
 } from "./constants";
@@ -59,6 +60,12 @@ interface PacingState {
   lastStartedAt: number;
 }
 
+/** What the session's opening request to Google answered. */
+export interface WarmupResult {
+  status: number | null;
+  error: string | null;
+}
+
 const USER_AGENT = `${pkg.config.addonName}/${pkg.version}`;
 
 /** Hosts that answer a non-browser agent with a block or a consent page. */
@@ -93,6 +100,20 @@ export function userAgentFor(host: string): string {
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:115.0) " +
     "Gecko/20100101 Firefox/115.0"
   );
+}
+
+/** The names of the cookies Zotero holds for `host` (the diagnostic lists them). */
+export function cookieNames(host: string): string[] {
+  try {
+    const jar = Services.cookies.getCookiesFromHost(
+      host,
+      {},
+    ) as unknown as Array<{ name: string }>;
+
+    return [...new Set(jar.map((cookie) => String(cookie.name)))].sort();
+  } catch {
+    return [];
+  }
 }
 
 /** Whether Google's consent cookie is in Zotero's own cookie jar. */
@@ -212,6 +233,8 @@ export function hostOf(url: string): string {
 export class PacedRequester {
   private tail: Promise<unknown> = Promise.resolve();
   private pacing = new Map<string, PacingState>();
+  private warmed = false;
+  private warmup: WarmupResult | null = null;
   private disposed = false;
   private options: RequesterOptions;
 
@@ -225,6 +248,49 @@ export class PacedRequester {
 
   dispose(): void {
     this.disposed = true;
+  }
+
+  /**
+   * What Google answered the session's opening request, for the diagnostic.
+   *
+   * `null` until a Google request has been made in this session.
+   */
+  sessionWarmup(): WarmupResult | null {
+    return this.warmup;
+  }
+
+  /**
+   * Opens Scholar's front page once per session, before the first search.
+   *
+   * A browser reaches a search page by way of the site: it arrives with the
+   * site's cookies already in hand. Zotero's requests share the application's
+   * own cookie jar (`Zotero.HTTP` uses the Firefox jar unless asked not to),
+   * so the cookies Google sets here are kept and sent with the searches that
+   * follow - including in later sessions, because that jar is on disk.
+   *
+   * This is one extra request per session, and it is what a person does. Going
+   * straight to a search URL with an empty jar is what a crawler does, and
+   * Google answers that with "unusual traffic" often enough to be worth it.
+   */
+  private async warmUpScholar(
+    send: HttpTransport,
+    headers: Record<string, string>,
+  ): Promise<void> {
+    this.warmed = true;
+    try {
+      const opened = await send("GET", GOOGLE_SCHOLAR_HOME, {
+        timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
+        responseType: "text",
+        successCodes: false,
+        headers,
+      });
+      this.warmup = { status: Number(opened.status) || 0, error: null };
+    } catch (error) {
+      this.warmup = {
+        status: null,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
   }
 
   private intervalFor(host: string): number {
@@ -294,6 +360,8 @@ export class PacedRequester {
       if (google) headers["Accept-Language"] = "en-US,en;q=0.9";
 
       const send = this.options.transport ?? bindTransport(Zotero.HTTP);
+      if (google && !this.warmed) await this.warmUpScholar(send, headers);
+
       const response = await send("GET", url, {
         timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
         responseType: "text",

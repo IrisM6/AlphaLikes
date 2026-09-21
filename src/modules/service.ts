@@ -21,6 +21,7 @@ import {
 import {
   citationCountsFromSemanticScholar,
   CITATION_REJECTED_STATUSES,
+  isRateLimitStatus,
   googleScholarCitationCount,
   googleScholarCitationSearchURL,
   googleScholarResultBlocks,
@@ -59,6 +60,7 @@ import {
   type TrendDelta,
 } from "./history";
 import {
+  cookieNames,
   googleConsentStored,
   hostOf,
   parseHTMLBody,
@@ -373,6 +375,13 @@ export class AlphaLikesService {
     attempts: number;
     until: number;
     url: string;
+    /**
+     * `true` when Google rate-limited the address (429/503) rather than
+     * refusing the request (403). The two mean different things to the user:
+     * one is "slow down, this network is busy", the other is "prove you are a
+     * person", and the notice spells out which one it was.
+     */
+    rateLimited: boolean;
   } | null = null;
   private scholarRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private scholarBlockedItems = new Set<number>();
@@ -586,6 +595,7 @@ export class AlphaLikesService {
     minutesLeft: number;
     attempts: number;
     url: string;
+    rateLimited: boolean;
   } {
     const block = this.scholarBlock;
     if (!block || block.until <= Date.now()) {
@@ -594,6 +604,7 @@ export class AlphaLikesService {
         minutesLeft: 0,
         attempts: block?.attempts ?? 0,
         url: block?.url ?? GOOGLE_SCHOLAR_HOME,
+        rateLimited: block?.rateLimited ?? false,
       };
     }
     return {
@@ -601,6 +612,7 @@ export class AlphaLikesService {
       minutesLeft: Math.max(1, Math.ceil((block.until - Date.now()) / 60_000)),
       attempts: block.attempts,
       url: block.url,
+      rateLimited: block.rateLimited,
     };
   }
 
@@ -683,10 +695,17 @@ export class AlphaLikesService {
    * the check looks like it needs a person is the user told - once per episode,
    * with the retry time and a way to clear it themselves.
    */
-  private noteScholarBlock(url: string): void {
+  private noteScholarBlock(url: string, rateLimited = false): void {
     const attempts = (this.scholarBlock?.attempts ?? 0) + 1;
     const delay = scholarRetryDelayMs(attempts);
-    this.scholarBlock = { attempts, until: Date.now() + delay, url };
+    // The most recent answer decides how the wait is described, so a block
+    // that started as a refusal and turned into rate limiting says so.
+    this.scholarBlock = {
+      attempts,
+      until: Date.now() + delay,
+      url,
+      rateLimited,
+    };
 
     if (!this.scholarBlockAnnounced) {
       this.debug(
@@ -701,7 +720,9 @@ export class AlphaLikesService {
       const minutes = Math.round(delay / 60_000);
       toast(
         t("notify-scholar-title"),
-        t("notify-scholar-blocked", { minutes }),
+        rateLimited
+          ? t("notify-scholar-rate-limited", { minutes })
+          : t("notify-scholar-blocked", { minutes }),
       );
     }
 
@@ -931,9 +952,13 @@ export class AlphaLikesService {
         this.citationStates.set(item.id, {
           kind: "failed",
           retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
-          // A block is a refusal by Google, which is the 403 case; anything
-          // else means the sources answered but had no number for this paper.
-          reason: blocked ? "http-403" : "no-count",
+          // The block's own reason is carried through: a rate limit (429) and
+          // a refusal (403) are not the same failure to report.
+          reason: blocked
+            ? this.getScholarBlockStatus().rateLimited
+              ? "http-429"
+              : "http-403"
+            : "no-count",
         });
         return false;
       }
@@ -1072,7 +1097,7 @@ export class AlphaLikesService {
     // throwing here would have left the count permanently empty with the
     // popup only saying that one request had failed.
     if (CITATION_REJECTED_STATUSES.has(page.status)) {
-      this.noteScholarBlock(url);
+      this.noteScholarBlock(url, isRateLimitStatus(page.status));
       return null;
     }
     if (page.status < 200 || page.status >= 300) return null;
@@ -1579,38 +1604,36 @@ export class AlphaLikesService {
   }
 
   // -------------------------------------------------------------------------
-  // Diagnostics
+  // The read diagnostic
   // -------------------------------------------------------------------------
 
   /**
-   * Runs one real attempt at each read for what is selected, and writes down
+   * Makes one real attempt at each read for what is selected, and writes down
    * everything that decided the outcome.
    *
-   * "It does not read" is not something that can be fixed from a distance: the
-   * answer depends on the machine's network, its proxy settings, and what the
-   * two sites choose to do with that particular address. The report is meant to
-   * be pasted into a message, so it carries the exact URLs, the exact headers,
-   * the status, the exception and the first characters of each answer - plus
-   * the settings that decide where the reads go at all.
+   * "It does not read" cannot be fixed from a distance: the answer depends on
+   * the machine's network, its proxy settings, and what the two sites choose to
+   * do with that particular address. The report is meant to be pasted into a
+   * message, so it carries the exact URLs, the exact headers, the status, the
+   * exception and the opening characters of each answer - plus the settings
+   * that decide where the reads go at all.
    *
    * It never touches the cache: a probe failure cannot cost the user a count.
    */
   async diagnose(items?: Zotero.Item[]): Promise<string> {
-    // An explicit list wins even when it is empty: the caller knows what it
+    // An explicit list wins even when it is empty: the caller knows what is
     // selected, and a test can ask for "nothing".
     const chosen = items ?? this.selectedItems();
     const targets = chosen.slice(0, 2);
-    const items_: string[] = [];
+    const itemLines: string[] = [];
     const probes: HttpProbe[] = [];
     const notes: string[] = [];
 
     if (!targets.length) {
-      notes.push(
-        "no item was selected - select one or two papers and run the diagnostic again",
-      );
+      notes.push("没有选中任何条目：请在条目列表里选中一篇论文再运行诊断。");
     }
     if (chosen.length > 2) {
-      notes.push("only the first 2 items were probed");
+      notes.push("只诊断了前 2 个条目。");
     }
 
     for (const item of targets) {
@@ -1619,55 +1642,91 @@ export class AlphaLikesService {
       const extra = safeGetField(item, "extra");
       const cached = readCachedLikes(extra);
 
-      items_.push(`"${title}" (id ${item.id}, ${item.itemType})`);
-      items_.push(
-        `   arxiv id: ${arxivID ?? "(none)"}; cleared: ${
-          this.isCleared(item) ? "yes" : "no"
-        }; likes cache: ${cached ?? "none"}; citations cache: ${
-          readCitations(extra) ? "yes" : "no"
+      itemLines.push(`「${title}」（id ${item.id}，${item.itemType}）`);
+      itemLines.push(
+        `   arXiv ID：${arxivID ?? "（没有）"}；已清除：${
+          this.isCleared(item) ? "是" : "否"
+        }；点赞缓存：${cached ?? "无"}；引用缓存：${
+          readCitations(extra) ? "有" : "无"
         }`,
       );
 
-      if (arxivID) {
+      if (this.isCleared(item)) {
+        // Without this line the report shows a healthy request next to a blank
+        // column, which reads like a contradiction.
+        notes.push(
+          `「${title}」被清除过：列里保持空白、也不会自动读取，这是设计如此；` +
+            `选中它点一次「刷新 alphaXiv 点赞」或「刷新引用数」即可恢复。`,
+        );
+      }
+      if (!arxivID) {
+        notes.push(`「${title}」没有 arXiv ID，点赞数无法查询。`);
+      } else {
         probes.push(await this.probeLikes(arxivID));
       }
 
       const searchTitle = (readScholarTitle(extra) || title).trim();
-      if (searchTitle.length >= 10) {
+      if (searchTitle.length < 10) {
+        notes.push(`「${title}」的标题太短，无法拿去 Google Scholar 检索。`);
+      } else {
         probes.push(await this.probeScholar(searchTitle));
       }
     }
 
-    const sourcePrefs = getCitationSourcePreferences().join(",") || "(none)";
+    for (const probe of probes) this.explainProbe(probe, notes);
+
+    const sourcePrefs =
+      getCitationSourcePreferences().join(",") || "（未选择）";
     const settings = [
-      `citation sources: ${sourcePrefs}`,
-      `citation column: ${getCitationPrefs().enabled ? "on" : "off"}, cache ${
+      `引用来源：${sourcePrefs}`,
+      `引用列：${getCitationPrefs().enabled ? "显示" : "隐藏"}，缓存 ${
         getCitationPrefs().cacheTtlDays
-      } day(s)`,
-      `auto-match non-arXiv items: ${
-        getPref("autoResolveNonArxiv") ? "on" : "off"
-      } (adopt at ${getPref("autoAcceptPercent")}%)`,
-      `request interval ${getPref("requestIntervalMs")}ms, timeout ${getPref(
+      } 天`,
+      `自动匹配非 arXiv 条目：${
+        getPref("autoResolveNonArxiv") ? "开" : "关"
+      }（自动采用阈值 ${getPref("autoAcceptPercent")}%）`,
+      `请求间隔 ${getPref("requestIntervalMs")}ms，超时 ${getPref(
         "requestTimeoutMs",
-      )}ms, likes cache ${
+      )}ms，点赞缓存 ${
         getPref("cacheTtlDays") === 0
-          ? "no automatic expiry"
-          : `${getPref("cacheTtlDays")} day(s)`
+          ? "不自动过期"
+          : `${getPref("cacheTtlDays")} 天`
+      }`,
+      `Zotero 里 scholar.google.com 的 cookie：${
+        cookieNames("scholar.google.com").join("、") || "（没有）"
       }`,
     ];
 
-    notes.push(
-      "this report is one real request per read; no cache and no setting was changed",
-    );
+    // The session's opening request says whether Google is limiting the address
+    // itself or only this search - the first is not something a retry fixes.
+    const warmup = this.requester.sessionWarmup();
+    if (warmup) {
+      notes.push(
+        `本次会话打开 Scholar 首页（用来拿到 Google 自己的 cookie）：${
+          warmup.status === null
+            ? `失败 - ${warmup.error ?? "未知错误"}`
+            : `HTTP ${warmup.status}`
+        }`,
+      );
+    }
+
     if (this.isScholarBlocked()) {
       const status = this.getScholarBlockStatus();
       notes.push(
-        `Google Scholar is in its wait period: about ${Math.max(
+        `Google Scholar 正在等待期：约 ${Math.max(
           1,
           status.minutesLeft,
-        )} minute(s) left, attempt ${status.attempts}`,
+        )} 分钟后重试（第 ${status.attempts} 次；原因：${
+          status.rateLimited
+            ? "这个地址被限流（429/503）"
+            : "要求人机验证（403）"
+        }）。`,
       );
     }
+
+    notes.push(
+      "这份报告只包含这些真实请求的结果，不会改动任何缓存或设置；把整段贴回来即可。",
+    );
 
     const agent =
       (Zotero.getMainWindow() as unknown as Window | null)?.navigator
@@ -1676,20 +1735,41 @@ export class AlphaLikesService {
     const input: DiagnosisInput = {
       pluginVersion: String(pkg.version),
       zoteroVersion: Zotero.version,
-      gecko: /rv:(\d+)/.exec(agent)?.[1] ?? "unknown",
+      gecko: /rv:(\d+)/.exec(agent)?.[1] ?? "未知",
       platform: String(
         (Services as unknown as { appinfo?: { OS?: string } })?.appinfo?.OS ??
-          "unknown",
+          "未知",
       ),
       proxy: describeProxy(),
       consentCookie: googleConsentStored(),
-      items: items_,
+      itemCount: targets.length,
+      items: itemLines,
       settings,
       probes,
       notes,
     };
 
     return formatDiagnosis(input);
+  }
+
+  /** One line of advice per probe that needs it. */
+  private explainProbe(probe: HttpProbe, notes: string[]): void {
+    const status = probe.status ?? 0;
+    if (!probe.label.includes("Scholar")) return;
+
+    if (status === 429 || status === 503) {
+      notes.push(
+        "Google 这次给的是 429/503（按地址限流），不是 403（人机验证）：" +
+          "这类限制对同一个地址上的所有程序都生效，浏览器里做同样的搜索也会被挡，" +
+          "等待通常比换办法更快恢复。插件会按 10 分钟起翻倍重试，这期间不再打扰 Google。",
+      );
+    }
+    if (status === 403) {
+      notes.push(
+        "Google 这次给的是 403：这是人机验证页，右键 →「打开 Google Scholar 验证页」" +
+          "可以在浏览器里自己完成一次，回来点「刷新引用数」即可立刻重试。",
+      );
+    }
   }
 
   private selectedItems(): Zotero.Item[] {
@@ -1708,49 +1788,53 @@ export class AlphaLikesService {
 
   /** One alphaXiv page fetch, described for the report. */
   private async probeLikes(arxivID: string): Promise<HttpProbe> {
-    const url = buildAlphaXivURL(arxivID);
-    const label = "alphaXiv likes";
-    const accept = "text/html,application/xhtml+xml";
-    const attempt = await this.probePage(url, accept, label);
+    const attempt = await this.probePage(
+      buildAlphaXivURL(arxivID),
+      "text/html,application/xhtml+xml",
+      "alphaXiv 点赞",
+    );
     if (attempt.status === null) return attempt.probe;
 
     const likes = parseLikesFromDocument(parseHTMLBody(attempt.body));
     attempt.probe.verdict =
       likes === null
-        ? "the page loaded but carries no like count (markup may have changed)"
-        : `like count found: ${likes}`;
+        ? "页面能打开，但里面没有点赞数（页面结构可能变了）"
+        : `读到点赞数 ${likes}`;
     return attempt.probe;
   }
 
   /** One Scholar search, described for the report. */
   private async probeScholar(title: string): Promise<HttpProbe> {
-    const url = googleScholarCitationSearchURL(title);
-    const label = "Google Scholar citations";
-    const accept = "text/html,application/xhtml+xml";
-    const attempt = await this.probePage(url, accept, label);
+    const attempt = await this.probePage(
+      googleScholarCitationSearchURL(title),
+      "text/html,application/xhtml+xml",
+      "Google Scholar 引用数",
+    );
     if (attempt.status === null) return attempt.probe;
 
-    if (attempt.probe.status !== null && attempt.probe.status >= 400) {
-      attempt.probe.verdict =
-        "Google refused the request (treated as the human check)";
+    const status = attempt.probe.status ?? 0;
+    if (status >= 400) {
+      attempt.probe.verdict = isRateLimitStatus(status)
+        ? `HTTP ${status} — Google 对当前网络地址限流`
+        : `HTTP ${status} — Google 拒绝了这次请求（按人机验证处理）`;
       return attempt.probe;
     }
 
     const count = googleScholarCitationCount(attempt.body);
     const hits = googleScholarResultBlocks(attempt.body).length;
     if (isGoogleInterstitial(attempt.body) && hits === 0) {
-      attempt.probe.verdict =
-        "captcha / consent page - the answer carries no results";
+      attempt.probe.verdict = "人机验证 / 同意页（里面没有结果）";
     } else if (hits > 0) {
-      attempt.probe.verdict = `results page: ${hits} result block(s), first Cited by ${
-        count ?? "unparsed"
+      attempt.probe.verdict = `结果页：${hits} 个结果，第一个 Cited by ${
+        count ?? "未解析"
       }`;
     } else {
-      attempt.probe.verdict = "neither a results page nor a challenge page";
+      attempt.probe.verdict = "既不是结果页也不是验证页";
     }
     return attempt.probe;
   }
 
+  /** One GET, with whatever came back written down either way. */
   private async probePage(
     url: string,
     accept: string,
@@ -1775,12 +1859,12 @@ export class AlphaLikesService {
       probe.bodyLength = page.body.length;
       probe.bodyHead = trimBodyHead(page.body);
       if (page.status >= 400) {
-        probe.verdict = `HTTP ${page.status} - the body above is what came back`;
+        probe.verdict = `HTTP ${page.status}（正文开头就是服务器返回的内容）`;
       }
       return { probe, body: page.body, status: page.status };
     } catch (error) {
       probe.error = error instanceof Error ? error.message : String(error);
-      probe.verdict = "the request never reached the site";
+      probe.verdict = "请求没有发出去／没有回应";
       return { probe, body: "", status: null };
     }
   }

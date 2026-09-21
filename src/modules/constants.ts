@@ -20,6 +20,16 @@ export const ARXIV_API_INTERVAL_MS = 3_000;
  */
 export const GOOGLE_SCHOLAR_INTERVAL_MS = 5_000;
 
+/**
+ * Google Scholar's front page.
+ *
+ * Two things use it: the "verification page" the context menu opens, and the
+ * request the plugin makes once per session before its first search - a
+ * browser arrives at a search page by way of the site, and a cold jar is what
+ * makes Google answer "unusual traffic".
+ */
+export const GOOGLE_SCHOLAR_HOME = "https://scholar.google.com/";
+
 /** How long a failed lookup is remembered before it is retried. */
 export const ERROR_RETRY_DELAY_MS = 5 * 60_000;
 

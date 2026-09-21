@@ -77,6 +77,9 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
 
   target.requester = {
     ...previous,
+    // The service asks what the session's opening Google request answered; a
+    // stub has no such history.
+    sessionWarmup: () => null,
     requestHTML: async (url: string) => {
       state.served.push(url);
       await gate();
@@ -331,6 +334,50 @@ describe("AlphaLikes refresh", function () {
         stub.scholar = 12;
         await service.refreshCitations([target]);
         assert.equal(service.planCitationCell(target).text, "12");
+      } finally {
+        await target.eraseTx();
+      }
+    });
+
+    it("reads a 429 as rate limiting, which is a different answer", async function () {
+      // Google rate limits an address (429) rather than refusing the request
+      // (403). The wait is the same, but what the user is told is not: one is
+      // "slow down, this network is busy", the other is "prove you are a
+      // person", and opening a browser only helps with the second.
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", "AlphaLikes refresh probe paper");
+      target.setField("date", "2026-09-21");
+      target.setField("DOI", "10.1234/alphalikes.429");
+      await target.saveTx();
+
+      try {
+        stub = stubRequester(service, 0, 0);
+        stub.scholarStatus = 429;
+
+        const summary = await service.refreshCitations([target]);
+
+        assert.equal(summary.updated, 0);
+        assert.equal(summary.failed, 1);
+
+        const status = service.getScholarBlockStatus();
+        assert.isTrue(status.blocked, "a 429 has to book a retry as well");
+        assert.isTrue(
+          status.rateLimited,
+          "429 means the address is being limited, not that Google wants a " +
+            "human check",
+        );
+        const plan = service.planCitationCell(target);
+        assert.include(plan.value, CITATIONS_BLOCKED_MARKER);
+        assert.equal(plan.text, CELL_UNAVAILABLE);
+
+        // Leave no block behind: the next test would otherwise see the retry
+        // window rather than its own stub.
+        stub.scholarStatus = 200;
+        stub.scholar = 12;
+        await service.refreshCitations([target]);
+        assert.equal(service.planCitationCell(target).text, "12");
+        assert.isFalse(service.getScholarBlockStatus().rateLimited);
       } finally {
         await target.eraseTx();
       }

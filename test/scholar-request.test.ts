@@ -56,8 +56,17 @@ function consentCookieStored(): boolean {
   );
 }
 
+/**
+ * The headers of the request the caller actually asked for.
+ *
+ * A Google request is now made in two steps - the opening request first, then
+ * the search - so the interesting one is the last.
+ */
 function headersOf(captured: Captured[]): Record<string, string> {
-  return (captured[0]?.options.headers ?? {}) as Record<string, string>;
+  return (captured[captured.length - 1]?.options.headers ?? {}) as Record<
+    string,
+    string
+  >;
 }
 
 describe("the Google Scholar request", function () {
@@ -94,6 +103,95 @@ describe("the Google Scholar request", function () {
       consentCookieStored(),
       "without SOCS=CAI an EU visitor is answered with the consent page",
     );
+  });
+
+  it("opens Scholar's front page once per session, the way a browser does", async function () {
+    // Google answers a search that arrives with a cold cookie jar with
+    // "unusual traffic". A browser reaches a search page by way of the site,
+    // so the plugin makes the same opening request and keeps whatever cookies
+    // come back - Zotero's requests share the application's own cookie jar.
+    const { captured, transport } = stubTransport({
+      status: 200,
+      response: "<html><body>scholar</body></html>",
+    });
+    const requester = new PacedRequester({
+      timeoutMs: 5_000,
+      intervalMs: 0,
+      transport,
+    });
+
+    await requester.requestPage(
+      "https://scholar.google.com/scholar?hl=en&q=one",
+      "text/html,application/xhtml+xml",
+    );
+
+    assert.equal(
+      captured[0]?.url,
+      "https://scholar.google.com/",
+      "the first Google request of a session has to be the site itself",
+    );
+    assert.lengthOf(captured, 2, "the search follows the opening request");
+    assert.equal(requester.sessionWarmup()?.status, 200);
+
+    await requester.requestPage(
+      "https://scholar.google.com/scholar?hl=en&q=two",
+      "text/html,application/xhtml+xml",
+    );
+
+    assert.equal(
+      captured.filter(
+        (request) => request.url === "https://scholar.google.com/",
+      ).length,
+      1,
+      "the opening request belongs to the session, not to every search",
+    );
+  });
+
+  it("records what the opening request answered, even when it was refused", async function () {
+    // This is the diagnostic's key discriminator: if the front page is limited
+    // too, waiting is the only thing that helps, and the report says so.
+    const { captured, transport } = stubTransport({
+      status: 429,
+      response: "<html><title>Sorry</title></html>",
+    });
+    const requester = new PacedRequester({
+      timeoutMs: 5_000,
+      intervalMs: 0,
+      transport,
+    });
+
+    const page = await requester.requestPage(
+      "https://scholar.google.com/scholar?hl=en&q=one",
+    );
+
+    assert.lengthOf(captured, 2);
+    assert.equal(requester.sessionWarmup()?.status, 429);
+    assert.equal(
+      page.status,
+      429,
+      "the search's own answer is still the one that is returned",
+    );
+  });
+
+  it("leaves the APIs alone: only Google gets the opening request", async function () {
+    const { captured, transport } = stubTransport({
+      status: 200,
+      response: "{}",
+    });
+    const requester = new PacedRequester({
+      timeoutMs: 5_000,
+      intervalMs: 0,
+      transport,
+    });
+
+    await requester.requestPage("https://api.openalex.org/works/doi:10.1234/x");
+
+    assert.lengthOf(captured, 1);
+    assert.equal(
+      captured[0]?.url,
+      "https://api.openalex.org/works/doi:10.1234/x",
+    );
+    assert.isNull(requester.sessionWarmup());
   });
 
   it("names this plugin to the APIs, which ask for a contactable agent", function () {

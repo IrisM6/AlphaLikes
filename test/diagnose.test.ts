@@ -63,6 +63,9 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
 
   target.requester = {
     ...previous,
+    // The service asks the requester what the session's opening request to
+    // Google answered; the real one keeps that state, a stub reports none.
+    sessionWarmup: () => null,
     requestPage: async (url: string) => {
       state.served.push(url);
       if (url.includes("alphaxiv.org")) {
@@ -132,14 +135,14 @@ describe("AlphaLikes diagnostics", function () {
 
     it("lays the report out so it can be pasted into a message", function () {
       const probe: HttpProbe = {
-        label: "alphaXiv likes",
+        label: "alphaXiv 点赞",
         url: "https://www.alphaxiv.org/abs/2401.00001",
         userAgent: "probe-agent",
         status: 403,
         error: null,
         bodyLength: 1103,
         bodyHead: "<html><title>Sorry</title> unusual traffic",
-        verdict: "the request was refused",
+        verdict: "HTTP 403（正文开头就是服务器返回的内容）",
       };
 
       const report = formatDiagnosis({
@@ -147,24 +150,44 @@ describe("AlphaLikes diagnostics", function () {
         zoteroVersion: "9.0.6",
         gecko: "140",
         platform: "Linux",
-        proxy: "type=0 (direct)",
+        proxy: "type=0（直连）",
         consentCookie: true,
-        items: ['"A paper" (id 12, journalArticle)'],
-        settings: ["citation sources: googleScholar"],
+        itemCount: 1,
+        items: ["「一篇论文」（id 12，journalArticle）"],
+        settings: ["引用来源：googleScholar"],
         probes: [probe],
-        notes: ["this report is one real request per read"],
+        notes: ["这份报告只包含这些真实请求的结果"],
       });
 
-      assert.include(report, "plugin 9.9.9");
-      assert.include(report, "Zotero 9.0.6 (Gecko 140)");
-      assert.include(report, "proxy: type=0 (direct)");
-      assert.include(report, "Google consent cookie: present");
-      assert.include(report, '"A paper" (id 12, journalArticle)');
-      assert.include(report, "citation sources: googleScholar");
+      assert.include(report, "插件 9.9.9");
+      assert.include(report, "Zotero 9.0.6（Gecko 140）");
+      assert.include(report, "type=0（直连）");
+      assert.include(report, "Google 同意 cookie：已写入");
+      assert.include(report, "条目（1 个）");
+      assert.include(report, "「一篇论文」（id 12，journalArticle）");
+      assert.include(report, "引用来源：googleScholar");
       assert.include(report, probe.url);
-      assert.include(report, "result: HTTP 403, 1103 bytes");
-      assert.include(report, "body starts: <html><title>Sorry</title>");
-      assert.include(report, "this report is one real request per read");
+      assert.include(report, "结果：HTTP 403，1103 字节");
+      assert.include(report, "正文开头：<html><title>Sorry</title>");
+      assert.include(report, "这份报告只包含这些真实请求的结果");
+
+      // The count is the number of items, not the number of lines: two lines
+      // per item would otherwise read as four items.
+      const two = formatDiagnosis({
+        pluginVersion: "9.9.9",
+        zoteroVersion: "9.0.6",
+        gecko: "140",
+        platform: "Linux",
+        proxy: "type=0（直连）",
+        consentCookie: false,
+        itemCount: 2,
+        items: ["a", "b", "c", "d"],
+        settings: [],
+        probes: [],
+        notes: [],
+      });
+      assert.include(two, "条目（2 个）");
+      assert.include(two, "实际请求（0 次）");
 
       // A request that never produced a response says so, and says why.
       const failed = formatDiagnosis({
@@ -172,8 +195,9 @@ describe("AlphaLikes diagnostics", function () {
         zoteroVersion: "9.0.6",
         gecko: "140",
         platform: "Linux",
-        proxy: "type=0 (direct)",
+        proxy: "type=0（直连）",
         consentCookie: false,
+        itemCount: 1,
         items: [],
         settings: [],
         probes: [
@@ -181,8 +205,8 @@ describe("AlphaLikes diagnostics", function () {
         ],
         notes: [],
       });
-      assert.include(failed, "result: request failed - NetworkError");
-      assert.include(failed, "Google consent cookie: missing");
+      assert.include(failed, "结果：请求失败 — NetworkError");
+      assert.include(failed, "Google 同意 cookie：未写入");
     });
   });
 
@@ -219,14 +243,14 @@ describe("AlphaLikes diagnostics", function () {
 
       const report = await service.diagnose([Zotero.Items.get(item.id)]);
 
-      assert.include(report, `plugin ${pkg.version}`);
+      assert.include(report, `插件 ${pkg.version}`);
       assert.include(report, "AlphaLikes diagnose probe paper");
       assert.include(
         stub.served.join(" "),
         "https://www.alphaxiv.org/abs/2401.00001",
         "the report has to name the URL the plugin would really request",
       );
-      assert.include(report, "like count found: 1127");
+      assert.include(report, "读到点赞数 1127");
       assert.include(report, "Cited by 42");
       assert.include(report, "HTTP 200");
       assert.include(report, "probe-agent");
@@ -250,22 +274,54 @@ describe("AlphaLikes diagnostics", function () {
       );
     });
 
-    it("says what a blocked Scholar answer looked like", async function () {
+    it("tells a rate limit apart from a refusal", async function () {
+      // Google's two answers mean different things, and the report has to say
+      // which one it got: only one of them is worth opening a browser for.
+      const stub = stubRequester(service, 1127, 0);
+      stub.scholarStatus = 429;
+
+      const report = await service.diagnose([Zotero.Items.get(item.id)]);
+
+      assert.include(report, "HTTP 429");
+      assert.include(report, "限流");
+      assert.include(report, "等待通常比换办法更快恢复");
+    });
+
+    it("points at the verification page when Google refused outright", async function () {
       const stub = stubRequester(service, 1127, 0);
       stub.scholarStatus = 403;
 
       const report = await service.diagnose([Zotero.Items.get(item.id)]);
 
       assert.include(report, "HTTP 403");
-      assert.include(report, "Google refused the request");
+      assert.include(report, "打开 Google Scholar 验证页");
       assert.include(report, "unusual traffic");
+      assert.isFalse(
+        service.getScholarBlockStatus().blocked,
+        "the diagnostic is read-only: it reports the refusal rather than " +
+          "booking a wait of its own",
+      );
+    });
+
+    it("explains a cleared item instead of leaving the blank column unexplained", async function () {
+      const target = Zotero.Items.get(item.id);
+      await service.clearItems([target]);
+
+      const report = await service.diagnose([target]);
+
+      assert.include(report, "已清除：是");
+      assert.include(report, "被清除过");
+
+      // Put the item back the way the other tests expect it.
+      stubRequester(service, 1127, 42);
+      await service.refreshItems([target]);
     });
 
     it("asks for a selection instead of guessing when nothing is selected", async function () {
       const report = await service.diagnose([]);
 
-      assert.include(report, "no item was selected");
-      assert.include(report, "requests actually made (0)");
+      assert.include(report, "没有选中任何条目");
+      assert.include(report, "实际请求（0 次）");
     });
   });
 });

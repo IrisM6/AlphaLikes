@@ -9,9 +9,7 @@
  * exception, and the first characters of the answer.
  *
  * The settings pane has a button that runs this and copies the text to the
- * clipboard. The labels are English on purpose: the report is read by whoever
- * is fixing the plugin, while the pane's own status line around it is
- * translated like every other string in the interface.
+ * clipboard, and written to Zotero's debug log as a fallback.
  */
 
 /** One attempt at one URL, in the form the report needs. */
@@ -39,7 +37,9 @@ export interface DiagnosisInput {
   proxy: string;
   /** Whether Google's consent cookie is in Zotero's jar. */
   consentCookie: boolean;
-  /** One line per item the diagnostic looked at. */
+  /** How many items were probed (the lines below run two per item). */
+  itemCount: number;
+  /** Two lines per probed item: what it is, and what state it is in. */
   items: string[];
   /** The settings that decide where the reads go. */
   settings: string[];
@@ -62,41 +62,41 @@ export function trimBodyHead(body: string): string {
 function formatProbe(probe: HttpProbe): string[] {
   const lines = [
     probe.label,
-    `  URL: ${probe.url}`,
-    `  User-Agent: ${probe.userAgent}`,
+    `  URL：${probe.url}`,
+    `  User-Agent：${probe.userAgent}`,
   ];
 
   if (probe.status === null) {
-    lines.push(`  result: request failed - ${probe.error ?? "unknown error"}`);
+    lines.push(`  结果：请求失败 — ${probe.error ?? "未知错误"}`);
     return lines;
   }
 
-  lines.push(`  result: HTTP ${probe.status}, ${probe.bodyLength} bytes`);
-  lines.push(`  verdict: ${probe.verdict}`);
-  if (probe.bodyHead) lines.push(`  body starts: ${probe.bodyHead}`);
+  lines.push(`  结果：HTTP ${probe.status}，${probe.bodyLength} 字节`);
+  lines.push(`  判定：${probe.verdict}`);
+  if (probe.bodyHead) lines.push(`  正文开头：${probe.bodyHead}`);
   return lines;
 }
 
 export function formatDiagnosis(input: DiagnosisInput): string {
   const lines: string[] = [
-    `AlphaLikes read diagnostic - plugin ${input.pluginVersion}`,
-    `Zotero ${input.zoteroVersion} (Gecko ${input.gecko}) - ${input.platform}`,
-    `proxy: ${input.proxy}`,
-    `Google consent cookie: ${input.consentCookie ? "present" : "missing"}`,
+    `AlphaLikes 读取诊断 · 插件 ${input.pluginVersion}`,
+    `Zotero ${input.zoteroVersion}（Gecko ${input.gecko}）· ${input.platform}`,
+    `代理：${input.proxy}`,
+    `Google 同意 cookie：${input.consentCookie ? "已写入" : "未写入"}`,
     "",
-    `items (${input.items.length}):`,
+    `条目（${input.itemCount} 个）：`,
     ...input.items.map((line) => `  ${line}`),
     "",
-    "settings:",
+    "相关设置：",
     ...input.settings.map((line) => `  ${line}`),
     "",
-    `requests actually made (${input.probes.length}):`,
+    `实际请求（${input.probes.length} 次）：`,
   ];
 
   for (const probe of input.probes) lines.push(...formatProbe(probe));
 
   if (input.notes.length) {
-    lines.push("", "notes:");
+    lines.push("", "备注：");
     for (const note of input.notes) lines.push(`  ${note}`);
   }
 
@@ -112,18 +112,18 @@ export function formatDiagnosis(input: DiagnosisInput): string {
  */
 export function describeProxy(): string {
   const types: Record<number, string> = {
-    0: "direct (no proxy)",
-    1: "manual",
-    2: "automatic (PAC)",
-    3: "automatic (WPAD)",
-    4: "system proxy settings",
-    5: "system settings",
+    0: "直连（不使用代理）",
+    1: "手动配置",
+    2: "自动配置（PAC）",
+    3: "自动检测（WPAD）",
+    4: "系统代理设置",
+    5: "系统设置",
   };
 
   try {
     const prefs = Services.prefs;
     const type = prefs.getIntPref("network.proxy.type", 0);
-    const parts = [`type=${type} (${types[type] ?? "unknown"})`];
+    const parts = [`type=${type}（${types[type] ?? "未知"}）`];
 
     if (type === 1 || type === 4 || type === 5) {
       const host = prefs.getCharPref("network.proxy.http", "");
@@ -138,16 +138,16 @@ export function describeProxy(): string {
     }
     if (type === 2) {
       parts.push(
-        `pac=${prefs.getCharPref("network.proxy.autoconfig_url", "") || "(empty)"}`,
+        `pac=${prefs.getCharPref("network.proxy.autoconfig_url", "") || "（空）"}`,
       );
     }
 
     const excluded = prefs.getCharPref("network.proxy.no_proxies_on", "");
-    if (excluded) parts.push(`no_proxy=${excluded}`);
+    if (excluded) parts.push(`排除=${excluded}`);
     return parts.join("; ");
   } catch (error) {
-    return `could not read the proxy preferences (${
+    return `无法读取代理设置（${
       error instanceof Error ? error.message : error
-    })`;
+    }）`;
   }
 }
