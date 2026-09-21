@@ -1,5 +1,33 @@
+import { readFileSync } from "node:fs";
+
 import { defineConfig } from "zotero-plugin-scaffold";
 import pkg from "./package.json";
+
+/**
+ * Release notes come from the newest section of CHANGELOG.md.
+ *
+ * The scaffold's default collects conventional commits since the previous tag.
+ * The commits in this repository are prose, so every release so far shipped the
+ * body "_No significant changes._" — both on the release page and in the
+ * marketplace listing, which shows the release body. Reading the changelog
+ * keeps the release page, the listing and the repository saying the same thing.
+ */
+function releaseNotes(): string {
+  const fallback = "_更新说明见仓库的 CHANGELOG.md。_";
+  try {
+    const lines = readFileSync("CHANGELOG.md", "utf8").split("\n");
+    const start = lines.findIndex((line) => line.startsWith("## "));
+    if (start < 0) return fallback;
+    let end = lines.findIndex(
+      (line, index) => index > start && line.startsWith("## "),
+    );
+    if (end < 0) end = lines.length;
+    return lines.slice(start, end).join("\n").trim() || fallback;
+  } catch (error) {
+    console.warn("CHANGELOG.md could not be read:", error);
+    return fallback;
+  }
+}
 
 export default defineConfig({
   source: ["src", "addon"],
@@ -42,6 +70,10 @@ export default defineConfig({
 
   test: {
     waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.initialized`,
+  },
+
+  release: {
+    changelog: () => releaseNotes(),
   },
 
   // If you need to see a more detailed log, uncomment the following line:

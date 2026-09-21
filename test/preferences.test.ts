@@ -72,6 +72,7 @@ function restore(): void {
 
 describe("AlphaLikes preferences", function () {
   beforeEach(restore);
+
   after(restore);
 
   describe("the citation source list", function () {

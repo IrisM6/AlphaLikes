@@ -12,6 +12,7 @@ export default zotero({
         globals: {
           window: "readonly",
           document: "readonly",
+          Event: "readonly",
           Zotero: "readonly",
           Services: "readonly",
           console: "readonly",

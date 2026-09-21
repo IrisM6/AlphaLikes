@@ -322,7 +322,12 @@ if pane_path.exists():
         f"the settings pane binds preferences that addon/prefs.js does not "
         f"declare: {sorted(unknown_pane_prefs)}",
     )
-    unused_pane_prefs = declared_prefs - pane_prefs
+    # Two preferences are deliberately driven by addon/content/preferences.js
+    # instead of a `preference=` attribute: the citation-source list is one
+    # comma-separated value behind three checkboxes, and the 1.6.0 single-source
+    # key exists only so an upgrade keeps the source it had chosen.
+    js_driven_prefs = {"citationSourcePreferences", "citationSourcePreference"}
+    unused_pane_prefs = declared_prefs - pane_prefs - js_driven_prefs
     check(
         not unused_pane_prefs,
         f"preferences are declared but have no control in the pane: "
@@ -478,17 +483,21 @@ code_sources = set(
         r"export const CITATION_AUTHORITY_ORDER[^=]*=\s*\[(.*?)\];", citations_ts, re.DOTALL
     ).group(1))
 )
-# The pane's menulist carries the preference values, which are the same
-# identifiers the code uses.
-source_menu = re.search(
-    r'id="alphalikes-pref-citation-source".*?</menulist>', pane, re.DOTALL
+# The pane's source checkboxes carry the provider identifiers the code uses,
+# and the list they write is the comma-separated preference.
+source_group = re.search(
+    r'id="alphalikes-citation-sources".*?</hbox>', pane, re.DOTALL
 )
 pane_sources = (
-    set(re.findall(r'value="([A-Za-z]+)"', source_menu.group(0)))
-    if source_menu
+    set(re.findall(r'data-source="([A-Za-z]+)"', source_group.group(0)))
+    if source_group
     else set()
 )
 check(bool(pane_sources), "the pane has no citation-source chooser")
+check(
+    len(re.findall(r'class="alphalikes-citation-source"', pane)) == 3,
+    "the pane does not offer exactly the three citation sources",
+)
 check(
     code_sources <= pane_sources,
     f"citation sources missing from the pane: {sorted(code_sources - pane_sources)}",
@@ -503,12 +512,17 @@ check(
 # in both places a fresh profile reads.
 prefs_ts = read(ROOT / "src" / "modules" / "prefs.ts")
 check(
-    'citationSourcePreference: "googleScholar"' in prefs_ts,
-    "the default citation source is not Google Scholar in prefs.ts",
+    'citationSourcePreferences: "googleScholar"' in prefs_ts,
+    "the default citation source list is not Google Scholar in prefs.ts",
 )
 check(
-    'pref("citationSourcePreference", "googleScholar")' in prefs_js,
-    "the shipped default citation source is not Google Scholar in prefs.js",
+    'pref("citationSourcePreferences", "googleScholar")' in prefs_js,
+    "the shipped default citation source list is not Google Scholar in prefs.js",
+)
+# The 1.6.0 single-source preference stays only so an upgrade keeps its source.
+check(
+    'getPref("citationSourcePreference")' in prefs_ts,
+    "the upgrade path from the single-source preference is gone",
 )
 _checkbox = [line for line in prefs_js.splitlines() if "useGoogleScholar" in line]
 check(
@@ -524,12 +538,25 @@ check(
 # not come back: the provider order is derived from the preference alone.
 service_ts = read(ROOT / "src" / "modules" / "service.ts")
 check(
-    "citationProviderOrder(getCitationSourcePreference())" in service_ts,
-    "the citation provider order is not derived from the chosen source alone",
+    "citationProviderOrder(getCitationSourcePreferences())" in service_ts,
+    "the citation provider order is not derived from the chosen sources alone",
 )
 check(
     "CITATION_AUTHORITY_ORDER.filter" not in service_ts,
     "the citation order still falls through to other providers",
+)
+check(
+    "getCitationSourcePreference(" not in service_ts,
+    "the service still reads the retired single-source preference",
+)
+# Several sources are all read; the largest count wins and is the one named.
+check(
+    "for (const source of citationOrder())" in service_ts,
+    "only one selected provider is queried",
+)
+check(
+    "primaryCitation(" in citations_ts and "value > best.count" in citations_ts,
+    "the largest count among the selected providers is not chosen",
 )
 
 # A block has to be detectable, announced and retried.
@@ -672,6 +699,185 @@ if generator.exists() and preview.exists():
             )
 else:
     check(False, "scripts/gen-styles-preview.py is missing")
+
+# ---------------------------------------------------------------------------
+# 13. The refresh actions report what they did, and the picker picks
+# ---------------------------------------------------------------------------
+
+# The reported bug: 「刷新点赞数」 looked like it did nothing. A refresh that
+# cannot be told apart from a no-op is a refresh that will be reported again,
+# so it has to pass through the loading marker and end with a summary.
+menu_ts = read(ROOT / "src" / "modules" / "menu.ts")
+check(
+    "refreshSelectedCitations" in menu_ts and "menu-refresh-citations" in menu_ts,
+    "the context menu has no citation-count refresh",
+)
+check(
+    "refreshSummaryText" in menu_ts,
+    "a refresh does not report how many counts it re-read",
+)
+check(
+    "alphalikes-refresh-likes" in menu_ts and "alphalikes-refresh-citations" in menu_ts,
+    "the two refresh actions are not separate menu entries",
+)
+# Every entry that is added has to be removed again: a menu item left behind
+# comes back a second time when the window registers its menu again.
+_MENU_IDS = re.findall(r'^const ([A-Z][A-Z_]*_ID) = "([^"]+)";', menu_ts, re.MULTILINE)
+check(bool(_MENU_IDS), "could not read the menu item ids from src/modules/menu.ts")
+_teardown = menu_ts.split("export function unregisterItemMenu")[-1]
+for _name, _id in _MENU_IDS:
+    check(
+        _name in _teardown,
+        f"the menu item {_id} is not removed when the menu is torn down",
+    )
+check(
+    "refreshingLikes" in service_ts and "refreshingCitations" in service_ts,
+    "an explicit refresh is not visible in the column",
+)
+check(
+    "CELL_LOADING" in service_ts.split("private cellForKnownID")[1][:400],
+    "the like cell does not show the loading state while refreshing",
+)
+check(
+    "async refreshItems" in service_ts
+    and "async refreshCitations" in service_ts
+    and "RefreshSummary" in service_ts,
+    "the refresh actions no longer report a summary",
+)
+
+# Google Scholar's check is handled silently first; only a block that survives
+# the automatic retries is worth interrupting the user for.
+check(
+    "SCHOLAR_ANNOUNCE_AFTER" in service_ts,
+    "every Scholar block still interrupts the user immediately",
+)
+
+# Choosing the Scholar record by hand: the dialog, its script, and the pin that
+# keeps the choice from being undone by the next refresh.
+scholar_dialog = CONTENT / "scholar-picker.xhtml"
+scholar_script = CONTENT / "scholar-picker.js"
+check(scholar_dialog.exists(), "the Scholar record picker dialog is missing")
+check(scholar_script.exists(), "the Scholar record picker script is missing")
+if scholar_dialog.exists():
+    dialog_text = read(scholar_dialog)
+    # The script has to be the last element, or it runs before its own markup.
+    check(
+        dialog_text.rstrip().endswith("</window>")
+        and dialog_text.rindex("<script") > dialog_text.index('id="result-group"'),
+        "the picker script is not the last element in its dialog",
+    )
+    check(
+        'id="result-group"' in dialog_text and 'id="apply"' in dialog_text,
+        "the picker has no result list or apply button",
+    )
+if scholar_script.exists():
+    script_text = read(scholar_script)
+    for needed, why in (
+        ("addEventListener(\"click\", onPick, true)", "rows are not clickable"),
+        ("command", "the radio command is not handled"),
+        ("applyAndClose", "the picker cannot apply a result"),
+        ("searchAgain", "the picker cannot re-run the search"),
+    ):
+        check(needed in script_text, f"the Scholar picker: {why}")
+check(
+    'parseGoogleScholarResults' in cite_ts,
+    "the Scholar results page is not parsed into a list",
+)
+check(
+    "readScholarTitle" in service_ts and "upsertScholarTitle" in service_ts,
+    "the picked Scholar record is not remembered",
+)
+check(
+    "SCHOLAR_TITLE_ANY_LINE_RE" in read(ROOT / "src" / "modules" / "arxiv-id.ts"),
+    "clearing the data would leave the picked Scholar record behind",
+)
+
+# The verification page has to be the paper's own search, not a blank one.
+check(
+    "scholarVerificationURL(item" in service_ts
+    or "scholarVerificationURL(item?" in service_ts,
+    "the verification page is not filled in with the paper's title",
+)
+check(
+    "scholarTitleSearchURL" in service_ts,
+    "the verification page is not a pre-filled Scholar search",
+)
+
+# The manual arXiv picker searches as it opens and keeps weak matches.
+check(
+    "autoSearch" in read(CONTENT / "arxiv-picker.js"),
+    "the arXiv picker still opens without searching",
+)
+check(
+    "PICKER_MIN_SCORE" in menu_ts,
+    "the arXiv picker uses the automatic floor, so weak matches stay invisible",
+)
+check(
+    "minScore" in read(ROOT / "src" / "modules" / "resolver.ts"),
+    "the resolver cannot lower its display floor for the manual picker",
+)
+
+# ---------------------------------------------------------------------------
+# 14. Citations may have their own look, and colours are clickable
+# ---------------------------------------------------------------------------
+
+for key in (
+    "appearanceLinked",
+    "citationStyle",
+    "citationColorEnabled",
+    "citationRangeFilterEnabled",
+):
+    check(
+        f'preference="{key}"' in pane or f'data-l10n-id="pref-citation' in pane,
+        f"the pane does not offer {key}",
+    )
+    check(
+        key in prefs_ts and f'pref("{key}"' in prefs_js,
+        f"{key} has no default",
+    )
+
+check(
+    "getCitationAppearance" in prefs_ts,
+    "the Citations column has no look of its own",
+)
+check(
+    "getCitationAppearance()" in column_ts,
+    "the Citations column still borrows the likes appearance unconditionally",
+)
+check(
+    "citationRangeFilterEnabled" in prefs_ts
+    and "isWithinRange(count, appearance.filter)" in column_ts,
+    "the citation range filter does not reach the renderer",
+)
+
+# Clickable swatches: the pane script has to build them, and every colour box
+# has to be marked so it can find them.
+preferences_js = read(CONTENT / "preferences.js")
+check(
+    "alphalikes-color-input" in pane,
+    "no colour box is marked for the swatch row",
+)
+check(
+    len(re.findall(r"alphalikes-color-input", pane)) >= 7,
+    "not every colour box has a swatch row",
+)
+check(
+    "attachSwatches" in preferences_js and "SWATCHES" in preferences_js,
+    "the pane script does not build colour swatches",
+)
+check(
+    "dispatchEvent(new Event(\"change\"" in preferences_js,
+    "a swatch click does not reach the preference binding",
+)
+check(
+    "alphalikes-citation-source" in pane
+    and "wireSources" in preferences_js,
+    "the citation-source checkboxes are not wired up",
+)
+check(
+    "citationSourcePreferences" in preferences_js,
+    "the source checkboxes do not write the source list",
+)
 
 # ---------------------------------------------------------------------------
 # Report

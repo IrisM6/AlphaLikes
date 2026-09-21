@@ -37,6 +37,21 @@ cell-split-prefix = likes
 cell-split-prefix-citations = cited
 cell-citation-source = Source: {source}
 cell-scholar-blocked = Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.
+# --- Refresh summaries ------------------------------------------------------
+
+notify-refresh-likes-title = AlphaLikes · likes
+notify-refresh-citations-title = AlphaLikes · citations
+refresh-likes-updated = Re-read {updated} like count(s)
+refresh-citations-updated = Re-read {updated} citation count(s)
+refresh-failed = {failed} could not be read (the previous value is kept)
+refresh-skipped = {skipped} have no DOI or arXiv ID to look up
+refresh-nothing = Nothing to refresh.
+refresh-joining = "; "
+scholar-picked = The chosen Google Scholar record now supplies this item's citation count.
+scholar-cleared = The chosen Google Scholar record was forgotten; the item's own title is used again.
+
+# --- Batch actions ----------------------------------------------------------
+
 menu-batch-find = Find arXiv IDs for all selected
 batch-finding = AlphaLikes is looking up {count} items…
 batch-done = Done. {applied} matched automatically, {pending} need confirmation, {notFound} had no match, {alreadyKnown} already had an ID.

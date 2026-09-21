@@ -381,61 +381,61 @@
           native="true"
         >
           <menupopup>
-          <menuitem
-            value="plain"
-            data-l10n-id="pref-style-plain"
-            label="纯文本"
-          />
-          <menuitem
-            value="badge"
-            data-l10n-id="pref-style-badge"
-            label="玻璃胶囊"
-          />
-          <menuitem
-            value="ring"
-            data-l10n-id="pref-style-ring"
-            label="玻璃圆形"
-          />
-          <menuitem
-            value="bookmark"
-            data-l10n-id="pref-style-bookmark"
-            label="侧边强调块"
-          />
-          <menuitem
-            value="morandi"
-            data-l10n-id="pref-style-morandi"
-            label="莫兰迪低饱和"
-          />
-          <menuitem
-            value="academic"
-            data-l10n-id="pref-style-academic"
-            label="学术严谨"
-          />
-          <menuitem
-            value="fresh"
-            data-l10n-id="pref-style-fresh"
-            label="淡雅清新"
-          />
-          <menuitem
-            value="playful"
-            data-l10n-id="pref-style-playful"
-            label="活泼明快"
-          />
-          <menuitem
-            value="outline"
-            data-l10n-id="pref-style-outline"
-            label="细边框描边"
-          />
-          <menuitem
-            value="split"
-            data-l10n-id="pref-style-split"
-            label="双色拼接"
-          />
-          <menuitem
-            value="dot"
-            data-l10n-id="pref-style-dot"
-            label="数字角标"
-          />
+            <menuitem
+              value="plain"
+              data-l10n-id="pref-style-plain"
+              label="纯文本"
+            />
+            <menuitem
+              value="badge"
+              data-l10n-id="pref-style-badge"
+              label="玻璃胶囊"
+            />
+            <menuitem
+              value="ring"
+              data-l10n-id="pref-style-ring"
+              label="玻璃圆形"
+            />
+            <menuitem
+              value="bookmark"
+              data-l10n-id="pref-style-bookmark"
+              label="侧边强调块"
+            />
+            <menuitem
+              value="morandi"
+              data-l10n-id="pref-style-morandi"
+              label="莫兰迪低饱和"
+            />
+            <menuitem
+              value="academic"
+              data-l10n-id="pref-style-academic"
+              label="学术严谨"
+            />
+            <menuitem
+              value="fresh"
+              data-l10n-id="pref-style-fresh"
+              label="淡雅清新"
+            />
+            <menuitem
+              value="playful"
+              data-l10n-id="pref-style-playful"
+              label="活泼明快"
+            />
+            <menuitem
+              value="outline"
+              data-l10n-id="pref-style-outline"
+              label="细边框描边"
+            />
+            <menuitem
+              value="split"
+              data-l10n-id="pref-style-split"
+              label="双色拼接"
+            />
+            <menuitem
+              value="dot"
+              data-l10n-id="pref-style-dot"
+              label="数字角标"
+            />
           </menupopup>
         </menulist>
       </hbox>
@@ -449,7 +449,9 @@
       />
 
       <hbox align="center">
-        <label data-l10n-id="pref-citation-color-high-threshold">高引阈值</label>
+        <label data-l10n-id="pref-citation-color-high-threshold"
+          >高引阈值</label
+        >
         <html:input
           type="number"
           preference="citationHighLikesThreshold"
@@ -513,7 +515,9 @@
           step="10"
           style="width: 6em"
         />
-        <label data-l10n-id="pref-citation-filter-max">最多引用数（0 = 不限制）</label>
+        <label data-l10n-id="pref-citation-filter-max"
+          >最多引用数（0 = 不限制）</label
+        >
         <html:input
           type="number"
           preference="citationRangeFilterMax"
@@ -523,7 +527,10 @@
         />
       </hbox>
 
-      <description data-l10n-id="pref-citation-filter-note" style="opacity: 0.8">
+      <description
+        data-l10n-id="pref-citation-filter-note"
+        style="opacity: 0.8"
+      >
         与点赞数的范围筛选一样：范围之外的条目仍然显示，只是整格变淡。
       </description>
     </vbox>
@@ -607,7 +614,8 @@
     >
       Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited
       by」数字。Google 要求人机验证或限流时，插件先自己处理：暂停读取，并按 10
-      分钟、20 分钟、40 分钟……（最长 2 小时）自动重试，前两次不打扰你；连续第三次仍被拦住才弹一条提示，说明还要等多久、以及如何自己完成验证。任何情况下都不会用别的来源顶替这个数字。
+      分钟、20 分钟、40 分钟……（最长 2
+      小时）自动重试，前两次不打扰你；连续第三次仍被拦住才弹一条提示，说明还要等多久、以及如何自己完成验证。任何情况下都不会用别的来源顶替这个数字。
     </description>
 
     <description data-l10n-id="pref-citations-sources" style="opacity: 0.8">

@@ -35,6 +35,21 @@ cell-split-prefix = 赞
 cell-split-prefix-citations = 引
 cell-citation-source = 来源：{source}
 cell-scholar-blocked = Google Scholar 要求人机验证，约 {minutes} 分钟后会自动重试；右键 →「打开 Google Scholar 验证页」可以自己先完成验证
+# --- 刷新结果提示 -----------------------------------------------------------
+
+notify-refresh-likes-title = AlphaLikes · 点赞
+notify-refresh-citations-title = AlphaLikes · 引用数
+refresh-likes-updated = 已重新读取 {updated} 条点赞数
+refresh-citations-updated = 已重新读取 {updated} 条引用数
+refresh-failed = {failed} 条未能读取（保留原值）
+refresh-skipped = {skipped} 条缺少 DOI / arXiv ID，无法查询
+refresh-nothing = 没有可刷新的条目。
+refresh-joining = ；
+scholar-picked = 已改用所选 Google Scholar 文献的引用数。
+scholar-cleared = 已取消所选文献，恢复按条目自身的标题查询。
+
+# --- 批量操作 ---------------------------------------------------------------
+
 menu-batch-find = 批量查找 arXiv…
 batch-finding = 正在为 {count} 个条目查找 arXiv…
 batch-done = 完成。自动匹配 {applied} 个，待确认 {pending} 个，无匹配 {notFound} 个，已有 ID {alreadyKnown} 个。

@@ -108,15 +108,55 @@
   // Result list
   // -------------------------------------------------------------------------
 
+  /**
+   * Marks one row as chosen.
+   *
+   * The choice itself is a number, not a control state, and it is recorded
+   * first: drawing the radio afterwards must not be able to lose it. See
+   * `selectRadio` for why the obvious `radio.selected = true` is not an option
+   * on the builds this add-on supports.
+   */
   function selectIndex(index) {
     selectedIndex = index;
-    if (elements.group) {
-      var radios = elements.group.querySelectorAll("radio");
-      for (var i = 0; i < radios.length; i++) {
-        radios[i].selected = i === index;
+    if (elements.group && index >= 0) {
+      try {
+        selectRadio(index);
+      } catch (error) {
+        reportError(error);
       }
     }
     updateApplyState();
+  }
+
+  function selectRadio(index) {
+    var radios = elements.group.querySelectorAll("radio");
+    if (setGroupIndex(index)) return;
+    for (var i = 0; i < radios.length; i++) {
+      if (i === index) radios[i].setAttribute("selected", "true");
+      else radios[i].removeAttribute("selected");
+    }
+  }
+
+  function setGroupIndex(index) {
+    try {
+      elements.group.selectedIndex = index;
+      return elements.group.selectedIndex === index;
+    } catch (error) {
+      reportError(error);
+      return false;
+    }
+  }
+
+  function reportError(error) {
+    try {
+      if (typeof Zotero !== "undefined" && Zotero.debug) {
+        Zotero.debug(
+          "AlphaLikes Scholar picker: " + ((error && error.message) || error),
+        );
+      }
+    } catch {
+      // Reporting a problem must never be the thing that breaks the dialog.
+    }
   }
 
   function buildRow(result, index) {
@@ -320,7 +360,10 @@
     setText(elements.subheading, text("subheading", ""));
 
     setLabel(elements.searchAgain, text("search", "Search again"));
-    setLabel(elements.openBrowser, text("open", "Open the search in the browser"));
+    setLabel(
+      elements.openBrowser,
+      text("open", "Open the search in the browser"),
+    );
     setLabel(elements.clear, text("clear", "Forget the chosen record"));
     setLabel(elements.cancel, text("cancel", "Cancel"));
     setLabel(elements.apply, text("apply", "Use this record's citation count"));
@@ -333,7 +376,8 @@
     render();
 
     var initial = "";
-    if (request.blocked) initial = text("blocked", "Google answered with a human check.");
+    if (request.blocked)
+      initial = text("blocked", "Google answered with a human check.");
     else if (request.error) {
       initial = format(text("error", "The search failed: {message}"), {
         message: request.error,

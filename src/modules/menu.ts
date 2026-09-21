@@ -314,22 +314,16 @@ async function openScholarPicker(win: Window): Promise<void> {
   const service = getService();
   const paper = service.readPaperMetadata(item);
 
-  let lookup: ScholarLookup = {
-    results: [],
-    blocked: false,
-    url: "",
-    error: "",
-  };
-  try {
-    lookup = await service.scholarResults(item);
-  } catch (error) {
-    lookup = {
+  // A failed lookup is shown as an explanation inside the dialog rather than
+  // as a dialog that refuses to open.
+  const lookup: ScholarLookup = await service
+    .scholarResults(item)
+    .catch((error: unknown): ScholarLookup => ({
       results: [],
       blocked: false,
       url: "",
       error: error instanceof Error ? error.message : String(error),
-    };
-  }
+    }));
 
   const request: ScholarPickerRequest = {
     strings: scholarPickerStrings(),
@@ -522,7 +516,9 @@ export function unregisterItemMenu(win: Window): void {
       SEPARATOR_ID,
       FIND_ID,
       REFRESH_ID,
+      REFRESH_CITATIONS_ID,
       BATCH_FIND_ID,
+      PICK_SCHOLAR_ID,
       OPEN_SCHOLAR_ID,
       CLEAR_ID,
     ]) {

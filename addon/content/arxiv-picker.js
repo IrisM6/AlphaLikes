@@ -141,10 +141,17 @@
 
     function onPick(event) {
       if (event) event.preventDefault();
-      selectRadio(radio);
+      // The choice is recorded before anything touches the DOM: a click that
+      // cannot be picked is the exact complaint this dialog exists to answer,
+      // so no cosmetic step is allowed to swallow it.
       selectedID = candidate.arxivID;
-      if (elements.manualInput) elements.manualInput.value = "";
-      hideManualError();
+      try {
+        selectRadio(radio);
+        if (elements.manualInput) elements.manualInput.value = "";
+        hideManualError();
+      } catch (error) {
+        reportError(error);
+      }
       updateApplyState();
     }
 
@@ -168,11 +175,50 @@
     return { row: row, radio: radio, candidate: candidate };
   }
 
+  /**
+   * Marks one radio as the chosen one.
+   *
+   * `radio.selected = true` reads like the obvious call and throws on every
+   * build this add-on supports: MozRadio exposes `selected` as a getter over
+   * the attribute, so assigning to it raises a TypeError. The click handler
+   * used to die on that line, which is how a list could show a match and still
+   * not let anyone pick one. The radiogroup's own `selectedIndex` is the API
+   * that works; setting the attribute is the fallback for anything without it.
+   */
   function selectRadio(target) {
     if (!elements.group) return;
     var radios = elements.group.querySelectorAll("radio");
+    var index = -1;
     for (var i = 0; i < radios.length; i++) {
-      radios[i].selected = radios[i] === target;
+      if (radios[i] === target) index = i;
+    }
+    if (index < 0) return;
+    if (setGroupIndex(index)) return;
+    for (var j = 0; j < radios.length; j++) {
+      if (j === index) radios[j].setAttribute("selected", "true");
+      else radios[j].removeAttribute("selected");
+    }
+  }
+
+  function setGroupIndex(index) {
+    try {
+      elements.group.selectedIndex = index;
+      return elements.group.selectedIndex === index;
+    } catch (error) {
+      reportError(error);
+      return false;
+    }
+  }
+
+  function reportError(error) {
+    try {
+      if (typeof Zotero !== "undefined" && Zotero.debug) {
+        Zotero.debug(
+          "AlphaLikes arXiv picker: " + ((error && error.message) || error),
+        );
+      }
+    } catch {
+      // Reporting a problem must never be the thing that breaks the dialog.
     }
   }
 

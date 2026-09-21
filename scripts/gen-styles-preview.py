@@ -51,8 +51,19 @@ def read(path: pathlib.Path) -> str:
 
 
 def parse_styles() -> list[str]:
+    """The styles offered by the likes menu.
+
+    Scoped to that one menulist on purpose: the Citations column offers the same
+    eleven styles through a second menu, and counting both would double the
+    list.
+    """
     pane = read(PANE)
-    return re.findall(r'data-l10n-id="pref-style-([a-z]+)"', pane)
+    menu = re.search(
+        r'id="alphalikes-pref-style".*?</menulist>', pane, re.DOTALL
+    )
+    if not menu:
+        sys.exit("could not find the style menu in the settings pane")
+    return re.findall(r'data-l10n-id="pref-style-([a-z]+)"', menu.group(0))
 
 
 def parse_labels() -> dict[str, dict[str, str]]:
