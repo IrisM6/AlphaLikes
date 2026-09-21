@@ -17,8 +17,10 @@
 
 import { assert } from "chai";
 import {
+  clearGoogleCookies,
   ensureGoogleConsent,
   geckoMajorVersion,
+  isGoogleCookieHost,
   isGoogleHost,
   PacedRequester,
   userAgentFor,
@@ -380,5 +382,44 @@ describe("the Google Scholar request", function () {
     // is reported as `false` here rather than silently costing every result.
     assert.isTrue(ensureGoogleConsent());
     assert.isTrue(consentCookieStored());
+  });
+});
+
+describe("forgetting the Google session", function () {
+  it("recognises every Google domain the reads can land on", function () {
+    // Scholar answers on the country domains too, and the cookies that mark a
+    // jar are set on whichever one answered.
+    for (const host of [
+      "google.com",
+      ".google.com",
+      "www.google.com",
+      "scholar.google.com",
+      "scholar.google.de",
+      "accounts.google.com",
+      "consent.google.com",
+      "www.google.com.hk",
+      "google.co.uk",
+    ]) {
+      assert.isTrue(isGoogleCookieHost(host), `${host} is a Google domain`);
+    }
+
+    for (const host of [
+      "example.com",
+      "notgoogle.com",
+      "googleusercontent.com",
+      "alphaxiv.org",
+    ]) {
+      assert.isFalse(isGoogleCookieHost(host), `${host} is not one of ours`);
+    }
+  });
+
+  it("empties the jar without throwing when there is nothing to empty", function () {
+    // Whatever the jar holds, the call is the user's "start over" button: it
+    // reports what it removed and never turns into an error dialog.
+    const removed = clearGoogleCookies();
+    assert.isTrue(
+      Number.isInteger(removed) && removed >= 0,
+      "it answers with a count of what it removed",
+    );
   });
 });

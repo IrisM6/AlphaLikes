@@ -88,6 +88,14 @@ function installNetworkStub(): void {
 
 installNetworkStub();
 
+// Re-armed before every test, not only at load. The running plugin is a second
+// module graph and it can be reloaded in the middle of a session - a reloaded
+// instance builds its service again and starts out with the live transport -
+// so a stub installed once at load does not hold. That is how a real alphaXiv
+// count (a made-up arXiv ID gets a default 5 from the live page) ended up in an
+// item that a diagnostic test was asserting on, in an unrelated file.
+beforeEach(installNetworkStub);
+
 describe("the test suite's network boundary", function () {
   it("silences the running plugin's background reads", function () {
     const api = pluginAPI();

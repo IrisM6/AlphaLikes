@@ -286,14 +286,20 @@ export function usePlainUserAgentFor(host: string): void {
  * `scholar.google.com` sets its own (`GSP`, `GOOGLE_ABUSE_EXEMPTION`), the
  * parent domain carries the rest (`NID`, `SOCS`, `_GRECAPTCHA`).
  */
-export const GOOGLE_COOKIE_HOSTS = [
-  "scholar.google.com",
-  ".google.com",
-  "www.google.com",
-  "google.com",
-  "accounts.google.com",
-  "consent.google.com",
-] as const;
+/**
+ * A Google domain, country versions included.
+ *
+ * Scholar redirects to `scholar.google.de` and the like depending on where the
+ * request comes from, and those hosts carry their own share of the same
+ * session cookies, so a list of `.com` hosts would leave the jar half full.
+ * The suffix has to start at a dot so that lookalikes (`notgoogle.com`) stay
+ * out of it.
+ */
+const GOOGLE_COOKIE_HOST = /(^|\.)google\.[a-z]{2,}(\.[a-z]{2,})?$/i;
+
+export function isGoogleCookieHost(host: string): boolean {
+  return GOOGLE_COOKIE_HOST.test(host);
+}
 
 /**
  * Forgets everything Google remembers about this client.
@@ -305,29 +311,28 @@ export const GOOGLE_COOKIE_HOSTS = [
  * and it is the user's call, so it lives behind a menu entry rather than in a
  * retry path.
  *
+ * The cookies are enumerated and matched by host rather than looked up per
+ * host: `getCookiesFromHost` throws on some of the shapes Google actually
+ * stores (a leading dot among them), and the point of the call is to end up
+ * with nothing left, not to make exactly six well-formed queries.
+ *
  * @returns how many cookies were removed
  */
 export function clearGoogleCookies(): number {
   let removed = 0;
 
-  for (const host of GOOGLE_COOKIE_HOSTS) {
-    let cookies: Array<{ host: string; name: string; path: string }> = [];
+  for (const cookie of storedCookies()) {
+    if (!isGoogleCookieHost(cookie.host)) continue;
     try {
-      cookies = Services.cookies.getCookiesFromHost(
-        host,
-        {},
-      ) as unknown as typeof cookies;
+      Services.cookies.remove(
+        cookie.host,
+        cookie.name,
+        cookie.path,
+        cookie.originAttributes ?? {},
+      );
+      removed += 1;
     } catch {
-      continue;
-    }
-
-    for (const cookie of cookies) {
-      try {
-        Services.cookies.remove(cookie.host, cookie.name, cookie.path, {});
-        removed += 1;
-      } catch {
-        // Already gone, or a jar that refuses this one: not worth a failure.
-      }
+      // Already gone, or a jar that refuses this one: not worth a failure.
     }
   }
 
@@ -366,36 +371,50 @@ export function browserHeaders(
   return headers;
 }
 
-/** The names of the cookies Zotero holds for `host` (the diagnostic lists them). */
-export function cookieNames(host: string): string[] {
-  try {
-    const jar = Services.cookies.getCookiesFromHost(
-      host,
-      {},
-    ) as unknown as Array<{ name: string }>;
+interface StoredCookie {
+  host: string;
+  name: string;
+  value: string;
+  path: string;
+  originAttributes?: object;
+}
 
-    return [...new Set(jar.map((cookie) => String(cookie.name)))].sort();
+/** Every cookie Zotero holds, or none if the cookie service is not reachable. */
+function storedCookies(): StoredCookie[] {
+  try {
+    return Services.cookies.cookies as unknown as StoredCookie[];
   } catch {
     return [];
   }
 }
 
+/** Whether a cookie stored for `cookieHost` is sent to `host`. */
+function appliesToHost(cookieHost: string, host: string): boolean {
+  const stored = cookieHost.toLowerCase();
+  const bare = host.toLowerCase().replace(/^\./, "");
+  if (stored.replace(/^\./, "") === bare) return true;
+  return stored.startsWith(".") && bare.endsWith(stored);
+}
+
+/** The names of the cookies Zotero holds for `host` (the diagnostic lists them). */
+export function cookieNames(host: string): string[] {
+  return [
+    ...new Set(
+      storedCookies()
+        .filter((cookie) => appliesToHost(cookie.host, host))
+        .map((cookie) => String(cookie.name)),
+    ),
+  ].sort();
+}
+
 /** Whether Google's consent cookie is in Zotero's own cookie jar. */
 export function googleConsentStored(): boolean {
-  try {
-    const jar = Services.cookies.getCookiesFromHost(
-      "scholar.google.com",
-      {},
-    ) as unknown as Array<{ name: string; value: string }>;
-
-    return jar.some(
-      (cookie) =>
-        cookie.name === GOOGLE_CONSENT_COOKIE.name &&
-        cookie.value === GOOGLE_CONSENT_COOKIE.value,
-    );
-  } catch {
-    return false;
-  }
+  return storedCookies().some(
+    (cookie) =>
+      appliesToHost(cookie.host, "scholar.google.com") &&
+      cookie.name === GOOGLE_CONSENT_COOKIE.name &&
+      cookie.value === GOOGLE_CONSENT_COOKIE.value,
+  );
 }
 
 /**
