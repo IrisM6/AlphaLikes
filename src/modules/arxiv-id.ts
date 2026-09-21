@@ -239,6 +239,13 @@ const OWNED_LINE_RES = [
   SCHOLAR_TITLE_ANY_LINE_RE,
 ];
 
+/** Whether `Extra` still holds any line AlphaLikes owns. */
+export function hasAlphaLikesData(extra: string): boolean {
+  return (extra || "")
+    .split(/\r?\n/)
+    .some((line) => OWNED_LINE_RES.some((re) => re.test(line)));
+}
+
 /** Removes every line AlphaLikes owns, leaving the rest of `Extra` intact. */
 export function stripAlphaLikesData(extra: string): string {
   const stripped = (extra || "")

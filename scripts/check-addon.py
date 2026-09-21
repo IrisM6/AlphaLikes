@@ -606,9 +606,12 @@ check(
     "the service still reads the retired single-source preference",
 )
 # Several sources are all read; the largest count wins and is the one named.
+# The reads happen at the same time (Google Scholar must not hold up the
+# others), so what is checked is that every selected source is dispatched, and
+# that the merge still happens afterwards.
 check(
-    "for (const source of citationOrder())" in service_ts,
-    "only one selected provider is queried",
+    "citationOrder().map(" in service_ts and "await Promise.all(" in service_ts,
+    "only one selected provider is queried, or the answers are not all waited for",
 )
 check(
     "primaryCitation(" in citations_ts and "value > best.count" in citations_ts,

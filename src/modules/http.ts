@@ -1,9 +1,18 @@
 /**
- * HTTP access with global serialisation and per-host pacing.
+ * HTTP access with per-host serialisation and per-host pacing.
  *
  * arXiv asks for at least three seconds between API calls and Google Scholar
  * blocks reads that come too fast, while the other providers are happy with the
  * configured interval, so the delay is chosen per host rather than globally.
+ *
+ * The queue is per host for the same reason. A single queue made every read
+ * wait for whatever was in front of it, and a Google read is the slowest thing
+ * this plugin does: a page load, a five second spacing, retries, and a
+ * refusal that books a wait. The like counts - one request to alphaXiv, a site
+ * that answers in a moment - were stuck behind all of it, so the column sat on
+ * its loading marker while an unrelated citation lookup finished. The two are
+ * independent reads of two different sites and now queue independently; within
+ * one host nothing changes, which is where the pacing has to hold.
  */
 
 import pkg from "../../package.json";
@@ -349,7 +358,8 @@ export function hostOf(url: string): string {
 }
 
 export class PacedRequester {
-  private tail: Promise<unknown> = Promise.resolve();
+  /** One chain per host: reads of different sites never wait for each other. */
+  private tails = new Map<string, Promise<unknown>>();
   private pacing = new Map<string, PacingState>();
   private warmed = false;
   private warmup: WarmupResult | null = null;
@@ -367,6 +377,29 @@ export class PacedRequester {
 
   setOptions(options: RequesterOptions): void {
     this.options = options;
+  }
+
+  /**
+   * Routes every read through `transport`, or restores Zotero's own with
+   * `null`.
+   *
+   * A seam for the test suite - which must not touch the live alphaXiv and
+   * Google Scholar while it runs - and for looking at a read without changing
+   * anything else.
+   */
+  setTransport(transport: HttpTransport | null): void {
+    this.options = { ...this.options, transport: transport ?? undefined };
+  }
+
+  /**
+   * Whether a page may be opened in Zotero's hidden browser.
+   *
+   * An injected transport means the caller wants to decide what the network
+   * answers, so the browser - which is not part of that transport - stays out
+   * of it. A caller that also injects a loader says so on purpose.
+   */
+  private browserPathAvailable(): boolean {
+    return Boolean(this.options.pageLoader) || !this.options.transport;
   }
 
   dispose(): void {
@@ -447,7 +480,8 @@ export class PacedRequester {
    * minimum interval has elapsed.
    */
   private enqueue<T>(host: string, task: () => Promise<T>): Promise<T> {
-    const run = this.tail.then(async () => {
+    const previous = this.tails.get(host) ?? Promise.resolve();
+    const run = previous.then(async () => {
       if (this.disposed)
         throw new Error("AlphaLikes request queue has stopped");
 
@@ -465,9 +499,12 @@ export class PacedRequester {
     });
 
     // Keep the chain alive even when a task rejects.
-    this.tail = run.then(
-      () => undefined,
-      () => undefined,
+    this.tails.set(
+      host,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
     );
 
     return run;
@@ -559,11 +596,13 @@ export class PacedRequester {
       const send = this.options.transport ?? bindTransport(Zotero.HTTP);
       if (!this.warmed) await this.warmUpScholar(send, userAgent);
 
-      const order: ScholarPath[] = compare
-        ? ["browser", "xhr"]
-        : this.pathPreference === "xhr"
-          ? ["xhr", "browser"]
-          : ["browser", "xhr"];
+      const order: ScholarPath[] = !this.browserPathAvailable()
+        ? ["xhr"]
+        : compare
+          ? ["browser", "xhr"]
+          : this.pathPreference === "xhr"
+            ? ["xhr", "browser"]
+            : ["browser", "xhr"];
 
       const attempts: ScholarAttempt[] = [];
       let winner: { via: ScholarPath; status: number; body: string } | null =

@@ -225,8 +225,8 @@ describe("AlphaLikes clear action", function () {
 
     assert.equal(getPref("likeStyle"), "morandi");
     assert.equal(
-      String(target.getField("extra")),
-      FOREIGN_LINES.join("\n"),
+      JSON.stringify(String(target.getField("extra"))),
+      JSON.stringify(FOREIGN_LINES.join("\n")),
       "the item's own Extra content is exactly what the user typed",
     );
     assert.isTrue(service.isCleared(target));

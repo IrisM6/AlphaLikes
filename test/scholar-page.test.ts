@@ -284,6 +284,95 @@ describe("the Scholar page read", function () {
     });
   });
 
+  describe("sharing the network between the two reads", function () {
+    it("does not make a like count wait for a Scholar read", async function () {
+      // The reported behaviour: the like column sat on its loading marker
+      // while a citation lookup finished. They are two different sites, and a
+      // Google read is the slowest thing the plugin does, so the two queue
+      // separately - that is the whole point of this test.
+      const started: string[] = [];
+      let releaseScholar: (() => void) | null = null;
+      const scholarHeld = new Promise<void>((resolve) => {
+        releaseScholar = resolve;
+      });
+
+      const transport: HttpTransport = async (_method, url) => {
+        started.push(url);
+        if (url.includes("scholar.google.com/scholar")) await scholarHeld;
+        return { status: 200, response: "<html><body></body></html>" };
+      };
+      // No hidden browser in this test: the Scholar read falls through to the
+      // request, which is the path being held open.
+      const loader = loaderStub({
+        status: null,
+        error: "没有可用的浏览器组件",
+      });
+      const requester = makeRequester({
+        transport,
+        loader: loader.loader,
+      });
+
+      const scholar = requester.requestScholarPage(SEARCH_URL, {
+        compare: true,
+      });
+
+      // Wait until the Scholar read is actually inside its request, so the
+      // order below cannot pass by accident.
+      while (!started.some((url) => url.includes("/scholar"))) {
+        await Zotero.Promise.delay(20);
+      }
+
+      const page = await requester.requestPage(
+        "https://www.alphaxiv.org/abs/1706.03762",
+      );
+
+      assert.equal(page.status, 200);
+      assert.include(
+        started.join(" "),
+        "alphaxiv.org",
+        "the alphaXiv read has to go out while Scholar is still waiting",
+      );
+      assert.isFalse(
+        started.filter((url) => url.includes("alphaxiv.org")).length > 1,
+        "and only once",
+      );
+
+      releaseScholar?.();
+      await scholar;
+    });
+
+    it("still paces reads of the same host", async function () {
+      // Independent queues must not mean "no pacing": arXiv asks for three
+      // seconds between calls, and that is per host, not per queue.
+      const sent: number[] = [];
+      const transport: HttpTransport = async (_method, url) => {
+        if (url.includes("arxiv.org")) sent.push(Date.now());
+        return { status: 200, response: "<feed></feed>" };
+      };
+      const requester = new PacedRequester({
+        timeoutMs: 5_000,
+        intervalMs: 0,
+        transport,
+        pageLoader: loaderStub({ status: null, error: "unused" }).loader,
+      });
+
+      const first = requester.requestText(
+        "https://export.arxiv.org/api/query?search_query=all:one",
+      );
+      const second = requester.requestText(
+        "https://export.arxiv.org/api/query?search_query=all:two",
+      );
+      await Promise.all([first, second]);
+
+      assert.lengthOf(sent, 2);
+      assert.isAtLeast(
+        sent[1] - sent[0],
+        2_900,
+        "the second arXiv call has to wait out the three second rule",
+      );
+    });
+  });
+
   describe("the User-Agent sent to Google", function () {
     it("names the engine this Zotero actually runs", function () {
       const major = geckoMajorVersion();

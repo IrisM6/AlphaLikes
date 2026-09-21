@@ -14,6 +14,7 @@ import {
   extractArxivID,
   readCachedLikes,
   readLikesUpdatedAt,
+  hasAlphaLikesData,
   stripAlphaLikesData,
   upsertLikesCache,
   upsertResolvedArxivID,
@@ -67,6 +68,7 @@ import {
   parseHTMLBody,
   PacedRequester,
   userAgentFor,
+  type HttpTransport,
   type ScholarPage,
   type ScholarPath,
 } from "./http";
@@ -561,6 +563,16 @@ export class AlphaLikesService {
     return thresholds ?? fallback;
   }
 
+  /**
+   * Routes every read through an injected transport, or restores Zotero's own.
+   *
+   * The seam the test suite uses so that its runs never touch the live sites,
+   * and the one `api.setReadTransport` hands out.
+   */
+  setReadTransport(transport: HttpTransport | null): void {
+    this.requester.setTransport(transport);
+  }
+
   /** Snapshot history and derived deltas for one item. */
   readTrend(item: Zotero.Item): ItemTrend {
     const prefs = getTrendPrefs();
@@ -1022,23 +1034,24 @@ export class AlphaLikesService {
     scholarTitle: string | null,
   ): Promise<CitationCounts | null> {
     const prefs = getResolverPrefs();
-    let merged: CitationCounts = {};
-    let answered = false;
 
     // Every selected provider is asked; the column then shows the largest
     // count among the ones that answered. A provider that fails or has no
     // record simply does not contribute - it is never replaced by another.
-    for (const source of citationOrder()) {
+    //
+    // They are asked at the same time, not one after the other: the sources
+    // are different sites with their own queues, and Google Scholar is by far
+    // the slowest of them (a page load, a five second spacing, and a refusal
+    // that books a wait nobody wants to sit through twice). Asking in turn
+    // made OpenAlex and Semantic Scholar - which answer in a moment - wait
+    // behind it for no reason at all.
+    const tasks = citationOrder().map(async (source) => {
       if (source === "googleScholar") {
         const scholar = await this.collectGoogleScholarCitation(
           paper,
           scholarTitle,
         );
-        if (scholar !== null) {
-          merged = { ...merged, googleScholar: scholar };
-          answered = true;
-        }
-        continue;
+        return scholar === null ? null : { googleScholar: scholar };
       }
 
       if (source === "semanticScholar") {
@@ -1046,25 +1059,23 @@ export class AlphaLikesService {
           doi: paper.doi,
           arxivID: arxivID ?? undefined,
         });
-        if (url) {
-          const payload = await this.safeJSON(
-            "Semantic Scholar citations",
-            url,
-          );
-          const counts = citationCountsFromSemanticScholar(payload);
-          if (counts) {
-            merged = { ...merged, ...counts };
-            answered = true;
-          }
-        }
-        continue;
+        if (!url) return null;
+
+        const payload = await this.safeJSON("Semantic Scholar citations", url);
+        return citationCountsFromSemanticScholar(payload);
       }
 
-      const openAlex = await this.collectOpenAlexCitations(paper, prefs);
-      if (openAlex) {
-        merged = { ...merged, ...openAlex };
-        answered = true;
-      }
+      return this.collectOpenAlexCitations(paper, prefs);
+    });
+
+    const answers = await Promise.all(tasks);
+
+    let merged: CitationCounts = {};
+    let answered = false;
+    for (const counts of answers) {
+      if (!counts) continue;
+      merged = { ...merged, ...counts };
+      answered = true;
     }
 
     return answered ? merged : null;
@@ -1432,7 +1443,7 @@ export class AlphaLikesService {
     options: { force?: boolean } = {},
   ): Promise<boolean> {
     try {
-      const likes = await this.fetchLikes(arxivID);
+      const likes = await this.fetchLikes(arxivID, { fresh: options.force });
       if (this.disposed) return false;
 
       // The item may have been edited while waiting in the paced queue.
@@ -1481,17 +1492,29 @@ export class AlphaLikesService {
   }
 
   /**
-   * Concurrent requests for the same paper share one network round trip; an
-   * explicit refresh therefore reuses an in-flight fetch rather than racing it.
+   * Concurrent requests for the same paper share one network round trip.
+   *
+   * An explicit refresh is the exception: it was asked for by the user, and
+   * "it read again" has to be true, so it starts its own request instead of
+   * joining one that a repaint happened to start a moment earlier.
    */
-  private fetchLikes(arxivID: string): Promise<number | null> {
+  private fetchLikes(
+    arxivID: string,
+    options: { fresh?: boolean } = {},
+  ): Promise<number | null> {
     const existing = this.inFlightLikes.get(arxivID);
-    if (existing) return existing;
+    if (existing && !options.fresh) return existing;
 
     const request = this.requester
       .requestHTML(buildAlphaXivURL(arxivID))
       .then((doc) => parseLikesFromDocument(doc))
-      .finally(() => this.inFlightLikes.delete(arxivID));
+      .finally(() => {
+        // Only the newest request owns the entry: an older one finishing
+        // later must not clear it.
+        if (this.inFlightLikes.get(arxivID) === request) {
+          this.inFlightLikes.delete(arxivID);
+        }
+      });
 
     this.inFlightLikes.set(arxivID, request);
     return request;
@@ -2063,15 +2086,28 @@ export class AlphaLikesService {
 
     const set = this.cleared();
 
+    // Marks first, strips second. A read that is already in flight writes
+    // through the same guard, so marking first is what stops it from putting
+    // the deleted lines back a moment later; the strip itself goes through the
+    // guard on purpose (`force`), because these are exactly the items the
+    // guard is meant to refuse for everything else.
+    for (const item of targets) set.add(item.id);
+    writeClearedItemIDs([...set]);
+
     for (const item of targets) {
       const before = safeGetField(item, "extra");
-      await this.writeExtra(item, stripAlphaLikesData);
+      await this.writeExtra(item, stripAlphaLikesData, { force: true });
+
+      // A write that had already passed the guard when the mark went in can
+      // still land between the strip's read and its save. One more pass leaves
+      // the item the way the user asked for it, whatever the race did.
+      if (hasAlphaLikesData(safeGetField(item, "extra"))) {
+        await this.writeExtra(item, stripAlphaLikesData, { force: true });
+      }
+
       if (safeGetField(item, "extra") === before) summary.alreadyEmpty += 1;
       else summary.cleared += 1;
 
-      // Marked only after the strip, because `writeExtra` refuses cleared
-      // items: the order is what lets the action itself through the guard.
-      set.add(item.id);
       this.itemStates.delete(item.id);
       this.citationStates.delete(item.id);
       this.refreshingLikes.delete(item.id);
@@ -2081,7 +2117,6 @@ export class AlphaLikesService {
       this.observedCitations.delete(item.id);
     }
 
-    writeClearedItemIDs([...set]);
     this.quantileCache = null;
     this.citationQuantileCache = null;
     refreshItemTrees();
@@ -2091,10 +2126,13 @@ export class AlphaLikesService {
   private async writeExtra(
     item: Zotero.Item,
     update: (extra: string) => string,
+    options: { force?: boolean } = {},
   ): Promise<void> {
     // The one choke point every write goes through, so a lookup that was
     // already in flight when the user cleared the item cannot land afterwards.
-    if (this.isCleared(item)) return;
+    // `force` is for the clear action itself, which has to write to exactly
+    // those items.
+    if (!options.force && this.isCleared(item)) return;
 
     const current = safeGetField(item, "extra");
     const next = update(current);

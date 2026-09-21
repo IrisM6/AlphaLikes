@@ -7,6 +7,7 @@
 
 import { extractIDFromLooseText } from "./arxiv-id";
 import { getService } from "./column";
+import type { HttpTransport } from "./http";
 import { styleAccents, type BandColors } from "./palette";
 import type { ArxivCandidate, PaperMetadata } from "./resolver";
 
@@ -30,11 +31,22 @@ export interface AlphaLikesAPI {
    * machine's own facts rather than a description of them.
    */
   diagnose(): Promise<string>;
+  /**
+   * Routes every read through `transport`, or restores Zotero's own with
+   * `null`.
+   *
+   * A test seam, and a way to see what a read does without letting it reach
+   * the site: the same transport shape the plugin uses internally
+   * (`(method, url, options) => { status, response }`).
+   */
+  setReadTransport(transport: HttpTransport | null): void;
   version: string;
 }
 
 export function createPluginAPI(version: string): AlphaLikesAPI {
   return {
+    setReadTransport: (transport: HttpTransport | null) =>
+      getService().setReadTransport(transport),
     searchArxiv: (paper: PaperMetadata) => getService().searchArxiv(paper),
     parseArxivID: (value: string) => extractIDFromLooseText(value),
     styleColors: (style: string) => styleAccents(style),
