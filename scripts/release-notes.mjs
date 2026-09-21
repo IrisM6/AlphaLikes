@@ -8,7 +8,7 @@
  * The scaffold's own default writes the release body from the conventional
  * commits between the previous tag and the release commit. It bails out with
  * "_No significant changes._" as soon as that range is empty — which is what
- * happens on a shallow CI checkout — so every release up to 1.6.0 shipped an
+ * happens on a shallow CI checkout — so the first releases shipped an
  * empty body, on the release page and in the marketplace listing alike.
  * Reading the changelog makes both say what the repository says, and works no
  * matter how much history the runner fetched.

@@ -149,7 +149,7 @@ export const PREF_DEFAULTS = {
   /** Whether the colours above replace the style's own ones. */
   likeColorsCustomised: false,
   /**
-   * Colour of the "match needs a look" marker of 1.2.0-1.7.0.
+   * Colour of the "match needs a look" marker the older versions drew.
    *
    * Kept in the shipped defaults (and in the exported `ColorScheme` type) so
    * the public surface of earlier versions still type-checks; matching no
@@ -194,7 +194,7 @@ export const PREF_DEFAULTS = {
    */
   citationSourcePreferences: "googleScholar",
   /**
-   * The single-source preference of 1.6.0 and earlier.
+   * The single-source preference of the earlier versions.
    *
    * Kept only so an upgraded install keeps the source it had chosen; the pane
    * writes the list above, and nothing reads this once that list is set.
@@ -360,7 +360,7 @@ export interface ColorScheme {
 /**
  * Storage values that were once valid, and the style that replaced them.
  *
- * Three styles were dropped in 1.5.0. A user who had picked one still has it
+ * Three styles were dropped in an earlier release. A user who had picked one still has it
  * stored, so instead of silently resetting them to the default the value is
  * mapped onto the closest surviving look: the bare number, the pill, and the
  * navy fill respectively.
@@ -403,7 +403,7 @@ export type CitationSource = "googleScholar" | "openAlex" | "semanticScholar";
  * A value written by an older version (`auto`, from when choosing a source
  * meant "try this one first") is no longer valid and reads as the default, so
  * an upgraded install stops mixing providers without the user doing anything.
- * When the list has never been written, the single-source preference of 1.6.0
+ * When the list has never been written, the older single-source preference
  * decides, which is what keeps an upgrade from silently changing the source.
  */
 export function getCitationSourcePreferences(): CitationSourcePreference[] {

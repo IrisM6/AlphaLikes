@@ -3,7 +3,7 @@
  *
  * The reported bug: every Scholar read failed, while opening the verification
  * page in a browser on the same machine was fine. Scholar refuses an agent it
- * does not recognise - the plugin was announcing itself as `AlphaLikes/1.8.0`,
+ * does not recognise - the plugin used to announce itself as `AlphaLikes/<version>`,
  * which is exactly the kind of client a block page is reserved for - and from
  * inside the EU it answers without results unless Google's consent cookie is
  * stored first.

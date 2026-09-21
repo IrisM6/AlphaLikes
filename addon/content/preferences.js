@@ -757,7 +757,7 @@
       });
 
     if (!picked.length) {
-      // Nothing written yet: the single-source preference of 1.6.0 decides,
+      // Nothing written yet: the older single-source preference decides,
       // which is what keeps an upgrade from changing the source silently.
       var legacy = String(readPref("citationSourcePreference") || "");
       if (CANONICAL_SOURCES.indexOf(legacy) !== -1) return [legacy];

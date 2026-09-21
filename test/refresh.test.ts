@@ -249,7 +249,7 @@ describe("AlphaLikes refresh", function () {
       );
     });
 
-    it("searches for the record a 1.7.0 install left in Extra", async function () {
+    it("searches for the record an older install left in Extra", async function () {
       const target = Zotero.Items.get(item.id);
       // A different figure from the one already in Extra, so the re-read is
       // visible in the summary rather than looking like "nothing happened".

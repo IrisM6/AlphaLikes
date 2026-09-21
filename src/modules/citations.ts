@@ -190,7 +190,7 @@ export function upsertCitations(
 /**
  * The Scholar record remembered for this item, or `null`.
  *
- * A 1.7.0 install wrote the title of the record the user picked by hand; that
+ * An older install wrote the title of the record the user picked by hand; that
  * line is still honoured as the search query, so upgrading keeps landing on
  * the same record now that matching is automatic.
  */

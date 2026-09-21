@@ -361,7 +361,7 @@ if pane_path.exists():
     )
     # Two preferences are deliberately driven by addon/content/preferences.js
     # instead of a `preference=` attribute: the citation-source list is one
-    # comma-separated value behind three checkboxes, and the 1.6.0 single-source
+    # comma-separated value behind three checkboxes, and the older single-source
     # key exists only so an upgrade keeps the source it had chosen.
     js_driven_prefs = {
         # Written by addon/content/preferences.js rather than a `preference=`
@@ -575,7 +575,7 @@ check(
     'pref("citationSourcePreferences", "googleScholar")' in prefs_js,
     "the shipped default citation source list is not Google Scholar in prefs.js",
 )
-# The 1.6.0 single-source preference stays only so an upgrade keeps its source.
+# The older single-source preference stays only so an upgrade keeps its source.
 check(
     'getPref("citationSourcePreference")' in prefs_ts,
     "the upgrade path from the single-source preference is gone",
@@ -822,7 +822,7 @@ check(
 )
 check(
     "readScholarTitle" in service_ts and "SCHOLAR_TITLE_KEY" in cite_ts,
-    "the Scholar record left in Extra by 1.7.0 is no longer read",
+    "the Scholar record left in Extra by an older install is no longer read",
 )
 check(
     "scholarSearchTitle" in service_ts,

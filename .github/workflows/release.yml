@@ -23,7 +23,7 @@ jobs:
   # The release job writes the body from the conventional commits since the
   # previous tag and gives up with "_No significant changes._" when that range
   # is empty — which it always is on the shallow checkout a runner makes. Every
-  # release up to 1.6.0 therefore shipped an empty body, on the release page and
+  # the first few releases therefore shipped an empty body, on the release page and
   # in the marketplace listing, which shows the body. This job puts the newest
   # CHANGELOG.md section in its place.
   release-notes:

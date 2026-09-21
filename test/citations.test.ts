@@ -321,7 +321,7 @@ describe("AlphaLikes citations", function () {
     });
   });
 
-  describe("the Scholar record a 1.7.0 install left in Extra", function () {
+  describe("the Scholar record an older install left in Extra", function () {
     it("reads the title back, punctuation and all", function () {
       const extra = [
         "alphaxiv_arxiv_id: 2401.00001",

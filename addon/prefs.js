@@ -89,7 +89,7 @@ pref("citationCacheTtlDays", 7);
 // One source is strict (its number or none); several are all read and the
 // largest count is shown. Nothing outside this list is ever substituted.
 pref("citationSourcePreferences", "googleScholar");
-// Kept only to migrate an install that chose a source in 1.6.0 or earlier;
+// Kept only to migrate an install that chose a source in an earlier release;
 // nothing reads it once the list above has been written.
 pref("citationSourcePreference", "googleScholar");
 

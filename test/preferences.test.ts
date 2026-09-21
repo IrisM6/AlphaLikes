@@ -4,7 +4,7 @@
  * Two rounds of user reports live here:
  *
  *   - citation counts may come from one source (strict) or several (the
- *     largest of them), and an install that chose a source in 1.6.0 keeps it;
+ *     largest of them), and an install that chose a single source keeps it;
  *   - the Citations column can either follow the likes appearance or have its
  *     own style, colours and range filter, because citation counts and like
  *     counts rarely live on the same scale.
@@ -107,7 +107,7 @@ describe("AlphaLikes preferences", function () {
     });
 
     it("keeps the source an older version stored", function () {
-      // Upgrading from 1.6.0 must not silently move a user off their source.
+      // An upgrade from the single-source setting must not move the user off it.
       setPref("citationSourcePreferences", "");
       setPref("citationSourcePreference", "semanticScholar");
 
