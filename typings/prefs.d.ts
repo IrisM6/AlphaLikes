@@ -28,6 +28,7 @@ declare namespace _ZoteroTypes {
       "lowLikesColor": string;
       "midLikesColor": string;
       "pendingColor": string;
+      "likeColorsCustomised": boolean;
       "rangeFilterEnabled": boolean;
       "rangeFilterMin": number;
       "rangeFilterMax": number;
@@ -45,6 +46,8 @@ declare namespace _ZoteroTypes {
       "citationStyle": string;
       "citationColorEnabled": boolean;
       "citationHighLikesColor": string;
+      "citationColorsCustomised": boolean;
+      "citationColorMode": string;
       "citationLowLikesColor": string;
       "citationMidLikesColor": string;
       "citationHighLikesThreshold": number;

@@ -7,6 +7,7 @@
  */
 
 import { config } from "../../package.json";
+import { hasPalette, styleAccents, type Band } from "./palette";
 
 /**
  * Full branch name, e.g. `extensions.zotero.alphalikes`.
@@ -132,10 +133,28 @@ export const PREF_DEFAULTS = {
   colorEnabled: true,
   highLikesThreshold: 100,
   lowLikesThreshold: 10,
+  /**
+   * Colour overrides for the like bands.
+   *
+   * These are only *read* while `likeColorsCustomised` is set: by default a
+   * band is painted in the colour its display style brings, so a Morandi tag
+   * keeps its Morandi colours instead of turning green. Editing a colour in
+   * the settings pane flips that flag, and the "restore the style's colours"
+   * button clears it again.
+   */
   highLikesColor: "#1a7f37",
   lowLikesColor: "#9aa0a6",
   /** Empty string keeps Zotero's theme colour. */
   midLikesColor: "",
+  /** Whether the colours above replace the style's own ones. */
+  likeColorsCustomised: false,
+  /**
+   * Colour of the "match needs a look" marker of 1.2.0-1.7.0.
+   *
+   * Kept in the shipped defaults (and in the exported `ColorScheme` type) so
+   * the public surface of earlier versions still type-checks; matching no
+   * longer produces that marker, so nothing renders it any more.
+   */
   pendingColor: "#b45309",
   rangeFilterEnabled: false,
   /** `0` means "no lower bound" / "no upper bound". */
@@ -200,8 +219,17 @@ export const PREF_DEFAULTS = {
   citationLowLikesColor: "#9aa0a6",
   /** Empty string keeps Zotero's theme colour. */
   citationMidLikesColor: "",
+  /** Whether the citation colours above replace its style's own ones. */
+  citationColorsCustomised: false,
   citationHighLikesThreshold: 100,
   citationLowLikesThreshold: 10,
+  /**
+   * How the Citations column bands its counts when the look is unlinked.
+   *
+   * `threshold` uses its own cut-offs; `quantile` ranks against the citation
+   * counts currently in the item tree, exactly like the likes column does.
+   */
+  citationColorMode: "threshold" as ColorMode,
   citationRangeFilterEnabled: false,
   citationRangeFilterMin: 0,
   citationRangeFilterMax: 0,
@@ -309,7 +337,10 @@ export interface ColorScheme {
   high: string;
   low: string;
   mid: string;
+  /** Colour of the removed "needs confirmation" marker; kept for the API. */
   pending: string;
+  /** Whether `high`/`mid`/`low` replace the style's own colours. */
+  customised: boolean;
   highThreshold: number;
   lowThreshold: number;
 }
@@ -419,9 +450,88 @@ export function getColorScheme(): ColorScheme {
     low: getPref("lowLikesColor").trim(),
     mid: getPref("midLikesColor").trim(),
     pending: getPref("pendingColor").trim(),
+    customised: getPref("likeColorsCustomised"),
     highThreshold,
     lowThreshold,
   };
+}
+
+/** Reads a colour mode, mapping anything unexpected onto the fixed thresholds. */
+export function readColorMode(value: unknown): ColorMode {
+  return value === "quantile" ? "quantile" : "threshold";
+}
+
+export function getLikeColorsCustomised(): boolean {
+  return getPref("likeColorsCustomised");
+}
+
+/** Which colours a band is painted in, once defaults are resolved. */
+export interface ResolvedColors {
+  high: string;
+  mid: string;
+  low: string;
+}
+
+/**
+ * The colour a column is painted in, per band.
+ *
+ * A customised look uses the chosen colours (falling back to the style's own
+ * colour for any band left empty); an untouched one uses the style's colours
+ * for the palette styles, and the shipped colour defaults for the four
+ * shape-only styles, which have always read their colour from the settings.
+ */
+export function resolveStyleColors(look: CountLook): ResolvedColors {
+  const defaults = styleAccents(look.style);
+  const shapeOnly = !hasPalette(look.style);
+
+  const pick = (band: Band, override: string): string => {
+    if (shapeOnly) return override;
+    if (look.customised && override) return override;
+    return defaults[band];
+  };
+
+  return {
+    high: pick("high", look.scheme.high),
+    mid: pick("mid", look.scheme.mid),
+    low: pick("low", look.scheme.low),
+  };
+}
+
+/**
+ * Everything a cell needs to paint one count.
+ *
+ * Built by the two columns from their own preferences, which is what keeps the
+ * likes and citations colouring identical while letting them be configured
+ * separately: same routine, different `CountLook`.
+ */
+export interface CountLook {
+  style: LikeStyle;
+  scheme: ColorScheme;
+  customised: boolean;
+  /** Whether colouring is on at all (otherwise the middle band is used). */
+  coloring: boolean;
+  /**
+   * Cut-offs as configured, plus how many values they were derived from.
+   *
+   * The tooltip explains a quantile colour with these; anything derived is read
+   * through `effectiveThresholds` below.
+   */
+  thresholds: {
+    high: number;
+    low: number;
+    source: "threshold" | "quantile";
+    sampleSize?: number;
+  };
+  /** Cut-offs to actually use, which in quantile mode are derived. */
+  effectiveThresholds: () => {
+    high: number;
+    low: number;
+    source: "threshold" | "quantile";
+    sampleSize?: number;
+  };
+  filter: RangeFilter;
+  /** `likes` / `cited`, used by the split style. */
+  prefix: string;
 }
 
 /**
@@ -439,8 +549,12 @@ export interface CitationAppearance {
   high: string;
   low: string;
   mid: string;
+  /** Whether the colours above replace the citation style's own ones. */
+  customised: boolean;
   highThreshold: number;
   lowThreshold: number;
+  /** How the band is chosen (`threshold` or `quantile`). */
+  mode: ColorMode;
   filter: RangeFilter;
 }
 
@@ -475,8 +589,12 @@ export function getCitationAppearance(): CitationAppearance {
     high: linked ? scheme.high : getPref("citationHighLikesColor").trim(),
     low: linked ? scheme.low : getPref("citationLowLikesColor").trim(),
     mid: linked ? scheme.mid : getPref("citationMidLikesColor").trim(),
+    customised: linked
+      ? scheme.customised
+      : getPref("citationColorsCustomised"),
     highThreshold,
     lowThreshold,
+    mode: linked ? scheme.mode : readColorMode(getPref("citationColorMode")),
     filter: linked
       ? getRangeFilter()
       : {

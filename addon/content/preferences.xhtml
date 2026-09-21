@@ -69,17 +69,6 @@
         step="5"
         style="width: 5em"
       />
-      <label data-l10n-id="pref-match-confirm"
-        >达到该置信度（%）时提示手动确认</label
-      >
-      <html:input
-        type="number"
-        preference="confirmPercent"
-        min="0"
-        max="100"
-        step="5"
-        style="width: 5em"
-      />
     </hbox>
 
     <hbox align="center">
@@ -257,36 +246,56 @@
       </menulist>
     </hbox>
 
-    <hbox align="center">
-      <label data-l10n-id="pref-color-quantile-low">低赞分位（%）</label>
-      <html:input
-        type="number"
-        preference="quantileLowPercent"
-        min="0"
-        max="99"
-        step="5"
-        style="width: 5em"
-      />
-      <label data-l10n-id="pref-color-quantile-high">高赞分位（%）</label>
-      <html:input
-        type="number"
-        preference="quantileHighPercent"
-        min="1"
-        max="100"
-        step="5"
-        style="width: 5em"
-      />
-    </hbox>
+    <vbox id="alphalikes-color-quantile-rows" style="gap: 6px">
+      <hbox align="center">
+        <label data-l10n-id="pref-color-quantile-low">低赞分位（%）</label>
+        <html:input
+          type="number"
+          preference="quantileLowPercent"
+          min="0"
+          max="99"
+          step="5"
+          style="width: 5em"
+        />
+        <label data-l10n-id="pref-color-quantile-high">高赞分位（%）</label>
+        <html:input
+          type="number"
+          preference="quantileHighPercent"
+          min="1"
+          max="100"
+          step="5"
+          style="width: 5em"
+        />
+      </hbox>
+      <description data-l10n-id="pref-color-quantile-note" style="opacity: 0.8">
+        分位数按当前列表里的数字排名：低于低分位的算低、高于高分位的算高，样本太少时自动退回固定阈值。
+      </description>
+    </vbox>
+
+    <vbox id="alphalikes-color-threshold-rows" style="gap: 6px">
+      <hbox align="center">
+        <label data-l10n-id="pref-color-high-threshold">高赞阈值</label>
+        <html:input
+          type="number"
+          preference="highLikesThreshold"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+      </hbox>
+      <hbox align="center">
+        <label data-l10n-id="pref-color-low-threshold">低赞阈值</label>
+        <html:input
+          type="number"
+          preference="lowLikesThreshold"
+          min="0"
+          step="10"
+          style="width: 6em"
+        />
+      </hbox>
+    </vbox>
 
     <hbox align="center">
-      <label data-l10n-id="pref-color-high-threshold">高赞阈值</label>
-      <html:input
-        type="number"
-        preference="highLikesThreshold"
-        min="0"
-        step="10"
-        style="width: 6em"
-      />
       <label data-l10n-id="pref-color-high">颜色</label>
       <html:input
         class="alphalikes-color-input"
@@ -297,14 +306,6 @@
     </hbox>
 
     <hbox align="center">
-      <label data-l10n-id="pref-color-low-threshold">低赞阈值</label>
-      <html:input
-        type="number"
-        preference="lowLikesThreshold"
-        min="0"
-        step="10"
-        style="width: 6em"
-      />
       <label data-l10n-id="pref-color-low">颜色</label>
       <html:input
         class="alphalikes-color-input"
@@ -327,25 +328,56 @@
     </hbox>
 
     <hbox align="center">
-      <label data-l10n-id="pref-color-pending">「请确认匹配」标记颜色</label>
-      <html:input
-        class="alphalikes-color-input"
-        type="text"
-        preference="pendingColor"
-        style="width: 9em"
+      <button
+        id="alphalikes-pref-like-colors-reset"
+        data-l10n-id="pref-color-reset"
+        label="恢复这个样式的默认颜色"
       />
+      <description data-l10n-id="pref-color-reset-note" style="opacity: 0.8"
+        >改过颜色后可以随时点这里回到当前样式的配色。</description
+      >
     </hbox>
 
-    <description data-l10n-id="pref-color-swatches" style="opacity: 0.8">
-      每个颜色框旁边都会显示一排色块，直接点一下就能选，不必手输。
-    </description>
-
-    <description data-l10n-id="pref-color-hint" style="opacity: 0.8">
-      也可以手输任意 CSS 颜色：#1a7f37、green、rgb(26 127
-      55)。分位数模式按当前列表里的点赞数排名，样本太少时自动退回固定阈值。
+    <description data-l10n-id="pref-color-picker" style="opacity: 0.8">
+      每个颜色框左边是当前颜色的预览，点一下展开取色面板：上面是明度/饱和度色域，下面是色相条，点或拖那一个圆圈就能取色；也可以直接手输
+      CSS 颜色（#1a7f37、green、rgb(26 127 55)）。
     </description>
   </groupbox>
 
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-filter-title">只看高赞</html:h2></label>
+    <description data-l10n-id="pref-filter-desc" style="opacity: 0.8">
+      把列聚焦在一段点赞区间内；边界为 0
+      表示不限制。范围之外的条目仍然显示，只是整格变淡。
+    </description>
+
+    <checkbox
+      id="alphalikes-pref-range"
+      preference="rangeFilterEnabled"
+      data-l10n-id="pref-filter-enabled"
+      label="启用点赞数范围筛选"
+      native="true"
+    />
+
+    <hbox align="center">
+      <label data-l10n-id="pref-filter-min">最少点赞数</label>
+      <html:input
+        type="number"
+        preference="rangeFilterMin"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+      <label data-l10n-id="pref-filter-max">最多点赞数（0 = 不限制）</label>
+      <html:input
+        type="number"
+        preference="rangeFilterMax"
+        min="0"
+        step="10"
+        style="width: 6em"
+      />
+    </hbox>
+  </groupbox>
   <groupbox>
     <label
       ><html:h2 data-l10n-id="pref-citation-appearance-title"
@@ -449,16 +481,66 @@
       />
 
       <hbox align="center">
-        <label data-l10n-id="pref-citation-color-high-threshold"
-          >高引阈值</label
+        <label
+          id="alphalikes-pref-citation-color-mode-label"
+          data-l10n-id="pref-citation-color-mode"
+          control="alphalikes-pref-citation-color-mode"
+          >着色依据</label
         >
-        <html:input
-          type="number"
-          preference="citationHighLikesThreshold"
-          min="0"
-          step="10"
-          style="width: 6em"
-        />
+        <menulist
+          id="alphalikes-pref-citation-color-mode"
+          preference="citationColorMode"
+          native="true"
+        >
+          <menupopup>
+            <menuitem
+              value="threshold"
+              data-l10n-id="pref-color-mode-threshold"
+              label="固定阈值"
+            />
+            <menuitem
+              value="quantile"
+              data-l10n-id="pref-color-mode-quantile"
+              label="按当前列表排名（分位数）"
+            />
+          </menupopup>
+        </menulist>
+      </hbox>
+
+      <description
+        data-l10n-id="pref-citation-color-mode-note"
+        style="opacity: 0.8"
+        >阈值在下面设置；分位数与「颜色」一节共用低/高百分位，按引用数在当前列表里的排名着色。</description
+      >
+
+      <vbox id="alphalikes-citation-threshold-rows" style="gap: 6px">
+        <hbox align="center">
+          <label data-l10n-id="pref-citation-color-high-threshold"
+            >高引阈值</label
+          >
+          <html:input
+            type="number"
+            preference="citationHighLikesThreshold"
+            min="0"
+            step="10"
+            style="width: 6em"
+          />
+        </hbox>
+        <hbox align="center">
+          <label data-l10n-id="pref-citation-color-low-threshold"
+            >低引阈值</label
+          >
+          <html:input
+            type="number"
+            preference="citationLowLikesThreshold"
+            min="0"
+            step="10"
+            style="width: 6em"
+          />
+        </hbox>
+      </vbox>
+
+      <hbox align="center">
         <label data-l10n-id="pref-color-high">颜色</label>
         <html:input
           class="alphalikes-color-input"
@@ -469,14 +551,6 @@
       </hbox>
 
       <hbox align="center">
-        <label data-l10n-id="pref-citation-color-low-threshold">低引阈值</label>
-        <html:input
-          type="number"
-          preference="citationLowLikesThreshold"
-          min="0"
-          step="10"
-          style="width: 6em"
-        />
         <label data-l10n-id="pref-color-low">颜色</label>
         <html:input
           class="alphalikes-color-input"
@@ -533,6 +607,14 @@
       >
         与点赞数的范围筛选一样：范围之外的条目仍然显示，只是整格变淡。
       </description>
+
+      <hbox align="center">
+        <button
+          id="alphalikes-pref-citation-colors-reset"
+          data-l10n-id="pref-citation-color-reset"
+          label="恢复引用样式的默认颜色"
+        />
+      </hbox>
     </vbox>
   </groupbox>
 
@@ -705,41 +787,6 @@
         min="1000"
         max="60000"
         step="1000"
-        style="width: 6em"
-      />
-    </hbox>
-  </groupbox>
-
-  <groupbox>
-    <label><html:h2 data-l10n-id="pref-filter-title">只看高赞</html:h2></label>
-    <description data-l10n-id="pref-filter-desc" style="opacity: 0.8">
-      把列聚焦在一段点赞区间内；边界为 0
-      表示不限制。范围之外的条目仍然显示，只是整格变淡。
-    </description>
-
-    <checkbox
-      id="alphalikes-pref-range"
-      preference="rangeFilterEnabled"
-      data-l10n-id="pref-filter-enabled"
-      label="启用点赞数范围筛选"
-      native="true"
-    />
-
-    <hbox align="center">
-      <label data-l10n-id="pref-filter-min">最少点赞数</label>
-      <html:input
-        type="number"
-        preference="rangeFilterMin"
-        min="0"
-        step="10"
-        style="width: 6em"
-      />
-      <label data-l10n-id="pref-filter-max">最多点赞数（0 = 不限制）</label>
-      <html:input
-        type="number"
-        preference="rangeFilterMax"
-        min="0"
-        step="10"
         style="width: 6em"
       />
     </hbox>

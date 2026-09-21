@@ -45,6 +45,10 @@ pref("highLikesColor", "#1a7f37");
 pref("lowLikesColor", "#9aa0a6");
 pref("midLikesColor", "");
 pref("pendingColor", "#b45309");
+// Whether the like colours above replace the style's own ones. The settings
+// pane sets this as soon as a colour is edited, and the "restore the style's
+// colours" button clears it again.
+pref("likeColorsCustomised", false);
 
 // --- Like-count range filter ---------------------------------------------
 
@@ -99,6 +103,10 @@ pref("appearanceLinked", true);
 pref("citationStyle", "badge");
 pref("citationColorEnabled", true);
 pref("citationHighLikesColor", "#1a7f37");
+// Whether the citation colours above replace the citation style's own ones.
+pref("citationColorsCustomised", false);
+// How the Citations column bands its counts: "threshold" or "quantile".
+pref("citationColorMode", "threshold");
 pref("citationLowLikesColor", "#9aa0a6");
 pref("citationMidLikesColor", "");
 pref("citationHighLikesThreshold", 100);

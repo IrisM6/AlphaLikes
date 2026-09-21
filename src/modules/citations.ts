@@ -187,8 +187,13 @@ export function upsertCitations(
   return next;
 }
 
-/** Removes both citation lines, leaving the rest of `Extra` intact. */
-/** The Scholar title pinned for this item, or `null`. */
+/**
+ * The Scholar record remembered for this item, or `null`.
+ *
+ * A 1.7.0 install wrote the title of the record the user picked by hand; that
+ * line is still honoured as the search query, so upgrading keeps landing on
+ * the same record now that matching is automatic.
+ */
 export function readScholarTitle(extra: string): string | null {
   const match = (extra || "").match(
     new RegExp(String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:\s*(.+?)\s*$`, "im"),
@@ -197,31 +202,7 @@ export function readScholarTitle(extra: string): string | null {
   return value || null;
 }
 
-/** Stores (or clears, with an empty value) the pinned Scholar result title. */
-export function upsertScholarTitle(extra: string, title: string): string {
-  const withoutLine = stripScholarTitle(extra);
-  const value = (title || "").trim();
-  if (!value) return withoutLine;
-
-  const line = `${SCHOLAR_TITLE_KEY}: ${value}`;
-  const base = withoutLine.replace(/[\r\n]+$/, "");
-  return base ? `${base}\n${line}` : line;
-}
-
-/** Removes the pinned Scholar title line. */
-export function stripScholarTitle(extra: string): string {
-  return (extra || "")
-    .split(/\r?\n/)
-    .filter(
-      (line) =>
-        !new RegExp(String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:`, "i").test(line),
-    )
-    .join("\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .replace(/^[\r\n]+|[\r\n]+$/g, "");
-}
-
-/** Matches the pinned Scholar title line as a whole, for "clear data". */
+/** Matches the remembered Scholar title line as a whole, for "clear data". */
 export const SCHOLAR_TITLE_ANY_LINE_RE = new RegExp(
   String.raw`^\s*${SCHOLAR_TITLE_KEY}\s*:[^\r\n]*$`,
   "im",

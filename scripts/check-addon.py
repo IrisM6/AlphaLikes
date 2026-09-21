@@ -87,42 +87,41 @@ check(
 )
 
 # ---------------------------------------------------------------------------
-# 2. Picker dialog
+# 2. The picker dialogs stay removed
 # ---------------------------------------------------------------------------
+#
+# The arXiv picker, the Scholar record picker and the "clear data" action were
+# removed on request, in favour of matching that runs on its own. Their files
+# were deleted, so what is left to guard is that nothing brings them back: a
+# stale dialog file, a menu entry pointing at one, or a preference that only
+# that dialog could write.
 
-picker = CONTENT / "arxiv-picker.xhtml"
-picker_text = read(picker)
-picker_js = read(CONTENT / "arxiv-picker.js")
-
-# A classic <script> runs while the document is still being parsed, so any
-# element it looks up must already be in the tree when it executes.
-try:
-    picker_root = ET.fromstring(picker_text)
-    picker_ok = True
-except ET.ParseError as exc:
-    picker_ok = False
-    print(f"  parse error in arxiv-picker.xhtml: {exc}")
-check(picker_ok, "arxiv-picker.xhtml must be well-formed XML")
-
-if picker_ok:
-    children = list(picker_root)
-    scripts = [i for i, el in enumerate(children) if el.tag.endswith("script")]
-    if scripts:
-        last_script = scripts[-1]
-        after = children[last_script + 1 :]
-        check(
-            not after,
-            "the <script> in arxiv-picker.xhtml must be the last child of <window>, "
-            "otherwise it runs before the elements it looks up exist",
-        )
-
-    markup_ids = {el.get("id") for el in picker_root.iter() if el.get("id")}
-    looked_up = set(re.findall(r'getElementById\(\s*"([^"]+)"', picker_js))
-    looked_up |= set(re.findall(r'byId\(\s*"([^"]+)"', picker_js))
-    absent = looked_up - markup_ids
+for gone in (
+    "arxiv-picker.xhtml",
+    "arxiv-picker.js",
+    "scholar-picker.xhtml",
+    "scholar-picker.js",
+):
     check(
-        not absent,
-        f"arxiv-picker.js looks up ids that arxiv-picker.xhtml does not define: {sorted(absent)}",
+        not (CONTENT / gone).exists(),
+        f"{gone} is back; looking a paper up is automatic now",
+    )
+
+_menu_source = read(ROOT / "src" / "modules" / "menu.ts")
+for gone, why in (
+    ("alphalikes-find-arxiv", "the manual arXiv picker menu entry"),
+    ("alphalikes-batch-find-arxiv", "the batch arXiv lookup menu entry"),
+    ("alphalikes-pick-scholar", "the Scholar record picker menu entry"),
+    ("alphalikes-clear-data", "the clear-data menu entry"),
+):
+    check(
+        gone not in _menu_source,
+        f"{why} is still registered in src/modules/menu.ts",
+    )
+for gone in ("openDialog", "openScholarPicker", "batchFindArxiv", "clearItems"):
+    check(
+        gone not in _menu_source,
+        f"src/modules/menu.ts still drives the removed dialog flow ({gone})",
     )
 
 # ---------------------------------------------------------------------------
@@ -326,7 +325,21 @@ if pane_path.exists():
     # instead of a `preference=` attribute: the citation-source list is one
     # comma-separated value behind three checkboxes, and the 1.6.0 single-source
     # key exists only so an upgrade keeps the source it had chosen.
-    js_driven_prefs = {"citationSourcePreferences", "citationSourcePreference"}
+    js_driven_prefs = {
+        # Written by addon/content/preferences.js rather than a `preference=`
+        # attribute: the source list is one comma-separated value behind three
+        # checkboxes, and a colour edit sets its own "customised" flag.
+        "citationSourcePreferences",
+        "citationSourcePreference",
+        "likeColorsCustomised",
+        "citationColorsCustomised",
+        # Retired: the manual confirmation flow is gone, so nothing renders the
+        # pending marker or parks a medium match for confirmation. Both stay in
+        # the shipped defaults because the exported `ColorScheme` type and
+        # `PREF_DEFAULTS` object are part of the 1.0.0 API.
+        "pendingColor",
+        "confirmPercent",
+    }
     unused_pane_prefs = declared_prefs - pane_prefs - js_driven_prefs
     check(
         not unused_pane_prefs,
@@ -437,8 +450,9 @@ check(
 # Every palette style needs a palette entry, otherwise it falls through to the
 # generic fallback and silently loses its look.
 column_ts = read(ROOT / "src" / "modules" / "column.ts")
+palette_ts = read(ROOT / "src" / "modules" / "palette.ts")
 palette_block = re.search(
-    r"const PALETTES[^=]*=\s*\{(.*?)\n\};", column_ts, re.DOTALL
+    r"export const PALETTES[^=]*=\s*\{(.*?)\n\};", palette_ts, re.DOTALL
 )
 palette_keys = (
     set(re.findall(r"^\s{2}([a-z]+):\s*\{", palette_block.group(1), re.MULTILINE))
@@ -752,44 +766,25 @@ check(
     "every Scholar block still interrupts the user immediately",
 )
 
-# Choosing the Scholar record by hand: the dialog, its script, and the pin that
-# keeps the choice from being undone by the next refresh.
-scholar_dialog = CONTENT / "scholar-picker.xhtml"
-scholar_script = CONTENT / "scholar-picker.js"
-check(scholar_dialog.exists(), "the Scholar record picker dialog is missing")
-check(scholar_script.exists(), "the Scholar record picker script is missing")
-if scholar_dialog.exists():
-    dialog_text = read(scholar_dialog)
-    # The script has to be the last element, or it runs before its own markup.
-    check(
-        dialog_text.rstrip().endswith("</window>")
-        and dialog_text.rindex("<script") > dialog_text.index('id="result-group"'),
-        "the picker script is not the last element in its dialog",
-    )
-    check(
-        'id="result-group"' in dialog_text and 'id="apply"' in dialog_text,
-        "the picker has no result list or apply button",
-    )
-if scholar_script.exists():
-    script_text = read(scholar_script)
-    for needed, why in (
-        ("addEventListener(\"click\", onPick, true)", "rows are not clickable"),
-        ("command", "the radio command is not handled"),
-        ("applyAndClose", "the picker cannot apply a result"),
-        ("searchAgain", "the picker cannot re-run the search"),
-    ):
-        check(needed in script_text, f"the Scholar picker: {why}")
+# Matching runs on its own, so the only confidence that ever reaches `Extra` is
+# the high one: a medium match is treated as "not found" instead of being
+# adopted silently or parked behind a dialog that no longer exists.
 check(
-    'parseGoogleScholarResults' in cite_ts,
-    "the Scholar results page is not parsed into a list",
+    'best?.confidence === "high"' in service_ts,
+    "the resolver no longer adopts high-confidence matches",
 )
 check(
-    "readScholarTitle" in service_ts and "upsertScholarTitle" in service_ts,
-    "the picked Scholar record is not remembered",
+    "getPendingCandidates" not in service_ts
+    and 'kind: "pending"' not in service_ts,
+    "a match is still parked waiting for a dialog that does not exist",
 )
 check(
-    "SCHOLAR_TITLE_ANY_LINE_RE" in read(ROOT / "src" / "modules" / "arxiv-id.ts"),
-    "clearing the data would leave the picked Scholar record behind",
+    "readScholarTitle" in service_ts and "SCHOLAR_TITLE_KEY" in cite_ts,
+    "the Scholar record left in Extra by 1.7.0 is no longer read",
+)
+check(
+    "scholarSearchTitle" in service_ts,
+    "an item's remembered Scholar record is ignored when searching",
 )
 
 # The verification page has to be the paper's own search, not a blank one.
@@ -803,19 +798,6 @@ check(
     "the verification page is not a pre-filled Scholar search",
 )
 
-# The manual arXiv picker searches as it opens and keeps weak matches.
-check(
-    "autoSearch" in read(CONTENT / "arxiv-picker.js"),
-    "the arXiv picker still opens without searching",
-)
-check(
-    "PICKER_MIN_SCORE" in menu_ts,
-    "the arXiv picker uses the automatic floor, so weak matches stay invisible",
-)
-check(
-    "minScore" in read(ROOT / "src" / "modules" / "resolver.ts"),
-    "the resolver cannot lower its display floor for the manual picker",
-)
 
 # ---------------------------------------------------------------------------
 # 14. Citations may have their own look, and colours are clickable
@@ -846,29 +828,88 @@ check(
 )
 check(
     "citationRangeFilterEnabled" in prefs_ts
-    and "isWithinRange(count, appearance.filter)" in column_ts,
+    and "filter: appearance.filter" in column_ts,
     "the citation range filter does not reach the renderer",
 )
+# Both columns must band their counts through the same routine, which is what
+# makes the citation colouring identical to the likes one.
+check(
+    column_ts.count("applyCountStyling(") >= 3,
+    "the two columns no longer share one banding routine",
+)
+check(
+    "getEffectiveCitationThresholds" in service_ts
+    and "citationQuantileCache" in service_ts,
+    "the citation column cannot rank its counts by percentile",
+)
+check(
+    "resolveStyleColors" in prefs_ts and "customPaint" in palette_ts,
+    "a custom colour cannot reach a palette style",
+)
 
-# Clickable swatches: the pane script has to build them, and every colour box
-# has to be marked so it can find them.
+# The colour picker: a saturation/value area plus a hue bar in one shared
+# panel, a preview next to every colour box, and one set of cut-off rows per
+# banding rule.
 preferences_js = read(CONTENT / "preferences.js")
 check(
     "alphalikes-color-input" in pane,
-    "no colour box is marked for the swatch row",
+    "no colour box is marked for the picker",
 )
 check(
-    len(re.findall(r"alphalikes-color-input", pane)) >= 7,
-    "not every colour box has a swatch row",
+    len(re.findall(r"alphalikes-color-input", pane)) == 6,
+    "the pane should offer exactly three like colours and three citation ones",
 )
 check(
-    "attachSwatches" in preferences_js and "SWATCHES" in preferences_js,
-    "the pane script does not build colour swatches",
+    "hsvToHex" in preferences_js and "hexToHsv" in preferences_js,
+    "the pane cannot convert between a picked colour and a hex value",
 )
 check(
-    "dispatchEvent(new Event(\"change\"" in preferences_js,
-    "a swatch click does not reach the preference binding",
+    "alphalikes-color-area" in preferences_js
+    and "alphalikes-color-hue" in preferences_js,
+    "the picker has no colour area or hue bar",
 )
+check(
+    "alphalikes-color-marker" in preferences_js,
+    "the picker has no marker to drag",
+)
+check(
+    "alphalikes-color-preview" in preferences_js,
+    "no colour preview is built next to the boxes",
+)
+check(
+    'dispatchEvent(new Event("change"' in preferences_js,
+    "a picked colour does not reach the preference binding",
+)
+# Editing a colour has to switch the renderer to the edited colours, and the
+# restore button has to switch it back.
+check(
+    "likeColorsCustomised" in preferences_js
+    and "citationColorsCustomised" in preferences_js,
+    "the pane never marks a colour as edited",
+)
+check(
+    "alphalikes-pref-like-colors-reset" in pane
+    and "alphalikes-pref-citation-colors-reset" in pane
+    and "wireColorReset" in preferences_js,
+    "there is no way back to a style's own colours",
+)
+check(
+    "styleColors" in preferences_js
+    and "styleColors" in read(ROOT / "src" / "modules" / "api.ts"),
+    "the pane cannot ask for the colours a style ships with",
+)
+# Only the rows that belong to the selected banding rule are on screen.
+check(
+    "alphalikes-color-quantile-rows" in pane
+    and "alphalikes-color-threshold-rows" in pane
+    and "wireColorModes" in preferences_js,
+    "the quantile and threshold rows are not switched by the banding rule",
+)
+check(
+    "alphalikes-citation-threshold-rows" in pane,
+    "the citation thresholds cannot be hidden in quantile mode",
+)
+
 check(
     "alphalikes-citation-source" in pane
     and "wireSources" in preferences_js,

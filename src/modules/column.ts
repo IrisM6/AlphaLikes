@@ -10,7 +10,6 @@ import {
 } from "./citations";
 import {
   CELL_LOADING,
-  CELL_PENDING,
   CELL_UNAVAILABLE,
   fromSortableValue,
   splitValueDecorations,
@@ -18,16 +17,28 @@ import {
 import { t } from "./l10n";
 import {
   colorBucket,
+  getCitationAppearance,
   getCitationPrefs,
   getColorScheme,
-  getCitationAppearance,
+  getLikeColorsCustomised,
   getLikeStyle,
   getRangeFilter,
   getTrendPrefs,
   isWithinRange,
+  resolveStyleColors,
+  type CitationAppearance,
   type ColorScheme,
+  type CountLook,
   type LikeStyle,
 } from "./prefs";
+import {
+  customPaint,
+  PALETTES,
+  SPLIT_RIGHT,
+  translucent,
+  type Band,
+  type BandPaint,
+} from "./palette";
 import { AlphaLikesService } from "./service";
 
 export const COLUMN_KEY = "alphaxiv_likes";
@@ -57,107 +68,18 @@ export function getService(): AlphaLikesService {
 }
 
 /**
- * Reads a colour into the cell's computed colour. Kept as a function so the
- * `mid` slot can fall back to the theme colour (an empty string).
- */
-function effectiveColor(
-  bucket: "high" | "low" | "mid",
-  scheme: ColorScheme,
-): string {
-  if (bucket === "high") return scheme.high;
-  if (bucket === "low") return scheme.low;
-  return scheme.mid;
-}
-
-/**
- * A translucent version of `color`, used for the badge/glass fill.
+ * The paint for one band of a palette style.
  *
- * `color-mix()` is available in the Gecko versions Zotero 7-9 ship, so the
- * accent does not have to be a hex literal. When the accent is empty (theme
- * colour) `currentColor` keeps the fill in step with the text.
+ * A customised style brings its own paint (derived from the chosen colour);
+ * otherwise the style's built-in one is used, byte for byte.
  */
-function translucent(color: string, percent: number): string {
-  const base = color.trim() || "currentColor";
-  return `color-mix(in srgb, ${base} ${percent}%, transparent)`;
+function bandPaint(
+  style: string,
+  band: Band,
+  custom: BandPaint | null,
+): BandPaint {
+  return custom ?? PALETTES[style]?.[band] ?? {};
 }
-
-/**
- * Applies one of the display styles to the element that carries the text.
- *
- * All styles are inline so they survive `renderCell` having no stylesheet of
- * its own, and none of them change the cell's layout width: the item tree
- * measures column content from the outer cell element.
- */
-/** The high / mid / low bands a style can paint. */
-type Band = "high" | "mid" | "low";
-
-/** One band's paint inside a palette style. */
-interface BandPaint {
-  background?: string;
-  color?: string;
-  border?: string;
-}
-
-/**
- * Palettes for the styles whose look *is* the point.
- *
- * These bring their own colours for every band instead of using the colour
- * section, because a muted Morandi tag or a gold-bordered card stops being
- * itself the moment its hue is replaced. The high and low entries are what
- * keep the like-count signal visible inside each look.
- */
-const PALETTES: Record<string, Record<Band, BandPaint>> = {
-  // 侧边强调块：左侧深金色块 + 浅米黄底
-  bookmark: {
-    high: { background: "#FDF9E8", color: "#A67C00", border: "#D4AF37" },
-    mid: { background: "#F5F6F7", color: "#5F6368", border: "#9AA0A6" },
-    low: { background: "#FAFAFA", color: "#8A8A8A", border: "#D0D0D0" },
-  },
-  // 莫兰迪低饱和：仍是灰调，但三档在明度与色相上都拉开，一眼能分辨
-  // （雾霾蓝 → 灰米 → 近白），文字颜色也跟着深浅走。
-  morandi: {
-    high: { background: "#9FB3BF", color: "#16232A", border: "#7D95A3" },
-    mid: { background: "#DCD3C9", color: "#4A423B", border: "#C0B4A6" },
-    low: { background: "#F1F1EF", color: "#8A8A88", border: "#DFDFDC" },
-  },
-  // 学术严谨
-  academic: {
-    high: { background: "#003366", color: "#FFFFFF" },
-    mid: { background: "#F5F5F5", color: "#003366", border: "#CCCCCC" },
-    low: { background: "#FAFAFA", color: "#777777", border: "#DDDDDD" },
-  },
-  // 淡雅清新
-  fresh: {
-    high: { background: "#E6F7F0", color: "#2E8B57" },
-    mid: { background: "#FFF0F5", color: "#C71585" },
-    low: { background: "#F5F5F5", color: "#999999" },
-  },
-  // 活泼明快
-  playful: {
-    high: { background: "#FFD700", color: "#000000", border: "#000000" },
-    mid: { background: "#FFE9A8", color: "#000000", border: "#000000" },
-    low: { background: "#EDEDED", color: "#666666", border: "#BDBDBD" },
-  },
-  // 双色拼接：左半深底白字，右半浅底深字
-  split: {
-    high: { background: "#333333", color: "#FFFFFF" },
-    mid: { background: "#5F6368", color: "#FFFFFF" },
-    low: { background: "#8A8A8A", color: "#FFFFFF" },
-  },
-  // 数字角标
-  dot: {
-    high: { background: "#FF3B30", color: "#FFFFFF" },
-    mid: { background: "#FF9500", color: "#FFFFFF" },
-    low: { background: "#8E8E93", color: "#FFFFFF" },
-  },
-};
-
-/** The light half of the split style, per band. */
-const SPLIT_RIGHT: Record<Band, BandPaint> = {
-  high: { background: "#F0F0F0", color: "#333333" },
-  mid: { background: "#F0F0F0", color: "#5F6368" },
-  low: { background: "#F5F5F5", color: "#8A8A8A" },
-};
 
 /** Colours for the shape-only styles that fall back to the colour section. */
 const OUTLINE_COLOR = "#CCCCCC";
@@ -179,6 +101,7 @@ function applyLikeStyle(
   band: Band,
   doc: Document,
   prefix: string,
+  paint: BandPaint | null = null,
 ): void {
   const color = accent.trim();
 
@@ -207,14 +130,14 @@ function applyLikeStyle(
 
   // 侧边强调块：用左侧的粗边框当那条深色竖块，比塞一个子元素更稳。
   if (style === "bookmark") {
-    const paint = PALETTES.bookmark[band];
+    const colors = bandPaint("bookmark", band, paint);
     visual.style.padding = "1px 8px 1px 7px";
     visual.style.borderRadius = "0 4px 4px 0";
-    if (paint.background) visual.style.background = paint.background;
-    if (paint.color) visual.style.color = paint.color;
+    if (colors.background) visual.style.background = colors.background;
+    if (colors.color) visual.style.color = colors.color;
     // One shorthand sets the hairline around the box, then the left edge is
     // widened into the accent block.
-    visual.style.border = `1px solid ${paint.border ?? "transparent"}`;
+    visual.style.border = `1px solid ${colors.border ?? "transparent"}`;
     visual.style.borderLeftWidth = "3px";
     return;
   }
@@ -227,7 +150,7 @@ function applyLikeStyle(
     style === "fresh" ||
     style === "playful"
   ) {
-    const paint = PALETTES[style][band];
+    const colors = bandPaint(style, band, paint);
     visual.style.padding = style === "academic" ? "0 6px" : "1px 8px";
 
     const radius =
@@ -237,10 +160,10 @@ function applyLikeStyle(
           ? "3px"
           : "6px";
     visual.style.borderRadius = radius;
-    if (paint.background) visual.style.background = paint.background;
-    if (paint.color) visual.style.color = paint.color;
+    if (colors.background) visual.style.background = colors.background;
+    if (colors.color) visual.style.color = colors.color;
 
-    if (paint.border) visual.style.border = `1px solid ${paint.border}`;
+    if (colors.border) visual.style.border = `1px solid ${colors.border}`;
     else visual.style.border = "none";
 
     if (style === "academic") {
@@ -261,7 +184,7 @@ function applyLikeStyle(
 
   // 数字角标：圆底白字，数字完整显示（位数多了就自然变成胶囊，不缩写）。
   if (style === "dot") {
-    const paint = PALETTES.dot[band];
+    const colors = bandPaint("dot", band, paint);
     const text = visual.textContent ?? "";
 
     visual.style.display = "inline-flex";
@@ -271,8 +194,8 @@ function applyLikeStyle(
     visual.style.height = "18px";
     visual.style.padding = "0 5px";
     visual.style.borderRadius = text.length <= 2 ? "50%" : "999px";
-    if (paint.background) visual.style.background = paint.background;
-    if (paint.color) visual.style.color = paint.color;
+    if (colors.background) visual.style.background = colors.background;
+    if (colors.color) visual.style.color = colors.color;
     visual.style.fontSize = "0.8em";
     visual.style.fontWeight = "600";
     return;
@@ -280,7 +203,7 @@ function applyLikeStyle(
 
   // 双色拼接：左半深底白字放前缀，右半浅底深字放数字。
   if (style === "split") {
-    const left = PALETTES.split[band];
+    const left = bandPaint("split", band, paint);
     const right = SPLIT_RIGHT[band];
     const value = visual.textContent ?? "";
 
@@ -367,23 +290,6 @@ export function renderLikeCell(
     return cell;
   }
 
-  if (text === CELL_PENDING) {
-    const scheme = getColorScheme();
-    cell.title = t("cell-pending");
-    if (scheme.enabled && scheme.pending) {
-      visual.style.color = scheme.pending;
-      applyLikeStyle(
-        visual,
-        style,
-        scheme.pending,
-        "mid",
-        doc,
-        t("cell-split-prefix"),
-      );
-    }
-    return cell;
-  }
-
   if (text === CELL_UNAVAILABLE) {
     cell.title = t("cell-unavailable");
   }
@@ -425,20 +331,57 @@ function appendTrend(
   cell.appendChild(suffix);
 }
 
-/** Tooltip and marker for the Citations column. */
+/**
+ * The Citation appearance as a colour scheme.
+ *
+ * The percentiles are the likes ones on purpose: the pane says so, and the
+ * citation banding then ranks by the same rule the like counts use.
+ */
+function citationScheme(appearance: CitationAppearance): ColorScheme {
+  const scheme = getColorScheme();
+  return {
+    enabled: appearance.enabled,
+    mode: appearance.mode,
+    quantileLowPercent: scheme.quantileLowPercent,
+    quantileHighPercent: scheme.quantileHighPercent,
+    high: appearance.high,
+    mid: appearance.mid,
+    low: appearance.low,
+    pending: "",
+    customised: appearance.customised,
+    highThreshold: appearance.highThreshold,
+    lowThreshold: appearance.lowThreshold,
+  };
+}
+
+/** Marker and tooltip for a work OpenAlex counts among the field's best. */
 function appendHighImpact(
   cell: HTMLElement,
   visual: HTMLElement,
   doc: Document,
 ): void {
-  const scheme = getColorScheme();
+  const appearance = getCitationAppearance();
+  const colors = resolveStyleColors({
+    style: appearance.style,
+    scheme: citationScheme(appearance),
+    customised: appearance.customised,
+    coloring: appearance.enabled,
+    thresholds: {
+      high: appearance.highThreshold,
+      low: appearance.lowThreshold,
+      source: appearance.mode,
+    },
+    effectiveThresholds: () => getService().getEffectiveCitationThresholds(),
+    filter: appearance.filter,
+    prefix: "",
+  });
 
   const marker = doc.createElement("span");
   marker.textContent = HIGH_IMPACT_GLYPH;
   marker.style.marginInlineStart = "3px";
   marker.style.fontSize = "0.75em";
   marker.style.verticalAlign = "super";
-  if (scheme.high) marker.style.color = scheme.high;
+  if (colors.high) marker.style.color = colors.high;
   cell.appendChild(marker);
 
   visual.title = t("cell-high-impact");
@@ -447,11 +390,13 @@ function appendHighImpact(
 /**
  * Renders the Citations column.
  *
- * The styles apply here too, with the colour band taken from the work's impact
- * rather than from a threshold: a work OpenAlex places in its field's top
- * decile gets the style's "high" band, everything else the middle one. The
- * like-count range filter deliberately does not apply, because it filters a
- * different quantity.
+ * The styles and the banding apply here exactly as they do to the like
+ * counts: the same `applyCountStyling` routine paints either column, so a
+ * style or colour picked for the likes can be reused verbatim, and the
+ * citation column can band by its own fixed cut-offs or by the same
+ * percentile rule. What differs is only where the look comes from - the
+ * citation preferences while the two appearances are unlinked - and the
+ * high-impact marker, which stays tied to OpenAlex's top-decile flag.
  */
 export function renderCitationCell(
   data: string,
@@ -466,11 +411,25 @@ export function renderCitationCell(
   const { decorations } = splitValueDecorations(data);
   const text = fromSortableValue(data);
 
-  // The Citations column has its own style, colours and range filter; by
-  // default they are the likes ones, so there is a single place to edit.
+  // The Citations column has its own style, colours, cut-offs and range
+  // filter; by default they are the likes ones, so there is a single place to
+  // edit and one routine that paints both columns.
   const appearance = getCitationAppearance();
-  const style = appearance.style;
-  const scheme = appearance as unknown as ColorScheme;
+  const service = getService();
+  const look: CountLook = {
+    style: appearance.style,
+    scheme: citationScheme(appearance),
+    customised: appearance.customised,
+    coloring: appearance.enabled,
+    thresholds: {
+      high: appearance.highThreshold,
+      low: appearance.lowThreshold,
+      source: appearance.mode === "quantile" ? "quantile" : "threshold",
+    },
+    effectiveThresholds: () => service.getEffectiveCitationThresholds(),
+    filter: appearance.filter,
+    prefix: t("cell-split-prefix-citations"),
+  };
 
   const visual = doc.createElement("span");
   visual.textContent = text;
@@ -480,37 +439,7 @@ export function renderCitationCell(
     const count = Number.parseInt(text, 10);
     const highImpact = decorations.includes(HIGH_IMPACT_MARKER);
 
-    if (appearance.filter.enabled && !isWithinRange(count, appearance.filter)) {
-      cell.style.opacity = "0.45";
-      cell.title = t("cell-filtered");
-      const accent = scheme.enabled ? scheme.low : "";
-      if (accent) visual.style.color = accent;
-      applyLikeStyle(
-        visual,
-        style,
-        accent,
-        "low",
-        doc,
-        t("cell-split-prefix-citations"),
-      );
-      if (highImpact) appendHighImpact(cell, visual, doc);
-      return cell;
-    }
-
-    const band: Band = highImpact ? "high" : "mid";
-    const accent = scheme.enabled
-      ? effectiveColor(highImpact ? "high" : "mid", scheme)
-      : "";
-
-    if (accent) visual.style.color = accent;
-    applyLikeStyle(
-      visual,
-      style,
-      accent,
-      band,
-      doc,
-      t("cell-split-prefix-citations"),
-    );
+    applyCountStyling(cell, visual, count, look, doc);
 
     const source = citationSourceFrom(decorations);
     if (highImpact) appendHighImpact(cell, visual, doc);
@@ -551,6 +480,95 @@ function citationSourceFrom(decorations: string[]): string | null {
   return null;
 }
 
+/**
+ * Paints one count into its cell.
+ *
+ * Both columns go through here, which is what makes their colouring identical:
+ * the same banding, the same palette handling, the same filter presentation.
+ * Only the `CountLook` differs — its style, its colours, its cut-offs, its
+ * filter and its "likes" / "cited" prefix.
+ */
+function applyCountStyling(
+  cell: HTMLElement,
+  visual: HTMLElement,
+  count: number,
+  look: CountLook,
+  doc: Document,
+): void {
+  const band: Band = look.coloring ? countBucket(count, look) : "mid";
+  const colors = resolveStyleColors(look);
+
+  if (look.filter.enabled && !isWithinRange(count, look.filter)) {
+    // Out-of-range rows keep their number and are dimmed instead: the value
+    // itself is never blanked, so sorting still sees the real figure.
+    cell.style.opacity = "0.45";
+    cell.title = t("cell-filtered");
+    paintBand(cell, visual, look, { band: "low", accent: colors.low }, doc);
+    return;
+  }
+
+  paintBand(cell, visual, look, { band, accent: colors[band] }, doc);
+
+  if (look.coloring && look.thresholds.source === "quantile") {
+    // The tooltip names the cut-offs actually used, not the configured ones:
+    // in quantile mode those two differ, and the sample size is the reason the
+    // rule fell back to a fixed threshold if it did.
+    const effective = look.effectiveThresholds();
+    appendQuantileTitle(cell, band, {
+      high: effective.high,
+      low: effective.low,
+      sampleSize: effective.sampleSize ?? look.thresholds.sampleSize,
+    });
+  }
+}
+
+/** Applies one band's colour and the style's shape to the cell. */
+function paintBand(
+  cell: HTMLElement,
+  visual: HTMLElement,
+  look: CountLook,
+  band: { band: Band; accent: string },
+  doc: Document,
+): void {
+  const accent = look.coloring ? band.accent : "";
+  // A palette style whose colours have not been touched keeps the paint it
+  // ships with, byte for byte; only an edited colour is translated into the
+  // style's own treatment. Anything else would silently redraw the shipped
+  // looks the moment this module is loaded.
+  const paint =
+    accent && look.customised
+      ? customPaint(look.style, band.band, accent)
+      : null;
+
+  if (accent) visual.style.color = accent;
+  applyLikeStyle(
+    visual,
+    look.style,
+    accent,
+    band.band,
+    doc,
+    look.prefix,
+    paint,
+  );
+}
+
+/**
+ * Which colour band a count falls into.
+ *
+ * In quantile mode the cut-offs are percentiles of the counts currently in the
+ * item tree, so the same number can be "high" in one view and "mid" in another.
+ * The service derives them and falls back to the fixed thresholds whenever the
+ * sample is too small to rank.
+ */
+function countBucket(count: number, look: CountLook): Band {
+  const thresholds = look.effectiveThresholds();
+  return colorBucket(count, {
+    ...look.scheme,
+    highThreshold: thresholds.high,
+    lowThreshold: thresholds.low,
+  });
+}
+
 function applyLikeCountStyling(
   cell: HTMLElement,
   visual: HTMLElement,
@@ -559,53 +577,31 @@ function applyLikeCountStyling(
   doc: Document,
 ): void {
   const scheme = getColorScheme();
-  const filter = getRangeFilter();
-  const prefix = t("cell-split-prefix");
-
-  if (filter.enabled && !isWithinRange(likes, filter)) {
-    // `hide` mode never reaches this branch because the data provider blanks
-    // the value; this is the `dim` presentation.
-    cell.style.opacity = "0.45";
-    cell.title = t("cell-filtered");
-    if (scheme.enabled && scheme.low) {
-      visual.style.color = scheme.low;
-    }
-    applyLikeStyle(visual, style, scheme.low, "low", doc, prefix);
-    return;
-  }
-
-  // In quantile mode the cut-offs are percentiles of the counts currently in
-  // the item tree, so the same number can be "high" in one view and "mid" in
-  // another. The service owns that derivation and falls back to the fixed
-  // thresholds whenever the sample is too small to rank.
-  const thresholds = getService().getEffectiveThresholds();
-  const bucket = colorBucket(likes, {
-    ...scheme,
-    highThreshold: thresholds.high,
-    lowThreshold: thresholds.low,
-  });
-
-  // The palette styles paint every band themselves, so they are handed the
-  // band rather than a colour. Without the colour switch they fall back to the
-  // middle band, which is their plainest look.
-  const coloring = scheme.enabled;
-  const band: Band = coloring ? bucket : "mid";
-  const color = coloring ? effectiveColor(bucket, scheme) : "";
-
-  if (color) visual.style.color = color;
-  applyLikeStyle(visual, style, color, band, doc, prefix);
-
-  if (coloring && thresholds.source === "quantile") {
-    appendQuantileTitle(cell, bucket, thresholds);
-  }
+  applyCountStyling(
+    cell,
+    visual,
+    likes,
+    {
+      style,
+      scheme,
+      customised: getLikeColorsCustomised(),
+      coloring: scheme.enabled,
+      thresholds: getService().getEffectiveThresholds(),
+      effectiveThresholds: () => getService().getEffectiveThresholds(),
+      filter: getRangeFilter(),
+      prefix: t("cell-split-prefix"),
+    },
+    doc,
+  );
 }
 
 /** Explains a quantile-derived colour on hover. */
 function appendQuantileTitle(
   cell: HTMLElement,
   bucket: ReturnType<typeof colorBucket>,
-  thresholds: { high: number; low: number; sampleSize: number },
+  thresholds: { high: number; low: number; sampleSize?: number },
 ): void {
+  const sampleSize = thresholds.sampleSize ?? 0;
   const label =
     bucket === "high"
       ? t("cell-quantile-high")
@@ -617,7 +613,7 @@ function appendQuantileTitle(
     label,
     high: thresholds.high,
     low: thresholds.low,
-    sample: thresholds.sampleSize,
+    sample: sampleSize,
   });
 }
 

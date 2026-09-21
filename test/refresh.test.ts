@@ -37,6 +37,8 @@ interface Stub {
   served: string[];
   likes: number;
   scholar: number;
+  /** Title of the single Scholar hit the stub serves. */
+  scholarTitle: string;
   failLikes: boolean;
   failScholar: boolean;
   /** Set to hold the next request open until `release` is called. */
@@ -49,6 +51,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     served: [],
     likes,
     scholar,
+    scholarTitle: "AlphaLikes refresh probe paper",
     failLikes: false,
     failScholar: false,
     hold: false,
@@ -76,7 +79,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
       state.served.push(url);
       await gate();
       if (state.failScholar) throw new Error("service unavailable");
-      return scholarPage(state.scholar, "AlphaLikes refresh probe paper");
+      return scholarPage(state.scholar, state.scholarTitle);
     },
   };
 
@@ -221,31 +224,32 @@ describe("AlphaLikes refresh", function () {
       );
     });
 
-    it("adopts a record picked by hand and remembers it", async function () {
+    it("searches for the record a 1.7.0 install left in Extra", async function () {
       const target = Zotero.Items.get(item.id);
-      stub = stubRequester(service, 0, 1234);
+      // A different figure from the one already in Extra, so the re-read is
+      // visible in the summary rather than looking like "nothing happened".
+      stub = stubRequester(service, 0, 4321);
 
-      await service.applyScholarResult(target, {
-        title: "The Exact Paper The User Chose",
-        count: 1234,
-        meta: "A. Author - Journal, 2020",
-        url: "https://example.org/picked",
-      });
-
-      const extra = String(target.getField("extra"));
-      assert.include(
-        extra,
-        "alphaxiv_scholar_title: The Exact Paper The User Chose",
-        "the choice has to survive the next refresh",
+      // Rows an older build wrote: the chosen record's title, then the counts.
+      // The remembered title is what the search asks for, and Scholar answers
+      // with that same record, so the automatic match lands on it.
+      stub.scholarTitle = "The Exact Paper The User Chose";
+      await target.setField(
+        "extra",
+        [
+          "alphaxiv_arxiv_id: 2401.00001",
+          "alphaxiv_scholar_title: The Exact Paper The User Chose",
+          "alphaxiv_citations: gs=1234",
+        ].join("\n"),
       );
-      assert.equal(
-        service.planCitationCell(target).text,
-        "1234",
-        "the picked record's count is what the column shows",
-      );
+      await target.saveTx();
 
-      // The pin also decides what the automatic lookup searches for, so a
-      // refresh keeps landing on the record the user chose.
+      const summary = await service.refreshCitations([target]);
+      assert.equal(summary.updated, 1);
+      assert.equal(service.planCitationCell(target).text, "4321");
+
+      // The remembered title decides what the silent lookup searches for, so
+      // an install that upgraded keeps landing on the record it had chosen.
       const queries = stub.served
         .filter((url) => url.includes("scholar.google.com"))
         .map((url) => decodeURIComponent(url));
@@ -254,15 +258,19 @@ describe("AlphaLikes refresh", function () {
       );
     });
 
-    it("forgets the picked record when asked to", async function () {
+    it("adopts a match only at high confidence", async function () {
       const target = Zotero.Items.get(item.id);
-      stub = stubRequester(service, 0, 9);
+      // A near-but-not-exact title: the Scholar hit scores below the high
+      // confidence band, and a medium match is treated as "not found" now
+      // that there is no dialog to confirm it in.
+      stub = stubRequester(service, 0, 97531);
+      stub.scholarTitle = "A Completely Different Paper About Fish";
 
-      await service.clearScholarResult(target);
+      const summary = await service.refreshCitations([target]);
+      assert.equal(summary.updated, 0);
 
-      const extra = String(target.getField("extra"));
-      assert.notInclude(extra, "alphaxiv_scholar_title");
-      assert.isNull(service.getScholarPinnedTitle(target));
+      const plan = service.planCitationCell(target);
+      assert.notInclude(String(plan.text), "97531");
     });
 
     it("counts an item with nothing to look up as skipped", async function () {

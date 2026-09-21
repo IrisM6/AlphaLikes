@@ -10,16 +10,12 @@
 
 column-label = alphaXiv 点赞
 column-citations-label = 引用数
-menu-find-arxiv = 查找 arXiv…
 menu-refresh = 刷新 alphaXiv 点赞
 menu-refresh-citations = 刷新引用数
-menu-pick-scholar = 选择 Google Scholar 文献…
-menu-clear = 清除 AlphaLikes 数据
 menu-open-scholar = 打开 Google Scholar 验证页
 
 cell-loading = 正在从 alphaXiv 读取…
 cell-unavailable = 没有找到该条目的 alphaXiv 点赞
-cell-pending = 找到可能的 arXiv 匹配，请右键确认
 cell-filtered = 已被点赞数范围筛选隐藏
 cell-trend = 相比上次快照 {delta} 个赞（当前 {likes}）
 cell-high-impact = 位于本领域同年份的前 10%
@@ -45,15 +41,9 @@ refresh-failed = {failed} 条未能读取（保留原值）
 refresh-skipped = {skipped} 条缺少 DOI / arXiv ID，无法查询
 refresh-nothing = 没有可刷新的条目。
 refresh-joining = ；
-scholar-picked = 已改用所选 Google Scholar 文献的引用数。
-scholar-cleared = 已取消所选文献，恢复按条目自身的标题查询。
 
 # --- 批量操作 ---------------------------------------------------------------
 
-menu-batch-find = 批量查找 arXiv…
-batch-finding = 正在为 {count} 个条目查找 arXiv…
-batch-done = 完成。自动匹配 {applied} 个，待确认 {pending} 个，无匹配 {notFound} 个，已有 ID {alreadyKnown} 个。
-batch-none-to-do = 所选条目都已经有 arXiv ID 了。
 progress-error = AlphaLikes 无法完成本次更新：{message}
 
 notify-scholar-title = AlphaLikes · Google Scholar
@@ -63,26 +53,6 @@ error-no-selection = 请先选择至少一个条目。
 error-single-selection = 该操作只能用于单个条目。
 
 # --- 摘要笔记正文 -----------------------------------------------------------
-
-picker-title = 查找 arXiv
-picker-heading = 候选匹配结果
-picker-subheading = AlphaLikes 已查询启用的学术 API。请选择正确的 arXiv 记录，或手动输入 ID。
-picker-current = 当前匹配
-picker-none = 没有候选达到置信度阈值。可以重新搜索，或手动输入 ID。
-picker-no-candidates = 这个条目还没有找到任何结果——可以点「重新搜索」，或在下方直接输入 ID。
-picker-manual-label = 输入 arXiv ID 或链接
-picker-manual-placeholder = 2301.12345 或 https://arxiv.org/abs/2301.12345
-picker-apply = 应用
-picker-cancel = 取消
-picker-search = 重新搜索
-picker-clear = 清除 AlphaLikes 数据
-picker-searching = 正在搜索…
-picker-search-failed = 搜索失败。
-picker-invalid = 这不像是有效的 arXiv ID。
-picker-item = 条目
-picker-confidence-high = 高置信度
-picker-confidence-medium = 需要你确认
-picker-confidence-low = 低置信度
 
 # ===========================================================================
 # 设置面板
@@ -98,7 +68,7 @@ pref-match-desc = AlphaLikes 会从链接、DOI 或 Extra 字段里读取 arXiv 
 pref-match-auto =
     .label = 为没有 arXiv ID 的条目自动查找
 pref-match-auto-accept = 达到该置信度（%）时自动采用
-pref-match-confirm = 达到该置信度（%）时提示手动确认
+
 pref-match-title-results = 每次标题搜索返回的结果数
 pref-match-use-arxiv =
     .label = 通过标题搜索 arXiv API
@@ -153,8 +123,6 @@ pref-color-low-threshold = 低赞阈值
 pref-color-high = 颜色
 pref-color-low = 颜色
 pref-color-mid = 中间区间颜色（留空则使用主题色）
-pref-color-pending = 「请确认匹配」标记颜色
-pref-color-hint = 可以使用任意 CSS 颜色：#1a7f37、green、rgb(26 127 55)。分位数模式按当前列表里的点赞数排名，样本太少时自动退回固定阈值。
 
 pref-trend-title = 点赞趋势
 pref-trend-desc = 每次刷新会把当天的点赞数记入条目的 Extra 字段，列里就能显示「2979 ↑12」。
@@ -191,25 +159,16 @@ pref-filter-enabled =
 pref-filter-min = 最少点赞数
 pref-filter-max = 最多点赞数（0 = 不限制）
 
-scholar-picker-title = 选择 Google Scholar 文献
-scholar-picker-heading = 按论文标题搜索到的结果
-scholar-picker-subheading = 选择这条条目该用哪篇文献的引用数。选择会被记住，之后刷新时继续用它。
-scholar-picker-pinned = 当前使用：{title}
-scholar-picker-empty = 这次搜索没有返回结果。
-scholar-picker-blocked = Google 返回的是人机验证页面而不是结果。请先在浏览器里完成验证，再点「重新搜索」。
-scholar-picker-error = 搜索失败：{message}
-scholar-picker-search = 重新搜索
-scholar-picker-searching = 正在搜索 Google Scholar…
-scholar-picker-open = 在浏览器中打开搜索页
-scholar-picker-apply = 使用这篇的引用数
-scholar-picker-clear = 忘记所选文献
-scholar-picker-cancel = 取消
-scholar-picker-count = 被引用 {count} 次
-scholar-picker-count-unknown = 未显示引用数
-scholar-picker-nomatch = （无标题）
-pref-color-swatches = 每个颜色框旁边都会显示一排色块，直接点一下就能选，不必手输。
+pref-color-picker = 每个颜色框左边是当前颜色的预览；点一下展开取色面板（明度/饱和度色域 + 色相条），点或拖那个圆圈即可取色，也可以直接手输 CSS 颜色。
 pref-citation-appearance-title = 引用数外观
-pref-citation-appearance-desc = 引用数和点赞数往往差着数量级，同一套阈值常常不好用。勾选「跟随点赞」时两列外观完全一致，只在「外观」「颜色」「只看高赞」里设置一次即可；取消勾选后，下面这一组只作用于「引用数」列。
+pref-citation-appearance-desc = 引用数和点赞数往往差着数量级，同一套阈值常常不好用。勾选「引用数跟随点赞」时两列外观完全一致，只在外观/颜色/范围筛选里设置一次即可；取消勾选后，下面这一组只作用于「引用数」列（样式、着色依据、阈值与颜色都可单独设置）。
+pref-color-quantile-note = 低于低分位的算低、高于高分位的算高；样本太少或所有数字相同的时候自动退回固定阈值。
+pref-color-reset = 恢复这个样式的默认颜色
+pref-color-reset-note = 改过颜色后可以随时点这里回到当前样式的配色。
+pref-citation-color-mode = 着色依据
+pref-citation-color-mode-note = 阈值在下面设置；分位数与「颜色」一节共用低/高百分位，按引用数在当前列表里的排名着色。
+pref-citation-color-reset = 恢复引用样式的默认颜色
+
 pref-citation-appearance-linked =
     .label = 引用数跟随点赞的外观设置
 pref-citation-appearance-style = 引用数显示样式

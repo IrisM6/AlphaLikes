@@ -8,7 +8,7 @@ is typed twice:
   * the style list and their order come from the pane (``pref-style-*`` items
     in ``addon/content/preferences.xhtml``);
   * the names come from both locale files;
-  * the high / mid / low colours come from ``PALETTES`` in ``column.ts``;
+  * the high / mid / low colours come from ``PALETTES`` in ``palette.ts``;
   * the split-tag prefixes come from the ``cell-split-prefix*`` messages.
 
 Only the shape of each sample (padding, radii, shadows, fonts) is written out
@@ -28,6 +28,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 COLUMN_TS = ROOT / "src/modules/column.ts"
+PALETTE_TS = ROOT / "src/modules/palette.ts"
 PREFS_TS = ROOT / "src/modules/prefs.ts"
 PANE = ROOT / "addon/content/preferences.xhtml"
 FTLS = {
@@ -78,11 +79,11 @@ def parse_labels() -> dict[str, dict[str, str]]:
 
 
 def parse_palettes() -> dict[str, dict[str, dict[str, str]]]:
-    """PALETTES from column.ts: style -> band -> {background,color,border}."""
-    src = read(COLUMN_TS)
-    block = re.search(r"const PALETTES[^{]*\{(.*?)\n\};", src, re.S)
+    """PALETTES from palette.ts: style -> band -> {background,color,border}."""
+    src = read(PALETTE_TS)
+    block = re.search(r"export const PALETTES[^{]*\{(.*?)\n\};", src, re.S)
     if not block:
-        sys.exit("could not find PALETTES in column.ts")
+        sys.exit("could not find PALETTES in palette.ts")
     palettes: dict[str, dict[str, dict[str, str]]] = {}
     for style, body in re.findall(r"^\s{2}([a-z]+): \{(.*?)^\s{2}\},", block.group(1), re.S | re.M):
         bands: dict[str, dict[str, str]] = {}

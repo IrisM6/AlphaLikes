@@ -13,7 +13,6 @@ import {
   googleScholarResultTitle,
   isHighImpact,
   readScholarTitle,
-  upsertScholarTitle,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
@@ -24,6 +23,7 @@ import {
   primaryCitationSource,
   readCitations,
   readCitationsUpdatedAt,
+  SCHOLAR_TITLE_KEY,
   semanticScholarCitationURL,
   stripCitations,
   upsertCitations,
@@ -280,7 +280,7 @@ describe("AlphaLikes citations", function () {
     });
   });
 
-  describe("choosing a Scholar record by hand", function () {
+  describe("the Scholar results page", function () {
     const html = `
       <div class="gs_r gs_or gs_scl"><div class="gs_ri">
         <h3 class="gs_rt"><a href="/url?q=https://example.org/a&amp;sa=U">First Paper</a></h3>
@@ -321,41 +321,40 @@ describe("AlphaLikes citations", function () {
     });
   });
 
-  describe("the Scholar record kept for an item", function () {
-    it("round-trips a title through Extra", function () {
-      const extra = "alphaxiv_arxiv_id: 2401.00001";
-      const next = upsertScholarTitle(extra, "A Paper, With Punctuation: Yes");
+  describe("the Scholar record a 1.7.0 install left in Extra", function () {
+    it("reads the title back, punctuation and all", function () {
+      const extra = [
+        "alphaxiv_arxiv_id: 2401.00001",
+        `${SCHOLAR_TITLE_KEY}: A Paper, With Punctuation: Yes`,
+        "alphaxiv_citations: gs=12",
+      ].join("\n");
 
-      assert.equal(readScholarTitle(next), "A Paper, With Punctuation: Yes");
-      assert.include(next, "alphaxiv_arxiv_id: 2401.00001");
+      assert.equal(readScholarTitle(extra), "A Paper, With Punctuation: Yes");
     });
 
-    it("replaces the stored title instead of appending", function () {
-      const first = upsertScholarTitle("", "First Choice");
-      const second = upsertScholarTitle(first, "Second Choice");
-
-      assert.equal(readScholarTitle(second), "Second Choice");
-      assert.notInclude(second, "First Choice");
-      assert.lengthOf(second.split("\n"), 1);
+    it("is ignored once the line is gone", function () {
+      assert.isNull(readScholarTitle("alphaxiv_likes: 12"));
+      assert.isNull(readScholarTitle(""));
     });
 
-    it("forgets the title when asked to clear it", function () {
-      const pinned = upsertScholarTitle(
+    it("does not confuse a lookalike line for the record", function () {
+      // Only the exact key counts; a stray mention in a note must not steer
+      // the automatic lookup somewhere else.
+      assert.isNull(readScholarTitle("my_alphaxiv_scholar_title: nope"));
+      assert.isNull(readScholarTitle("alphaxiv_scholar_titles: nope"));
+    });
+
+    it("is carried along by the Extra cleanup", function () {
+      const extra = [
+        `my note`,
+        `${SCHOLAR_TITLE_KEY}: A Picked Result`,
         "alphaxiv_likes: 12",
-        "Some Result Title",
-      );
-      const cleared = upsertScholarTitle(pinned, "");
-
-      assert.isNull(readScholarTitle(cleared));
-      assert.include(cleared, "alphaxiv_likes: 12");
-    });
-
-    it("is removed by the clear-data action", function () {
-      const extra = upsertScholarTitle("title: keep me", "Pinned Result");
+      ].join("\n");
       const stripped = stripAlphaLikesData(extra);
 
-      assert.notInclude(stripped, "Pinned Result");
-      assert.include(stripped, "keep me");
+      assert.notInclude(stripped, "A Picked Result");
+      assert.notInclude(stripped, "alphaxiv_likes: 12");
+      assert.include(stripped, "my note");
     });
   });
 

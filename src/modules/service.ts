@@ -13,7 +13,6 @@ import {
   extractArxivID,
   readCachedLikes,
   readLikesUpdatedAt,
-  stripAlphaLikesData,
   upsertLikesCache,
   upsertResolvedArxivID,
 } from "./arxiv-id";
@@ -24,11 +23,8 @@ import {
   googleScholarResultBlocks,
   googleScholarResultTitle,
   isHighImpact,
-  parseGoogleScholarResults,
   readScholarTitle,
   scholarTitleSearchURL,
-  upsertScholarTitle,
-  type ScholarResult,
   openAlexCitationSearchURL,
   openAlexCitationURL,
   openAlexSearchResults,
@@ -63,7 +59,6 @@ import { t } from "./l10n";
 import { openExternal, toast } from "./notify";
 import {
   CELL_LOADING,
-  CELL_PENDING,
   CELL_UNAVAILABLE,
   fromSortableValue,
   parseLikesFromDocument,
@@ -71,6 +66,7 @@ import {
   withValueDecorations,
 } from "./likes";
 import {
+  getCitationAppearance,
   getCitationPrefs,
   getCitationSourcePreferences,
   getColorScheme,
@@ -111,7 +107,6 @@ const RESOLUTION_CACHE_TTL_MISS_MS = 10 * 60_000;
 
 type ItemState =
   | { kind: "loading" }
-  | { kind: "pending" }
   | { kind: "success"; arxivID: string; likes: number }
   | { kind: "failed"; retryAfter: number };
 
@@ -171,17 +166,6 @@ export interface EffectiveThresholds {
  * from a refresh that failed, which is what the action is for: the summary
  * says how many counts were actually re-read.
  */
-/** The result of a manual Google Scholar search, as the picker needs it. */
-export interface ScholarLookup {
-  results: ScholarResult[];
-  /** Google answered with a human check instead of results. */
-  blocked: boolean;
-  /** The search URL, so a browser can be opened on the same query. */
-  url: string;
-  /** Non-empty when the request itself failed. */
-  error: string;
-}
-
 export interface RefreshSummary {
   /** Items the action was applied to. */
   total: number;
@@ -191,19 +175,6 @@ export interface RefreshSummary {
   failed: number;
   /** Items that have nothing to look counts up with yet. */
   skipped: number;
-}
-
-export interface BatchResolutionResult {
-  /** Items handed to the batch action. */
-  total: number;
-  /** Items that already carried an arXiv ID. */
-  alreadyKnown: number;
-  /** Items whose match cleared the auto-accept threshold. */
-  applied: number;
-  /** Items with a candidate waiting for manual confirmation. */
-  pending: number;
-  /** Items for which nothing plausible was found. */
-  notFound: number;
 }
 
 export interface ItemTrend {
@@ -330,7 +301,6 @@ function refreshItemTrees(): void {
 export class AlphaLikesService {
   private requester: PacedRequester;
   private itemStates = new Map<number, ItemState>();
-  private pendingByItem = new Map<number, ArxivCandidate[]>();
   private resolutionCache = new Map<string, ResolutionCacheEntry>();
   private inFlightLikes = new Map<string, Promise<number | null>>();
   private inFlightResolution = new Map<string, Promise<ArxivCandidate[]>>();
@@ -374,6 +344,12 @@ export class AlphaLikesService {
    * top 20% of the counts the user has actually loaded.
    */
   private observedLikes = new Map<number, number>();
+  /** Citation counts seen by the renderer, for the citation percentiles. */
+  private observedCitations = new Map<number, number>();
+  private citationQuantileCache: {
+    thresholds: EffectiveThresholds | null;
+    computedAt: number;
+  } | null = null;
   private quantileCache: {
     thresholds: EffectiveThresholds | null;
     computedAt: number;
@@ -441,6 +417,54 @@ export class AlphaLikesService {
    * the sample is too small, or every loaded item has the same count, the
    * fixed thresholds are used so the column never collapses to one colour.
    */
+  /**
+   * Cut-offs for the Citations column, derived exactly like the likes ones:
+   * percentiles of the citation counts currently in the item tree, falling
+   * back to the configured fixed cut-offs when the sample is too small to rank.
+   */
+  getEffectiveCitationThresholds(): EffectiveThresholds {
+    const appearance = getCitationAppearance();
+    const fallback: EffectiveThresholds = {
+      high: appearance.highThreshold,
+      low: appearance.lowThreshold,
+      source: "threshold",
+      sampleSize: this.observedCitations.size,
+    };
+
+    if (appearance.mode !== "quantile") return fallback;
+
+    const now = Date.now();
+    if (
+      this.citationQuantileCache &&
+      now - this.citationQuantileCache.computedAt < QUANTILE_REFRESH_MS
+    ) {
+      return this.citationQuantileCache.thresholds ?? fallback;
+    }
+
+    const scheme = getColorScheme();
+    const values = [...this.observedCitations.values()];
+    const derived =
+      values.length >= MIN_QUANTILE_VALUES
+        ? quantileThresholds(
+            values,
+            scheme.quantileLowPercent,
+            scheme.quantileHighPercent,
+          )
+        : null;
+
+    const thresholds: EffectiveThresholds | null = derived
+      ? {
+          high: derived.high,
+          low: derived.low,
+          source: "quantile",
+          sampleSize: derived.sampleSize,
+        }
+      : null;
+
+    this.citationQuantileCache = { thresholds, computedAt: now };
+    return thresholds ?? fallback;
+  }
+
   getEffectiveThresholds(): EffectiveThresholds {
     const scheme = getColorScheme();
     const fallback: EffectiveThresholds = {
@@ -663,6 +687,8 @@ export class AlphaLikesService {
    */
   planCitationCell(item: Zotero.Item): CitationCellPlan {
     const plan = this.planCitationCellFor(item);
+    // Feed the citation percentile population, like `planCell` does for likes.
+    if (plan.count !== null) this.observedCitations.set(item.id, plan.count);
     if (plan.count !== null) return plan;
     return this.blockedCitationPlan() ?? plan;
   }
@@ -1082,101 +1108,6 @@ export class AlphaLikesService {
     return summary;
   }
 
-  // -------------------------------------------------------------------------
-  // Google Scholar: choosing a result by hand
-  // -------------------------------------------------------------------------
-
-  /**
-   * Runs a Scholar search for one item and returns the results as a list.
-   *
-   * This is what the picker shows: the search is already done, so the dialog
-   * opens with the paper's own title in it rather than an empty form. A human
-   * check is reported as such - the caller offers to open the search in a
-   * browser - instead of being mistaken for "no such paper".
-   */
-  async scholarResults(item: Zotero.Item): Promise<ScholarLookup> {
-    const title = this.scholarSearchTitle(item);
-    if (!title) {
-      return {
-        results: [],
-        blocked: false,
-        url: GOOGLE_SCHOLAR_HOME,
-        error: "",
-      };
-    }
-
-    const url = scholarTitleSearchURL(title);
-    try {
-      const html = await this.requester.requestText(
-        url,
-        "text/html,application/xhtml+xml",
-      );
-
-      if (googleScholarCitationCount(html) === -1) {
-        this.noteScholarBlock(url);
-        return { results: [], blocked: true, url, error: "" };
-      }
-
-      this.clearScholarBlock();
-      return {
-        results: parseGoogleScholarResults(html),
-        blocked: false,
-        url,
-        error: "",
-      };
-    } catch (error) {
-      this.debug(`Google Scholar search failed: ${error}`);
-      return {
-        results: [],
-        blocked: false,
-        url,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  }
-
-  /**
-   * Adopts one Scholar result for an item.
-   *
-   * The result's title is remembered so later lookups search for that paper
-   * rather than for the item's own title - otherwise the next refresh would
-   * happily match whatever Scholar ranks first again and undo the choice. The
-   * count itself is stored like any other Scholar reading, so a later refresh
-   * simply refreshes it.
-   */
-  async applyScholarResult(
-    item: Zotero.Item,
-    result: ScholarResult,
-  ): Promise<void> {
-    const title = (result.title || "").trim();
-
-    await this.writeExtra(item, (extra) => {
-      const pinned = upsertScholarTitle(extra, title);
-      return result.count === null
-        ? pinned
-        : upsertCitations(pinned, { googleScholar: result.count });
-    });
-
-    this.clearScholarBlock();
-    this.citationStates.delete(item.id);
-    refreshItemTrees();
-
-    await this.populateCitations(item);
-  }
-
-  /** Forgets the picked Scholar result, going back to the item's own title. */
-  async clearScholarResult(item: Zotero.Item): Promise<void> {
-    await this.writeExtra(item, (extra) => upsertScholarTitle(extra, ""));
-    this.citationStates.delete(item.id);
-    refreshItemTrees();
-    await this.populateCitations(item);
-  }
-
-  /** The Scholar result title remembered for this item, if any. */
-  getScholarPinnedTitle(item: Zotero.Item): string | null {
-    return readScholarTitle(safeGetField(item, "extra"));
-  }
-
   private computeCellValue(item: Zotero.Item): string {
     const arxivID = this.getItemArxivID(item);
     if (arxivID) return this.cellForKnownID(item, arxivID);
@@ -1207,7 +1138,6 @@ export class AlphaLikesService {
         return toSortableValue(state.likes);
       }
       if (state.kind === "loading") return CELL_LOADING;
-      if (state.kind === "pending") return CELL_PENDING;
       if (state.kind === "failed" && state.retryAfter > Date.now()) {
         return CELL_UNAVAILABLE;
       }
@@ -1225,7 +1155,6 @@ export class AlphaLikesService {
     const state = this.itemStates.get(item.id);
 
     if (state) {
-      if (state.kind === "pending") return CELL_PENDING;
       if (state.kind === "success") return toSortableValue(state.likes);
       if (state.kind === "loading") return CELL_LOADING;
       if (state.retryAfter > Date.now()) return CELL_UNAVAILABLE;
@@ -1484,16 +1413,14 @@ export class AlphaLikesService {
       // Another window may have resolved the item in the meantime.
       if (this.getItemArxivID(item)) return;
 
-      this.pendingByItem.set(item.id, candidates);
       const best = candidates[0];
 
+      // Only a high-confidence match is adopted. A medium one is deliberately
+      // treated as "no match": there is no manual confirmation step any more,
+      // and silently adopting a maybe would put a wrong paper's number in the
+      // column with nothing on screen to say so.
       if (best?.confidence === "high") {
         await this.applyArxivID(item, best.arxivID);
-        return;
-      }
-
-      if (best?.confidence === "medium") {
-        this.itemStates.set(item.id, { kind: "pending" });
         return;
       }
 
@@ -1512,11 +1439,6 @@ export class AlphaLikesService {
     }
   }
 
-  /** Candidates kept in memory for the manual confirmation dialog. */
-  getPendingCandidates(item: Zotero.Item): ArxivCandidate[] {
-    return this.pendingByItem.get(item.id) ?? [];
-  }
-
   // -------------------------------------------------------------------------
   // Public actions (context menu)
   // -------------------------------------------------------------------------
@@ -1528,7 +1450,6 @@ export class AlphaLikesService {
     );
 
     this.itemStates.delete(item.id);
-    this.pendingByItem.delete(item.id);
     refreshItemTrees();
 
     await this.populateLikes(item, arxivID, { force: true });
@@ -1554,7 +1475,6 @@ export class AlphaLikesService {
 
     for (const item of targets) {
       this.itemStates.delete(item.id);
-      this.pendingByItem.delete(item.id);
       this.staleRefreshing.delete(item.id);
       this.refreshingLikes.add(item.id);
 
@@ -1590,70 +1510,6 @@ export class AlphaLikesService {
     }
 
     return summary;
-  }
-
-  /**
-   * Removes every line AlphaLikes wrote into `Extra`, including the like
-   * history and the citation cache.
-   */
-  async clearItems(items: Zotero.Item[]): Promise<void> {
-    for (const item of items.filter(Boolean)) {
-      await this.writeExtra(item, stripAlphaLikesData);
-      this.itemStates.delete(item.id);
-      this.pendingByItem.delete(item.id);
-      this.staleRefreshing.delete(item.id);
-      this.citationStates.delete(item.id);
-      this.observedLikes.delete(item.id);
-    }
-    this.quantileCache = null;
-    refreshItemTrees();
-  }
-
-  // -------------------------------------------------------------------------
-  // Batch actions
-  // -------------------------------------------------------------------------
-
-  /**
-   * Resolves arXiv IDs for every item that lacks one.
-   *
-   * Items whose best candidate clears the auto-accept threshold are adopted
-   * silently; the rest are left pending for the manual picker, and the counts
-   * are returned so the menu can report what happened.
-   */
-  async batchFindArxiv(items: Zotero.Item[]): Promise<BatchResolutionResult> {
-    const result: BatchResolutionResult = {
-      total: 0,
-      alreadyKnown: 0,
-      applied: 0,
-      pending: 0,
-      notFound: 0,
-    };
-
-    const targets = items.filter(Boolean);
-    result.total = targets.length;
-
-    for (const item of targets) {
-      if (this.disposed) break;
-
-      if (this.getItemArxivID(item)) {
-        result.alreadyKnown += 1;
-        continue;
-      }
-
-      await this.resolveItem(item, { force: true });
-      if (this.getItemArxivID(item)) result.applied += 1;
-    }
-
-    // What is left is either waiting for the user to confirm a candidate or
-    // had no candidate worth offering at all.
-    result.pending = targets.filter(
-      (item) =>
-        !this.getItemArxivID(item) && this.pendingByItem.get(item.id)?.length,
-    ).length;
-    result.notFound =
-      result.total - result.alreadyKnown - result.applied - result.pending;
-
-    return result;
   }
 
   private async writeExtra(
@@ -1696,6 +1552,7 @@ export class AlphaLikesService {
       name === "historyDays"
     ) {
       this.quantileCache = null;
+      this.citationQuantileCache = null;
     }
 
     // Colouring, filtering and thresholds only change the presentation, so a
@@ -1726,7 +1583,6 @@ export class AlphaLikesService {
     this.disposed = true;
     this.requester.dispose();
     this.itemStates.clear();
-    this.pendingByItem.clear();
     this.resolutionCache.clear();
     this.inFlightLikes.clear();
     this.inFlightResolution.clear();
@@ -1734,7 +1590,9 @@ export class AlphaLikesService {
     this.staleRefreshing.clear();
     this.citationStates.clear();
     this.observedLikes.clear();
+    this.observedCitations.clear();
     this.quantileCache = null;
+    this.citationQuantileCache = null;
 
     this.clearScholarBlock();
     this.scholarBlockedItems.clear();
