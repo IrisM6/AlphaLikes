@@ -468,6 +468,36 @@ let googleConsentSet = false;
  * results at all. The cookie is set through the cookie service because an XHR
  * silently drops a `Cookie` request header.
  */
+/**
+ * Whether this cookie service counts expiries in milliseconds.
+ *
+ * The unit changed under the same interface: up to Gecko 140 (Zotero 9-10) the
+ * expiry `add()` takes is in seconds, and from Gecko 145 (Zotero 11) it is in
+ * milliseconds. A value in the old unit is not rejected on the new one - it is
+ * read as a date in 1970, so the call returns without complaint and the cookie
+ * is dropped on the floor. `maybeCapExpiry` arrived with the new unit and is
+ * what the browser's own cookie code calls before writing.
+ */
+export function countsExpiryInMilliseconds(cookies: object): boolean {
+  return (
+    typeof (cookies as { maybeCapExpiry?: unknown }).maybeCapExpiry ===
+    "function"
+  );
+}
+
+/**
+ * When the consent cookie should expire, in the unit this jar counts in.
+ *
+ * A year is the usual lifetime for a saved cookie choice, and every interface
+ * caps it at 400 days anyway.
+ */
+export function consentExpiry(cookies: object, now = Date.now()): number {
+  const oneYear = 60 * 60 * 24 * 365;
+  return countsExpiryInMilliseconds(cookies)
+    ? now + oneYear * 1000
+    : Math.floor(now / 1000) + oneYear;
+}
+
 export function ensureGoogleConsent(): boolean {
   if (googleConsentSet) return true;
 
@@ -475,9 +505,14 @@ export function ensureGoogleConsent(): boolean {
     const cookies = Services?.cookies;
     if (!cookies) return false;
 
-    const expiry = Math.floor(Date.now() / 1000) + 60 * 60 * 24 * 365;
-    // The typing of `add()` follows the raw IDL, whose last two arguments are
-    // plain jsval objects; the same-site constant is not part of the typings.
+    const milliseconds = countsExpiryInMilliseconds(cookies);
+    const expiry = consentExpiry(cookies);
+    // The typing of `add()` follows the raw IDL, whose last arguments are plain
+    // jsval objects; the same-site constant and the scheme are not part of the
+    // typings. The trailing arguments differ by version as well: the older
+    // interface takes a scheme map in the eleventh slot and ignores a twelfth,
+    // while the newer one wants the scheme as an enum and the partitioned flag
+    // after it.
     const add = (
       cookies as unknown as {
         add(
@@ -491,27 +526,47 @@ export function ensureGoogleConsent(): boolean {
           expiry: number,
           originAttributes: unknown,
           sameSite: number,
-          schemeMap: unknown,
+          scheme: unknown,
+          partitioned?: boolean,
         ): void;
       }
     ).add.bind(cookies);
 
     for (const host of [".google.com", "scholar.google.com"]) {
       // 2 is the nsICookie same-site value `lax`, which is what a browser
-      // stores for a preference cookie of this kind.
-      add(
-        host,
-        "/",
-        GOOGLE_CONSENT_COOKIE.name,
-        GOOGLE_CONSENT_COOKIE.value,
-        true,
-        false,
-        false,
-        expiry,
-        {},
-        2,
-        {},
-      );
+      // stores for a preference cookie of this kind; 2 is also the scheme
+      // value for https, which is what the newer interface wants in the
+      // eleventh slot instead of the map.
+      if (milliseconds) {
+        add(
+          host,
+          "/",
+          GOOGLE_CONSENT_COOKIE.name,
+          GOOGLE_CONSENT_COOKIE.value,
+          true,
+          false,
+          false,
+          expiry,
+          {},
+          2,
+          2,
+          false,
+        );
+      } else {
+        add(
+          host,
+          "/",
+          GOOGLE_CONSENT_COOKIE.name,
+          GOOGLE_CONSENT_COOKIE.value,
+          true,
+          false,
+          false,
+          expiry,
+          {},
+          2,
+          {},
+        );
+      }
     }
     googleConsentSet = true;
     return true;

@@ -18,6 +18,8 @@
 import { assert } from "chai";
 import {
   clearGoogleCookies,
+  consentExpiry,
+  countsExpiryInMilliseconds,
   ensureGoogleConsent,
   geckoMajorVersion,
   isGoogleCookieHost,
@@ -413,6 +415,57 @@ describe("the Google Scholar request", function () {
     // is reported as `false` here rather than silently costing every result.
     assert.isTrue(ensureGoogleConsent());
     assert.isTrue(consentCookieStored());
+  });
+
+  it("writes the expiry in the unit the running jar counts in", function () {
+    // The unit changed under the same interface. Gecko 145 (Zotero 11) reads
+    // the expiry as milliseconds, so the seconds this used to pass are read as
+    // a date in 1970: `add()` returns without complaint, the jar stays empty,
+    // and every read keeps landing on the consent page. `maybeCapExpiry`
+    // arrived with the new unit, and is what the browser calls before writing.
+    const modern = { maybeCapExpiry: (milliseconds: number) => milliseconds };
+    const legacy = { add: () => undefined };
+    const now = Date.UTC(2026, 0, 1);
+    const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+
+    assert.isTrue(countsExpiryInMilliseconds(modern));
+    assert.isFalse(countsExpiryInMilliseconds(legacy));
+    assert.equal(consentExpiry(modern, now), now + oneYearMs);
+    assert.equal(
+      consentExpiry(legacy, now),
+      Math.floor(now / 1000) + oneYearMs / 1000,
+    );
+  });
+
+  it("leaves the stored consent cookie valid for a year, on any jar", function () {
+    // A jar echoes back the number it was given and interprets it in its own
+    // unit, so the check is on how long the cookie is good for once the
+    // running jar reads it - not on the number's size. A write the jar dropped
+    // reads as 1970 here, and is what this is for.
+    assert.isTrue(ensureGoogleConsent());
+
+    const cookies = Services.cookies.getCookiesFromHost(
+      "scholar.google.com",
+      {},
+    ) as unknown as Array<{ name: string; expiry: number }>;
+    const consent = cookies.find((cookie) => cookie.name === "SOCS");
+    assert.isOk(consent, "the consent cookie is in the jar");
+
+    const stored = consent?.expiry ?? 0;
+    const expiresAt = countsExpiryInMilliseconds(Services.cookies)
+      ? stored
+      : stored * 1000;
+    const year = 365 * 24 * 60 * 60 * 1000;
+    assert.isAbove(
+      expiresAt,
+      Date.now() + year / 2,
+      "a consent cookie that expires in 1970 is one Scholar never received",
+    );
+    assert.isBelow(
+      expiresAt,
+      Date.now() + year * 2,
+      "and a cookie that never expires is not what a browser leaves either",
+    );
   });
 
   describe("forgetting the Google session", function () {

@@ -1,7 +1,7 @@
 {
   "name": "zotero-alphalikes",
   "type": "module",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Zotero columns for alphaXiv likes and citation counts: 11 editable styles, Google Scholar / OpenAlex / Semantic Scholar citation sources, automatic arXiv matching, Zotero 7-11",
   "config": {
     "addonName": "AlphaLikes",
