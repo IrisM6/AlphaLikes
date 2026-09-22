@@ -1,3 +1,21 @@
 {
-  "extends": "../tsconfig.json"
+  // Type-checks the test tree as well as `src`. The root config covers `src`
+  // and `typings` only, so a test that references something which does not
+  // exist - a helper that lives inside another suite, say - used to surface
+  // only at run time, as a bare "undefined" failure minutes into a Zotero run.
+  // `npm run typecheck:tests` runs it; it is not part of `npm run build` yet
+  // because the suite carries pre-existing type errors that are their own
+  // piece of work. The `no-undef` rule in eslint.config.mjs already catches
+  // the "identifier does not exist" half of it on every lint run.
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["mocha", "zotero-types"]
+  },
+  "include": [
+    "./**/*.ts",
+    "../src/**/*.ts",
+    "../src/**/*.d.ts",
+    "../typings/**/*.d.ts"
+  ]
 }

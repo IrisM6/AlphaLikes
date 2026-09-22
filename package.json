@@ -35,7 +35,8 @@
     "gen:styles": "python3 scripts/gen-styles-preview.py",
     "release": "zotero-plugin release",
     "test": "zotero-plugin test",
-    "update-deps": "npm update --save"
+    "update-deps": "npm update --save",
+    "typecheck:tests": "tsc -p test/tsconfig.json"
   },
   "devDependencies": {
     "@types/chai": "^5.2.3",

@@ -14,10 +14,13 @@ column-label = alphaXiv Likes
 column-citations-label = Citations
 menu-refresh = Refresh alphaXiv Likes
 menu-refresh-citations = Refresh citation counts
-menu-open-scholar = Open the Google Scholar verification page
+menu-open-scholar = Open this paper's Google Scholar page in your browser
+notify-open-scholar = Opened the search page in your browser (with the browser's own session). It does not lift the limit on the plugin's side: the plugin reads through Zotero's own session and the two do not affect each other.
 menu-reset-google = Reset the Google session (clear Google cookies, then retry)
 
 cell-loading = Loading from alphaXiv…
+cell-citations-loading = Reading the citation count…
+cell-citations-loading-from = Reading the citation count from {sources}…
 cell-unavailable = No alphaXiv likes found for this item
 cell-filtered = Hidden by the like-count filter
 cell-trend = {delta} likes since the previous snapshot (currently {likes})
@@ -45,7 +48,7 @@ cell-split-prefix = likes
 cell-split-prefix-citations = cited
 cell-citation-source = Source: {source}
 cell-scholar-rate-limited = Google Scholar is rate limiting this network address (HTTP 429); retrying automatically in about {minutes} minutes. The limit applies to the address, not to this plugin.
-cell-scholar-blocked = Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. Right-click → Open the Google Scholar verification page to clear it yourself.
+cell-scholar-blocked = Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. You can open the same search page in your own browser to look at it (that is the browser's session and does not change what the plugin reads), or right-click → Reset the Google session to retry with a clean one.
 # --- Refresh summaries ------------------------------------------------------
 
 notify-refresh-likes-title = AlphaLikes · likes
@@ -75,8 +78,8 @@ clear-none = No AlphaLikes records to remove; everything else in Extra is untouc
 reset-google-done = Cleared {cookies} Google cookie(s); re-reading the citation counts now.
 
 notify-scholar-rate-limited = Google Scholar rate limited (429) this read from Zotero, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; if it keeps failing, the context menu can reset the Google session, which is the same thing as arriving in a browser that was never here.
-notify-scholar-blocked = Google Scholar asked for a human check, so citation counts are paused. It will retry automatically in about {minutes} minutes; the context menu can open the check now.
-notify-scholar-paused = Google Scholar has asked for a human check several times in a row, so the automatic retries have stopped - retrying only makes its verdict worse. Open the check once yourself from the context menu, or reset the Google session and try again.
+notify-scholar-blocked = Google Scholar asked for a human check, so citation counts cannot be read for now; retrying automatically in about {minutes} minutes. You can also right-click → Reset the Google session to drop Zotero's Google cookies and retry immediately (opening the page in your browser is a different session and does not affect the plugin).
+notify-scholar-paused = Google Scholar has refused several rounds in a row, so the automatic retrying has stopped (more retries only make its verdict worse). Refresh by hand when the network is quiet, or right-click → Reset the Google session to drop Zotero's Google cookies; selecting OpenAlex / Semantic Scholar as well is a way to keep working in the meantime.
 
 error-no-selection = Select at least one item first.
 error-single-selection = This action works on a single item only.
@@ -184,7 +187,7 @@ pref-diagnose-copied = The diagnostic report is on the clipboard; paste it into 
 pref-diagnose-failed = The diagnostic could not finish; look for the lines starting with [AlphaLikes] in Help → Debug Output Logging.
 
 pref-refresh-title = Refreshing and network
-pref-refresh-desc = The context menu can re-read like counts and citation counts separately (the cells show "…" while it runs, then a summary appears); the cache can also expire on its own. Scholar reads are spaced at least 5 seconds apart, and each session opens scholar.google.com once the way a browser does, so Google's own cookies come along.
+pref-refresh-desc = The context menu re-reads like counts and citation counts separately (each acts only on the entries you selected, they do not touch each other, the cells show "…" while it runs and a summary appears afterwards); Google Scholar is read at most once every 15 seconds, and a session opens scholar.google.com once first, the way a browser does. "Open this paper's Google Scholar page" opens the page in your own browser, while the plugin reads through Zotero's own session - it does not lift the limit on the plugin's side, it is there so you can compare the numbers yourself.
 pref-refresh-ttl = Re-fetch cached like counts after (days, 0 = never)
 pref-refresh-interval = Minimum delay between requests to the same host (ms)
 pref-refresh-timeout = Request timeout (ms)

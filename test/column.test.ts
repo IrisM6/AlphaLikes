@@ -3,6 +3,7 @@ import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
 import { renderCitationCell, renderLikeCell } from "../src/modules/column";
 import { getLikeStyle } from "../src/modules/prefs";
 import {
+  CELL_LOADING,
   CELL_UNAVAILABLE,
   toSortableValue,
   withValueDecorations,
@@ -548,6 +549,52 @@ describe("AlphaLikes column rendering", function () {
       ) as HTMLElement;
       assert.equal((cell.firstElementChild as HTMLElement).textContent, "");
       assert.isTrue(cell.title.length > 0, "the tooltip still explains it");
+    });
+  });
+
+  describe("the citation column says where it is reading", function () {
+    // The columns the renderer is handed: one object per column, as Zotero
+    // passes them in.
+    const CITATION_COLUMN = { className: "col-alphaxiv_citations" };
+
+    it("does not name alphaXiv while a citation count is being read", function () {
+      // Reported: "刷新引用量明明是谷歌学术，悬停信息还显示从 alphaarxiv 读取".
+      // The citation renderer used the like column's loading string, so a
+      // citation read announced the wrong site - and the user reasonably read
+      // it as the like counts being refreshed too.
+      setPref("citationSourcePreferences", "googleScholar");
+      const cell = renderCitationCell(
+        CELL_LOADING,
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.notInclude(cell.title, "alphaXiv");
+      assert.notInclude(cell.title, "AlphaLikes");
+      assert.include(cell.title, "Google Scholar");
+    });
+
+    it("names the sources it is actually going to read", function () {
+      setPref("citationSourcePreferences", "openAlex,semanticScholar");
+      const cell = renderCitationCell(
+        CELL_LOADING,
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.notInclude(cell.title, "alphaXiv");
+      assert.include(cell.title, "OpenAlex");
+      assert.include(cell.title, "Semantic Scholar");
+      assert.notInclude(cell.title, "Google Scholar");
+    });
+
+    it("still lets the like column name its own source", function () {
+      const cell = renderLikeCell(
+        CELL_LOADING,
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      assert.include(cell.title, "alphaXiv");
     });
   });
 });

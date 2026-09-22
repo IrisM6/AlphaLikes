@@ -4,6 +4,9 @@ import { COLUMN_KEY } from "../src/modules/alphaxiv";
 
 describe("startup", function () {
   it("defines and initializes the plugin instance", function () {
+    // `addon` here is the *type* the scaffold declares for the plugin's own
+    // global; `no-undef` cannot tell a type reference from a value.
+    // eslint-disable-next-line no-undef
     const instance = Zotero[config.addonInstance] as typeof addon;
     assert.isNotEmpty(instance);
     assert.isTrue(instance.data.initialized);

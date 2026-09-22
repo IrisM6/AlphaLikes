@@ -1066,6 +1066,29 @@ function failureStatus(attempts: ScholarAttempt[]): number {
 // Fingerprint self-check
 // ---------------------------------------------------------------------------
 
+/**
+ * A page whose only job is to say which address the request came from.
+ *
+ * The one difference between the plugin and the user's own browser that the
+ * plugin cannot see for itself: whether they leave through the same address at
+ * all. A browser extension or VPN routes the browser and not the application,
+ * and then "the browser opens the page fine while the plugin is rate-limited"
+ * is not a mystery - it is two clients on two addresses. The report prints the
+ * plugin's address and asks the user to open the same URL in their browser.
+ */
+export const EXIT_IP_URL = "https://api.ipify.org?format=json";
+
+/** The address in that page's answer, or null when it could not be read. */
+export function readExitIP(body: string): string | null {
+  const text = body.trim();
+  const json = /"ip"\s*:\s*"([^"]+)"/.exec(text);
+  if (json) return json[1];
+
+  // A bare address is what the plain-text form of the service answers.
+  const plain = /^[0-9a-fA-F:.]{7,45}$/.exec(text);
+  return plain ? plain[0] : null;
+}
+
 /** The third-party page that echoes back what it saw of the handshake. */
 export const FINGERPRINT_URL = "https://tls.peet.ws/api/all";
 

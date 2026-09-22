@@ -4,6 +4,8 @@
 // @ts-nocheck
 export type FluentMessageId =
   | 'cell-citation-source'
+  | 'cell-citations-loading'
+  | 'cell-citations-loading-from'
   | 'cell-citations-unavailable'
   | 'cell-citations-unavailable-reason'
   | 'cell-cleared'
@@ -41,6 +43,7 @@ export type FluentMessageId =
   | 'menu-refresh-citations'
   | 'menu-reset-google'
   | 'notify-clear-title'
+  | 'notify-open-scholar'
   | 'notify-refresh-citations-title'
   | 'notify-refresh-likes-title'
   | 'notify-scholar-blocked'

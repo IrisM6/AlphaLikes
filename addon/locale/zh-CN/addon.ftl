@@ -12,10 +12,13 @@ column-label = alphaXiv 点赞
 column-citations-label = 引用数
 menu-refresh = 刷新 alphaXiv 点赞
 menu-refresh-citations = 刷新引用数
-menu-open-scholar = 打开 Google Scholar 验证页
+menu-open-scholar = 在浏览器中打开这篇论文的 Google Scholar 搜索页
+notify-open-scholar = 已在你的浏览器里打开搜索页（用的是浏览器自己的登录状态）。注意：它不会解除插件这边的限流——插件读的是 Zotero 自己的会话，两者互不影响；想核对数字请直接看浏览器里的结果。
 menu-reset-google = 重置谷歌会话（清除 Google Cookie 后重试）
 
 cell-loading = 正在从 alphaXiv 读取…
+cell-citations-loading = 正在读取引用数…
+cell-citations-loading-from = 正在从 {sources} 读取引用数…
 cell-unavailable = 没有找到该条目的 alphaXiv 点赞
 cell-filtered = 已被点赞数范围筛选隐藏
 cell-trend = 相比上次快照 {delta} 个赞（当前 {likes}）
@@ -42,8 +45,8 @@ cell-quantile-title = {label}——{high} 个赞以上为高，{low} 个赞及�
 cell-split-prefix = 赞
 cell-split-prefix-citations = 引
 cell-citation-source = 来源：{source}
-cell-scholar-blocked = Google Scholar 要求人机验证，约 {minutes} 分钟后会自动重试；右键 →「打开 Google Scholar 验证页」可以自己先完成验证
-cell-scholar-rate-limited = Google Scholar 对当前网络地址限流（HTTP 429），约 {minutes} 分钟后会自动重试。这类限制按地址生效，不是插件被针对
+cell-scholar-blocked = Google Scholar 要求人机验证，约 {minutes} 分钟后会自动重试。你自己在浏览器里打开同一个搜索页看看是可以的（那是浏览器的会话，不会影响插件这边的读取）；也可以右键 →「重置谷歌会话」换一个干净的会话重试。
+cell-scholar-rate-limited = 这个网络地址被 Google Scholar 限流（HTTP 429），约 {minutes} 分钟后自动重试；你自己的浏览器在同一个地址上多半也会被挡，等待通常比换办法更快恢复（诊断报告里有出口 IP 对比）
 # --- 刷新结果提示 -----------------------------------------------------------
 
 notify-refresh-likes-title = AlphaLikes · 点赞
@@ -71,8 +74,8 @@ clear-done = 已清除 {count} 个条目中本插件写入的 Extra 记录，其
 clear-none = 选中的条目里没有本插件写入的 Extra 记录，其余内容原样保留；这些条目在刷新点赞或引用之前不会再被自动写入。
 reset-google-done = 已清除 {cookies} 个 Google Cookie，正在重新读取引用数。
 
-notify-scholar-blocked = Google Scholar 要求人机验证，引用数暂时无法读取。约 {minutes} 分钟后会自动重试；也可以右键 →「打开 Google Scholar 验证页」先自己完成验证。
-notify-scholar-paused = Google Scholar 连续多次要求人机验证，已停止自动重试（继续重试只会让它的判定更差）。请右键 →「打开 Google Scholar 验证页」自己完成一次，或「重置谷歌会话」后再试。
+notify-scholar-blocked = Google Scholar 要求人机验证，引用数暂时无法读取；约 {minutes} 分钟后会自动重试。你也可以右键 →「重置谷歌会话」清掉 Zotero 的 Google Cookie 后立即换一个干净会话重试（浏览器里打开搜索页是另一回事，不影响插件）。
+notify-scholar-paused = Google Scholar 连续多轮被拒，已停止自动重试（继续重试只会让它的判定更差）。请在网络空闲时手动刷新，或右键 →「重置谷歌会话」清掉 Zotero 的 Google Cookie 后更换会话重试；也可以先勾上 OpenAlex / Semantic Scholar 作为并行来源。
 notify-scholar-rate-limited = Google Scholar 对 Zotero 的这次读取限流（429），引用数暂时无法读取。约 {minutes} 分钟后会自动重试。如果一直失败，用右键 →「重置谷歌会话」清掉 Zotero 这边的 Google Cookie 再试一次——那等同于换一个从没来过的浏览器。
 
 error-no-selection = 请先选择至少一个条目。
@@ -162,7 +165,7 @@ pref-citations-desc = 引用数据来自 Google Scholar、OpenAlex 与 Semantic 
 pref-citations-enabled =
     .label = 显示「引用数」列并查询引用数据
 pref-citations-ttl = 缓存多少天后重新读取（0 = 只读一次）
-pref-citations-scholar-note = Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited by」数字。Google 要求人机验证或限流时，插件先自己处理：暂停读取，并按 10 分钟、20 分钟、40 分钟……（最长 2 小时）自动重试，前两次不打扰你；连续第三次仍被拦住才弹一条提示，说明还要等多久、以及如何自己完成验证。任何情况下都不会用别的来源顶替这个数字。
+pref-citations-scholar-note = Google Scholar 没有公开 API，插件读取的是搜索结果页上的「Cited by」数字。Google 要求人机验证或限流时，插件先自己处理：暂停读取，并按 10 分钟、20 分钟、40 分钟……（最长 2 小时）自动重试，前两次不打扰你；连续多轮仍被拦住才弹一条提示。任何情况下都不会用别的来源顶替这个数字。注意：在浏览器里打开搜索页用的是浏览器自己的登录状态，和插件读取所用的 Zotero 会话是两回事，它不会解除插件这边的限制。
 pref-citations-source = 引用数来源
 pref-citations-source-scholar =
     .label = Google Scholar（默认）
@@ -180,7 +183,7 @@ pref-diagnose-copied = 诊断信息已复制到剪贴板，直接粘贴发给我
 pref-diagnose-failed = 诊断没能完成；请到「帮助 → 调试输出日志」里找 [AlphaLikes] 开头的行。
 
 pref-refresh-title = 刷新与网络
-pref-refresh-desc = 右键任意条目可以分别选择「刷新 alphaXiv 点赞」或「刷新引用数」（列里先显示「…」，完成后弹一条结果提示）；此外缓存也可以按时间自动过期。 Google Scholar 每次读之间至少间隔 5 秒，并且每次会话会先像浏览器一样打开一次 scholar.google.com（用来带上 Google 自己的 cookie）。
+pref-refresh-desc = 右键任意条目可以分别选择「刷新 alphaXiv 点赞」或「刷新引用数」（两者互不影响，只作用在你选中的条目上；列里先显示「…」，完成后弹一条结果提示）；Google Scholar 每次读之间至少间隔 15 秒，并且每个会话会先像浏览器一样打开一次 scholar.google.com（用来带上 Google 自己的 cookie）。「打开 Google Scholar 搜索页」是在你自己的浏览器里打开的，插件读的是 Zotero 自己的会话——它不会解除插件这边的限流，只是让你自己核对数字。
 pref-refresh-ttl = 缓存多少天后重新读取点赞数（0 = 不自动）
 pref-refresh-interval = 同一域名请求的最小间隔（毫秒）
 pref-refresh-timeout = 请求超时（毫秒）

@@ -22,6 +22,7 @@ import {
   colorBucket,
   getCitationAppearance,
   getCitationPrefs,
+  getCitationSourcePreferences,
   getColorScheme,
   getLikeColorsCustomised,
   getLikeStyle,
@@ -466,7 +467,15 @@ export function renderCitationCell(
   }
 
   if (text === CELL_LOADING) {
-    cell.title = t("cell-loading");
+    // Its own message, not the like column's: "reading from alphaXiv" over a
+    // citation cell names the wrong site entirely, and the user who reported
+    // it read that as the like counts being refreshed too.
+    const sources = getCitationSourcePreferences()
+      .map((key) => CITATION_SOURCE_LABELS[key] ?? key)
+      .join("、");
+    cell.title = sources
+      ? t("cell-citations-loading-from", { sources })
+      : t("cell-citations-loading");
     return cell;
   }
 

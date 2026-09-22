@@ -210,10 +210,20 @@ async function resetGoogleSession(win: Window): Promise<void> {
   }
 }
 
-/** Opens the paper's own Scholar search in the browser. */
+/**
+ * Opens the paper's own Scholar search in the user's browser.
+ *
+ * With a notice, because this action was long described as a way to lift the
+ * limit - "complete the check and refresh" - which it never was: it opens the
+ * page in the browser's session, and the plugin reads through Zotero's own.
+ * Two clients, two sessions. It is still worth having (the numbers can be read
+ * there by eye, and the report asks for a comparison), so it stays, and says
+ * what it does.
+ */
 function openScholarVerification(win: Window): void {
   const items = selectedItems(win);
   getService().openScholarVerification(items.length === 1 ? items[0] : null);
+  toast(t("notify-scholar-title"), t("notify-open-scholar"));
 }
 
 // ---------------------------------------------------------------------------

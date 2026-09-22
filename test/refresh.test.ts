@@ -564,4 +564,40 @@ describe("AlphaLikes refresh", function () {
       }
     }
   });
+
+  it("does not re-read the like counts on the way", async function () {
+    // Reported: "刷新引用量和点赞数要分开，我刷新引用量把点赞数也刷新了".
+    const target = new Zotero.Item("journalArticle");
+    target.libraryID = Zotero.Libraries.userLibraryID;
+    target.setField("title", "AlphaLikes refresh probe paper");
+    target.setField("date", "2026-09-22");
+    target.setField("DOI", "10.1234/alphalikes.separation");
+    target.setField(
+      "extra",
+      upsertLikesCache("alphaxiv_arxiv_id: 2401.00031", 321),
+    );
+    await target.saveTx();
+
+    try {
+      stub = stubRequester(service, 999, 42);
+      await service.refreshCitations([Zotero.Items.get(target.id)]);
+
+      assert.deepEqual(
+        stub.served.filter((url) => url.includes("alphaxiv.org")),
+        [],
+        "the citation refresh has to stay away from alphaXiv",
+      );
+      assert.equal(
+        fromSortableValue(service.getCellData(target)),
+        "321",
+        "and the like count has to be exactly what it was",
+      );
+    } finally {
+      try {
+        await target.eraseTx();
+      } catch {
+        // The library may already be gone when the run tears down.
+      }
+    }
+  });
 });
