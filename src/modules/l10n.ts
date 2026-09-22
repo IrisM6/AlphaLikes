@@ -36,6 +36,8 @@ export const MESSAGES = {
     "the request never reached the site (network, DNS, proxy or timeout).",
   "failure-empty": "the site answered with an empty response.",
   "failure-no-count": "the page arrived but the number was not in it.",
+  "failure-not-selected":
+    "未选中时不会自动查询 Google Scholar（避免触发验证）；选中它，或用右键菜单刷新",
   "cell-cleared":
     "This plugin's records were cleared from this item. Refresh the likes or the citations to read them again.",
   "cell-scholar-rate-limited":

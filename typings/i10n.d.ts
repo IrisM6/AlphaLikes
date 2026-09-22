@@ -34,6 +34,7 @@ export type FluentMessageId =
   | 'failure-http-5xx'
   | 'failure-network'
   | 'failure-no-count'
+  | 'failure-not-selected'
   | 'menu-clear'
   | 'menu-open-scholar'
   | 'menu-refresh'

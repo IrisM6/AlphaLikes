@@ -13,7 +13,13 @@
  */
 
 import { assert } from "chai";
-import { dropRowCache, type ItemTreeView } from "../src/modules/service";
+import {
+  dropRowCache,
+  repaintRows,
+  type ItemTreeView,
+} from "../src/modules/service";
+import { getService } from "../src/modules/column";
+import { upsertLikesCache } from "../src/modules/arxiv-id";
 import { PREF_BRANCH } from "../src/modules/prefs";
 
 /** A stand-in that records what was asked of it. */
@@ -106,6 +112,122 @@ describe("AlphaLikes item-tree repaints", function () {
 
       Zotero.Prefs.set(`${PREF_BRANCH}.showTrend`, true, true);
       await Zotero.Promise.delay(80);
+    });
+  });
+
+  describe("repaintRows", function () {
+    /** A view that knows two rows and records what was invalidated. */
+    function liveView(rowID = 11) {
+      const entries: Record<number, unknown> = {
+        [rowID]: { value: "a" },
+        12: { value: "b" },
+      };
+      const invalidatedRows: number[] = [];
+      let invalidatedAll = 0;
+      const view = {
+        _rowCache: entries,
+        _rowMap: { [rowID]: 0, 12: 1 },
+        tree: {
+          invalidateRow: (row: number) => invalidatedRows.push(row),
+          invalidate: () => {
+            invalidatedAll += 1;
+          },
+        },
+      } as unknown as ItemTreeView & { _rowCache: Record<number, unknown> };
+
+      return {
+        view,
+        entries,
+        invalidatedRows,
+        allInvalidated: () => invalidatedAll,
+      };
+    }
+
+    /** Runs `body` with every window replaced by one holding `view`. */
+    async function withView<T>(
+      view: ItemTreeView,
+      body: () => Promise<T>,
+    ): Promise<T> {
+      const zotero = Zotero as unknown as {
+        getMainWindows: () => unknown[];
+      };
+      const original = zotero.getMainWindows;
+      zotero.getMainWindows = () => [{ ZoteroPane: { itemsView: view } }];
+      try {
+        return await body();
+      } finally {
+        zotero.getMainWindows = original;
+      }
+    }
+
+    it("repaints only the rows it is given", function () {
+      const { view, entries, invalidatedRows, allInvalidated } = liveView();
+
+      withView(view, async () => {
+        repaintRows([11]);
+        return undefined;
+      });
+
+      assert.deepEqual(invalidatedRows, [0], "only row 0 was invalidated");
+      assert.equal(allInvalidated(), 0, "no full repaint");
+      assert.notProperty(entries, "11", "the row's value is dropped");
+      assert.property(entries, "12", "the other row keeps its value");
+    });
+
+    it("falls back to a full repaint when the tree cannot do one row", function () {
+      const { view, invalidatedRows, allInvalidated } = liveView();
+      // Zotero 7's tree has no `invalidateRow`.
+      delete (view.tree as { invalidateRow?: unknown }).invalidateRow;
+
+      withView(view, async () => {
+        repaintRows([11, 12]);
+        return undefined;
+      });
+
+      assert.deepEqual(invalidatedRows, []);
+      assert.equal(allInvalidated(), 1);
+    });
+
+    it("refreshes one item without touching the other rows", async function () {
+      // Reported: "我只选中了单条，但是你所有的条目一起刷新了". A refresh
+      // repainted every row, and a row with no count of its own starts a read
+      // the moment it is asked for its value - so one refresh read the whole
+      // list. Only the refreshed item's row may be invalidated.
+      const first = new Zotero.Item("journalArticle");
+      first.libraryID = Zotero.Libraries.userLibraryID;
+      first.setField("title", "AlphaLikes repaint probe (refreshed)");
+      first.setField(
+        "extra",
+        upsertLikesCache("alphaxiv_arxiv_id: 2401.00009", 5),
+      );
+      await first.saveTx();
+
+      const { view, invalidatedRows, allInvalidated } = liveView(first.id);
+
+      try {
+        await withView(view, () =>
+          getService().refreshItems([Zotero.Items.get(first.id)]),
+        );
+
+        assert.equal(
+          allInvalidated(),
+          0,
+          "a refresh must not repaint the list",
+        );
+        assert.isTrue(invalidatedRows.length > 0, "the refreshed row repaints");
+        assert.deepEqual(
+          [...new Set(invalidatedRows)],
+          [0],
+          "the refreshed item's row is the only one invalidated - the rows " +
+            "next to it keep their values and are never asked for a new one",
+        );
+      } finally {
+        try {
+          await first.eraseTx();
+        } catch {
+          // The library may already be gone when the run tears down.
+        }
+      }
     });
   });
 });

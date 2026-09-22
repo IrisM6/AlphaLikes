@@ -305,8 +305,10 @@ function rawCreatorName(creator: unknown): string {
  */
 export interface ItemTreeView {
   invalidateRowCache?: (invalidateAll?: boolean) => void;
-  _rowCache?: unknown;
-  tree?: { invalidate?: () => void };
+  _rowCache?: Record<string, unknown>;
+  /** Item id to row index, as the tree keeps it. */
+  _rowMap?: Record<string, number>;
+  tree?: { invalidate?: () => void; invalidateRow?: (row: number) => void };
 }
 
 /**
@@ -331,11 +333,50 @@ export function dropRowCache(itemsView: ItemTreeView | null | undefined): void {
 
 /**
  * Repaints every item tree that is showing our columns.
+ *
+ * Every row's value is dropped, which is what a preference change needs: the
+ * next paint rebuilds all of them from scratch. It is *not* what a read of one
+ * item needs - dropping a row's value makes the tree ask the data provider for
+ * it again, and a row that has no count yet starts a read of its own when it is
+ * asked. Repainting everything after one item finished is how refreshing a
+ * single entry turned into a read of every entry in the list.
  */
 function refreshItemTrees(): void {
   for (const win of Zotero.getMainWindows()) {
     try {
       dropRowCache(win.ZoteroPane?.itemsView as ItemTreeView | undefined);
+    } catch {
+      // A window can disappear while an asynchronous request is completing.
+    }
+  }
+}
+
+/**
+ * Repaints just the rows of the given items, the way Zotero does for its own
+ * item changes: drop that row's value, then invalidate that row.
+ *
+ * Rows that are untouched never re-ask for a value, so a refresh of one item
+ * cannot start a read for its neighbours.
+ */
+export function repaintRows(ids: Iterable<number>): void {
+  for (const win of Zotero.getMainWindows()) {
+    try {
+      const view = win.ZoteroPane?.itemsView as ItemTreeView | undefined;
+      if (!view) continue;
+
+      const rows: number[] = [];
+      for (const id of ids) {
+        if (view._rowCache) delete view._rowCache[id];
+        const row = view._rowMap?.[id];
+        if (typeof row === "number") rows.push(row);
+      }
+      if (!rows.length) continue;
+
+      if (typeof view.tree?.invalidateRow === "function") {
+        for (const row of rows) view.tree.invalidateRow(row);
+      } else {
+        view.tree?.invalidate?.();
+      }
     } catch {
       // A window can disappear while an asynchronous request is completing.
     }
@@ -409,6 +450,10 @@ export class AlphaLikesService {
   private scholarBlockAnnounced = false;
   /** True once the automatic retries have been given up on, per episode. */
   private scholarRetryPaused = false;
+  /** How many rounds of Google Scholar refusals this episode has had. */
+  private scholarRound = 0;
+  /** Item ids the last few repaints saw selected, with the time they did. */
+  private selectionCache: { at: number; ids: Set<number> } | null = null;
 
   /**
    * Latest like count seen for each item the column has rendered. This is the
@@ -728,7 +773,12 @@ export class AlphaLikesService {
    * with the retry time and a way to clear it themselves.
    */
   private noteScholarBlock(url: string, rateLimited = false): void {
-    const attempts = (this.scholarBlock?.attempts ?? 0) + 1;
+    // Counted per *round*, not per read. A repaint can have twenty rows in
+    // flight, and when Google refuses them all, twenty failures arrive for what
+    // is one episode of being blocked - counting those as twenty attempts made
+    // the report say "attempt 20" and jumped the cap in the first second.
+    if (this.scholarBlock === null) this.scholarRound += 1;
+    const attempts = Math.max(1, this.scholarRound);
     const delay = scholarRetryDelayMs(attempts);
     // The most recent answer decides how the wait is described, so a block
     // that started as a refusal and turned into rate limiting says so.
@@ -800,7 +850,10 @@ export class AlphaLikesService {
     this.scholarBlockedItems.clear();
     if (!items.length) return;
 
-    await this.refreshCitations(items);
+    // Deliberately not `refreshCitations`: that one treats the attempt as the
+    // user's and starts the episode over, which would leave the retry counter
+    // permanently at one.
+    await this.readCitations(items);
   }
 
   /**
@@ -815,6 +868,7 @@ export class AlphaLikesService {
     this.scholarBlock = null;
     this.scholarBlockAnnounced = false;
     this.scholarRetryPaused = false;
+    this.scholarRound = 0;
   }
 
   /**
@@ -831,6 +885,13 @@ export class AlphaLikesService {
   async resetGoogleSession(): Promise<{ cookies: number; items: number }> {
     const cookies = clearGoogleCookies();
     this.clearScholarBlock();
+    // Starting over means starting over: the next Google request opens the
+    // site's front page again, which is where a browser picks up the cookies
+    // Google gives it, and the consent cookie is written again (it went out
+    // with the jar). Without this the plugin retried a search with an empty
+    // jar - a client Google has never seen, which is exactly what "unusual
+    // traffic" is reserved for.
+    this.requester.restartGoogleSession();
 
     const items = [...this.scholarBlockedItems]
       .map((id) => Zotero.Items.get(id))
@@ -942,6 +1003,18 @@ export class AlphaLikesService {
     }
 
     if (!this.disposed && this.hasCitationKey(item)) {
+      if (!this.scholarReadAllowed(item)) {
+        // Blank, with the reason in the tooltip: this is a decision the plugin
+        // made, not a failure, and it says how to get the number.
+        return {
+          value: withValueDecorations(CELL_UNAVAILABLE, ["not-selected"]),
+          text: CELL_UNAVAILABLE,
+          count: null,
+          highImpact: false,
+          source: null,
+        };
+      }
+
       this.citationStates.set(item.id, { kind: "loading" });
       void this.populateCitations(item);
       return {
@@ -1055,7 +1128,7 @@ export class AlphaLikesService {
       // Same as the like column: this item's answer is shown the moment it is
       // read, while the items still being read keep their loading marker.
       this.refreshingCitations.delete(item.id);
-      if (!this.disposed) refreshItemTrees();
+      if (!this.disposed) repaintRows([item.id]);
     }
   }
 
@@ -1307,6 +1380,15 @@ export class AlphaLikesService {
    * block is dropped first, because asking is exactly what this action means.
    */
   async refreshCitations(items: Zotero.Item[]): Promise<RefreshSummary> {
+    // The user asking for these entries is a new episode: whatever Google said
+    // last time, this attempt starts from an empty hand. The automatic retry
+    // does not do this - it is the second, third and fourth attempt of the same
+    // episode, and that is what the stop-after-four rule counts.
+    this.clearScholarBlock();
+    return this.readCitations(items);
+  }
+
+  private async readCitations(items: Zotero.Item[]): Promise<RefreshSummary> {
     const targets = items.filter(Boolean);
     const summary: RefreshSummary = {
       total: targets.length,
@@ -1316,7 +1398,6 @@ export class AlphaLikesService {
     };
     if (!targets.length) return summary;
 
-    this.clearScholarBlock();
     // Asking for the counts is exactly the signal that lifts a clear.
     this.reviveItems(targets);
 
@@ -1324,7 +1405,7 @@ export class AlphaLikesService {
       this.citationStates.delete(item.id);
       this.refreshingCitations.add(item.id);
     }
-    refreshItemTrees();
+    repaintRows(targets.map((item) => item.id));
 
     try {
       for (const item of targets) {
@@ -1337,10 +1418,13 @@ export class AlphaLikesService {
         const updated = await this.populateCitations(item);
         if (updated) summary.updated += 1;
         else summary.failed += 1;
+        // One row at a time, like the likes: the entry that has been read
+        // shows its number while the ones behind it are still reading.
+        if (!this.disposed) repaintRows([item.id]);
       }
     } finally {
       for (const item of targets) this.refreshingCitations.delete(item.id);
-      if (!this.disposed) refreshItemTrees();
+      if (!this.disposed) repaintRows(targets.map((item) => item.id));
     }
 
     return summary;
@@ -1553,7 +1637,7 @@ export class AlphaLikesService {
       // refresh of twenty items fills in twenty times, not once at the end,
       // and a like count never waits for the citations of the same item.
       this.refreshingLikes.delete(item.id);
-      if (!this.disposed) refreshItemTrees();
+      if (!this.disposed) repaintRows([item.id]);
       if (options.force) this.staleRefreshing.delete(item.id);
     }
   }
@@ -1702,7 +1786,7 @@ export class AlphaLikesService {
         reason: failureReasonFrom(error),
       });
     } finally {
-      if (!this.disposed) refreshItemTrees();
+      if (!this.disposed) repaintRows([item.id]);
     }
   }
 
@@ -2092,7 +2176,7 @@ export class AlphaLikesService {
     );
 
     this.itemStates.delete(item.id);
-    refreshItemTrees();
+    repaintRows([item.id]);
 
     await this.populateLikes(item, arxivID, { force: true });
   }
@@ -2131,7 +2215,7 @@ export class AlphaLikesService {
         );
       }
     }
-    refreshItemTrees();
+    repaintRows(targets.map((item) => item.id));
 
     try {
       for (const item of targets) {
@@ -2150,10 +2234,11 @@ export class AlphaLikesService {
           if (this.getItemArxivID(item)) summary.updated += 1;
           else summary.skipped += 1;
         }
+        if (!this.disposed) repaintRows([item.id]);
       }
     } finally {
       for (const item of targets) this.refreshingLikes.delete(item.id);
-      if (!this.disposed) refreshItemTrees();
+      if (!this.disposed) repaintRows(targets.map((item) => item.id));
     }
 
     return summary;
@@ -2216,7 +2301,7 @@ export class AlphaLikesService {
 
     this.quantileCache = null;
     this.citationQuantileCache = null;
-    refreshItemTrees();
+    repaintRows(targets.map((item) => item.id));
     return summary;
   }
 
@@ -2293,6 +2378,55 @@ export class AlphaLikesService {
     }
 
     refreshItemTrees();
+  }
+
+  /**
+   * Whether the user is looking at this item, with a short memory.
+   *
+   * A repaint asks for every visible row in one burst, and the answer decides
+   * whether Google Scholar may be read for that row, so the selection is read
+   * once per burst instead of once per row.
+   */
+  private isSelected(item: Zotero.Item): boolean {
+    const now = Date.now();
+    if (!this.selectionCache || now - this.selectionCache.at > 500) {
+      const ids = new Set<number>();
+      for (const win of Zotero.getMainWindows()) {
+        try {
+          const pane = (
+            win as unknown as {
+              ZoteroPane?: { getSelectedItems?: () => Zotero.Item[] };
+            }
+          ).ZoteroPane;
+          for (const selected of pane?.getSelectedItems?.() ?? []) {
+            ids.add(selected.id);
+          }
+        } catch {
+          // A window that is closing has no pane to ask.
+        }
+      }
+      this.selectionCache = { at: now, ids };
+    }
+    return this.selectionCache.ids.has(item.id);
+  }
+
+  /**
+   * Whether an automatic read would spend a Google Scholar request.
+   *
+   * Google is the one source that answers this plugin's automatic traffic with
+   * a rate limit, and the automatic traffic is every row the list repaints -
+   * a library of a few hundred entries is a few hundred searches, which is a
+   * block in a minute. The cheap sources (OpenAlex, Semantic Scholar) do not
+   * mind and stay automatic; Google Scholar is read for the selected items and
+   * for the items an explicit refresh names, which is also the traffic the user
+   * themselves asked for.
+   */
+  private scholarReadAllowed(item: Zotero.Item): boolean {
+    return !this.usesGoogleScholar() || this.isSelected(item);
+  }
+
+  private usesGoogleScholar(): boolean {
+    return getCitationSourcePreferences().includes("googleScholar");
   }
 
   private debug(message: string): void {

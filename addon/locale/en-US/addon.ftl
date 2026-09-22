@@ -32,6 +32,7 @@ failure-http-5xx = the site answered with a server error (HTTP 5xx).
 failure-network = the request never reached the site (network, DNS, proxy or timeout).
 failure-empty = the site answered with an empty response.
 failure-no-count = the page arrived but the number was not in it.
+failure-not-selected = Google Scholar is not searched for unselected rows (to avoid a block); select it, or use the context menu
 cell-citations-unavailable = No citation count found for this item
 cell-quantile-high = High for the items in view
 cell-quantile-low = Low for the items in view

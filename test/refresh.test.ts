@@ -502,4 +502,66 @@ describe("AlphaLikes refresh", function () {
       }
     });
   });
+
+  it("fills in citations row by row as well", async function () {
+    // Reported: "在选中多条的情况下，我是要读取单条返回单条，依次来". The
+    // citation column has to behave like the like column does - the entry
+    // that has been read shows its number while the rest are still reading.
+    const make = async (suffix: string) => {
+      const created = new Zotero.Item("journalArticle");
+      created.libraryID = Zotero.Libraries.userLibraryID;
+      // The title the stub's Scholar page carries: a count is only adopted
+      // when the hit's title agrees with the item's.
+      created.setField("title", "AlphaLikes refresh probe paper");
+      created.setField("date", "2026-09-22");
+      created.setField("DOI", `10.1234/alphalikes.pace.${suffix}`);
+      await created.saveTx();
+      return created;
+    };
+
+    const first = await make("first");
+    const second = await make("second");
+    setPref("citationSourcePreferences", "googleScholar");
+
+    try {
+      stub = stubRequester(service, 0, 4321);
+      stub.hold = true;
+      stub.holdAfter = 1;
+
+      const running = service.refreshCitations([first, second]);
+
+      for (
+        let waited = 0;
+        waited < 80 && service.planCitationCell(first).count === null;
+        waited += 1
+      ) {
+        await Zotero.Promise.delay(25);
+      }
+
+      assert.equal(
+        service.planCitationCell(first).count,
+        4321,
+        "the row that has been read shows its count straight away",
+      );
+      assert.include(
+        String(service.planCitationCell(second).text),
+        "…",
+        "the row still being read keeps its loading marker",
+      );
+
+      stub.hold = false;
+      stub.release?.();
+      await running;
+
+      assert.equal(service.planCitationCell(second).count, 4321);
+    } finally {
+      for (const created of [first, second]) {
+        try {
+          await created.eraseTx();
+        } catch {
+          // The library may already be gone when the run tears down.
+        }
+      }
+    }
+  });
 });

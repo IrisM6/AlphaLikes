@@ -136,6 +136,11 @@ export function formatDiagnosis(input: DiagnosisInput): string {
         `  ${name}：JA3 ${reading.ja3Hash ?? "?"}，JA4 ${reading.ja4 ?? "?"}，` +
           `HTTP/2 Akamai ${reading.akamaiHash ?? "?"}`,
       );
+      if (!reading.ja4 && reading.bodyHead) {
+        lines.push(
+          `    页面能打开，但里面没有指纹字段；开头是：${reading.bodyHead}`,
+        );
+      }
     }
     lines.push(
       "  这两条都来自 Zotero 自己的 Gecko 引擎（和 Firefox 同源，同一套 NSS 加密栈），" +

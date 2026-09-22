@@ -30,6 +30,7 @@ failure-http-5xx = 对方服务器错误（HTTP 5xx）
 failure-network = 请求没有到达站点（网络、DNS、代理或超时）
 failure-empty = 对方返回了空响应
 failure-no-count = 页面能打开，但里面没有那个数字
+failure-not-selected = 未选中时不会自动查询 Google Scholar（避免触发验证）；选中它，或用右键菜单刷新
 cell-cleared = 本插件写在这个条目里的记录已被清除；右键 →「刷新 alphaXiv 点赞」或「刷新引用数」可以重新读取
 cell-quantile-high = 在当前列表中属于高赞
 cell-quantile-low = 在当前列表中属于低赞

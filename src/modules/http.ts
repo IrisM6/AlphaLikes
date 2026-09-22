@@ -319,6 +319,10 @@ export function isGoogleCookieHost(host: string): boolean {
  * @returns how many cookies were removed
  */
 export function clearGoogleCookies(): number {
+  // The flag says "this session already put the consent cookie in the jar";
+  // the jar is about to be empty, so it has to go with it.
+  googleConsentSet = false;
+
   let removed = 0;
 
   for (const cookie of storedCookies()) {
@@ -576,6 +580,19 @@ export class PacedRequester {
     return this.scholarAttempts;
   }
 
+  /**
+   * Forgets what this session learned about Google's cookies and front page.
+   *
+   * Used by the "reset the Google session" action: the jar is emptied, so the
+   * next request to Google has to be the site's front page again - the visit a
+   * browser makes before it searches, and the one that collects the cookies the
+   * search then arrives with.
+   */
+  restartGoogleSession(): void {
+    this.warmed = false;
+    this.warmup = null;
+  }
+
   /** Which path the next Scholar read starts with. */
   scholarReadPath(): ScholarPath {
     return this.pathPreference;
@@ -613,11 +630,13 @@ export class PacedRequester {
         typeof response.response === "string"
           ? response.response
           : (response.responseText ?? "");
+      const fields = readFingerprint(body);
       readings.push({
         via: "xhr",
         ...empty,
-        ...readFingerprint(body),
+        ...fields,
         error: null,
+        ...(fields.ja4 ? {} : { bodyHead: trimBodyHead(body) }),
       });
     } catch (error) {
       readings.push({
@@ -635,11 +654,13 @@ export class PacedRequester {
         this.options.timeoutMs || REQUEST_TIMEOUT_MS,
       );
       if (loaded.error) throw new Error(loaded.error);
+      const fields = readFingerprint(loaded.html);
       readings.push({
         via: "browser",
         ...empty,
-        ...readFingerprint(loaded.html),
+        ...fields,
         error: null,
+        ...(fields.ja4 ? {} : { bodyHead: trimBodyHead(loaded.html) }),
       });
     } catch (error) {
       readings.push({
@@ -1058,6 +1079,14 @@ export interface FingerprintReading {
   akamaiHash: string | null;
   /** Why there is nothing to report. */
   error: string | null;
+  /**
+   * The beginning of what came back, when the fields could not be read.
+   *
+   * A page that loads but carries no fingerprint is its own finding - it means
+   * the third party answered with something else, and the report has to show
+   * what, or the section reads like the plugin failed.
+   */
+  bodyHead?: string;
 }
 
 /**
