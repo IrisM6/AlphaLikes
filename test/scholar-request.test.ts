@@ -22,6 +22,7 @@ import {
   geckoMajorVersion,
   isGoogleCookieHost,
   isGoogleHost,
+  usePlainUserAgentFor,
   PacedRequester,
   userAgentFor,
   type HttpTransport,
@@ -138,16 +139,30 @@ describe("the Google Scholar request", function () {
     // Zotero's own mechanism, and the reason for registering at all: it also
     // covers the requests this plugin does not make itself - the hidden
     // browser's navigation among them.
+    // Zotero's own mechanism, where the build has one: registering the host
+    // also covers requests this plugin does not make itself, the hidden
+    // browser's navigation among them. Zotero 7 has no such registry - its
+    // observer rewrites the application token out of whatever it sends, and
+    // the agent above already has none - so the check is that registering is
+    // available and does not throw, not that a particular build keeps a Set.
     const versionHeader = (
       Zotero as unknown as {
-        VersionHeader?: { _plainUAHosts?: Set<string> };
+        VersionHeader?: {
+          _plainUAHosts?: Set<string>;
+          registerPlainUAHost?: (host: string) => void;
+        };
       }
     ).VersionHeader;
     assert.isOk(versionHeader, "Zotero exposes VersionHeader");
-    assert.isTrue(
-      versionHeader?._plainUAHosts?.has("scholar.google.com"),
-      "the Scholar host is registered for the plain user agent",
-    );
+
+    if (versionHeader?._plainUAHosts) {
+      assert.isTrue(
+        versionHeader._plainUAHosts.has("scholar.google.com"),
+        "the Scholar host is registered for the plain user agent",
+      );
+    } else {
+      assert.doesNotThrow(() => usePlainUserAgentFor("scholar.google.com"));
+    }
   });
 
   it("looks like the browser next to it, and brings the consent cookie", async function () {
@@ -383,43 +398,43 @@ describe("the Google Scholar request", function () {
     assert.isTrue(ensureGoogleConsent());
     assert.isTrue(consentCookieStored());
   });
-});
 
-describe("forgetting the Google session", function () {
-  it("recognises every Google domain the reads can land on", function () {
-    // Scholar answers on the country domains too, and the cookies that mark a
-    // jar are set on whichever one answered.
-    for (const host of [
-      "google.com",
-      ".google.com",
-      "www.google.com",
-      "scholar.google.com",
-      "scholar.google.de",
-      "accounts.google.com",
-      "consent.google.com",
-      "www.google.com.hk",
-      "google.co.uk",
-    ]) {
-      assert.isTrue(isGoogleCookieHost(host), `${host} is a Google domain`);
-    }
+  describe("forgetting the Google session", function () {
+    it("recognises every Google domain the reads can land on", function () {
+      // Scholar answers on the country domains too, and the cookies that mark a
+      // jar are set on whichever one answered.
+      for (const host of [
+        "google.com",
+        ".google.com",
+        "www.google.com",
+        "scholar.google.com",
+        "scholar.google.de",
+        "accounts.google.com",
+        "consent.google.com",
+        "www.google.com.hk",
+        "google.co.uk",
+      ]) {
+        assert.isTrue(isGoogleCookieHost(host), `${host} is a Google domain`);
+      }
 
-    for (const host of [
-      "example.com",
-      "notgoogle.com",
-      "googleusercontent.com",
-      "alphaxiv.org",
-    ]) {
-      assert.isFalse(isGoogleCookieHost(host), `${host} is not one of ours`);
-    }
-  });
+      for (const host of [
+        "example.com",
+        "notgoogle.com",
+        "googleusercontent.com",
+        "alphaxiv.org",
+      ]) {
+        assert.isFalse(isGoogleCookieHost(host), `${host} is not one of ours`);
+      }
+    });
 
-  it("empties the jar without throwing when there is nothing to empty", function () {
-    // Whatever the jar holds, the call is the user's "start over" button: it
-    // reports what it removed and never turns into an error dialog.
-    const removed = clearGoogleCookies();
-    assert.isTrue(
-      Number.isInteger(removed) && removed >= 0,
-      "it answers with a count of what it removed",
-    );
+    it("empties the jar without throwing when there is nothing to empty", function () {
+      // Whatever the jar holds, the call is the user's "start over" button: it
+      // reports what it removed and never turns into an error dialog.
+      const removed = clearGoogleCookies();
+      assert.isTrue(
+        Number.isInteger(removed) && removed >= 0,
+        "it answers with a count of what it removed",
+      );
+    });
   });
 });

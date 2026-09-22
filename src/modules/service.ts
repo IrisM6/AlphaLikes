@@ -69,6 +69,7 @@ import {
   parseHTMLBody,
   PacedRequester,
   userAgentFor,
+  type FingerprintReading,
   type HttpTransport,
   type ScholarPage,
   type ScholarPath,
@@ -1777,6 +1778,13 @@ export class AlphaLikesService {
 
     for (const probe of probes) this.explainProbe(probe, notes);
 
+    // The one thing header work cannot answer: whether the reads are refused
+    // for what they send or for who has been sending them. Both paths are read
+    // through the engine Zotero already uses, so the numbers show what a
+    // Firefox-based client looks like from this machine - the user can open
+    // the same page in their own browser and compare.
+    const fingerprints = await this.readFingerprints();
+
     const sourcePrefs =
       getCitationSourcePreferences().join(",") || "（未选择）";
     const settings = [
@@ -1860,10 +1868,33 @@ export class AlphaLikesService {
       items: itemLines,
       settings,
       probes,
+      fingerprints,
       notes,
     };
 
     return formatDiagnosis(input);
+  }
+
+  /**
+   * The fingerprint self-check, when the requester can run it.
+   *
+   * The tests replace the requester with a plain object that answers for the
+   * reads a test cares about; asking it for a fingerprint would fail the whole
+   * diagnostic over a section that is extra credit, so a missing method means
+   * the section is simply left out.
+   */
+  private async readFingerprints(): Promise<FingerprintReading[]> {
+    const requester = this.requester as PacedRequester & {
+      probeFingerprint?: () => Promise<FingerprintReading[]>;
+    };
+    if (typeof requester.probeFingerprint !== "function") return [];
+
+    try {
+      return await requester.probeFingerprint();
+    } catch (error) {
+      this.debug(`[AlphaLikes] 指纹自检失败：${String(error)}`);
+      return [];
+    }
   }
 
   /** One line of advice per probe that needs it. */

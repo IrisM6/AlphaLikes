@@ -56,9 +56,18 @@ export interface DiagnosisInput {
   /** The settings that decide where the reads go. */
   settings: string[];
   probes: HttpProbe[];
+  /**
+   * What a third-party page saw of this client's handshake, per read path.
+   *
+   * Empty when the check could not run at all, which is not worth a section of
+   * its own: the read failures above are the substance of the report.
+   */
+  fingerprints?: FingerprintReading[];
   /** Anything else worth saying, e.g. what to do with the report. */
   notes: string[];
 }
+
+import { FINGERPRINT_URL, type FingerprintReading } from "./http";
 
 const PATH_NAMES: Record<string, string> = {
   browser: "浏览器页面加载",
@@ -113,6 +122,28 @@ export function formatDiagnosis(input: DiagnosisInput): string {
   ];
 
   for (const probe of input.probes) lines.push(...formatProbe(probe));
+
+  const fingerprints = input.fingerprints ?? [];
+  if (fingerprints.length) {
+    lines.push("", "浏览器指纹自检（tls.peet.ws 看到的样子）：");
+    for (const reading of fingerprints) {
+      const name = PATH_NAMES[reading.via] ?? reading.via;
+      if (reading.error) {
+        lines.push(`  ${name}：没有读到 — ${reading.error}`);
+        continue;
+      }
+      lines.push(
+        `  ${name}：JA3 ${reading.ja3Hash ?? "?"}，JA4 ${reading.ja4 ?? "?"}，` +
+          `HTTP/2 Akamai ${reading.akamaiHash ?? "?"}`,
+      );
+    }
+    lines.push(
+      "  这两条都来自 Zotero 自己的 Gecko 引擎（和 Firefox 同源，同一套 NSS 加密栈），" +
+        "并不是 Python 或 curl 那种客户端；想对比的话，用你平时上网的火狐打开 " +
+        FINGERPRINT_URL +
+        " ，把里面的 JA3 哈希和 JA4 发回来，两边一致就说明 Google 的拒绝与 TLS 指纹无关。",
+    );
+  }
 
   // The same advice is produced once per probed item; saying it twice reads
   // like two different problems.

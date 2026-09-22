@@ -582,6 +582,77 @@ export class PacedRequester {
   }
 
   /**
+   * Asks a third-party page what it saw of this client's handshake.
+   *
+   * This is the one question header work cannot answer: whether the reads are
+   * rejected for what they send or for who has been sending it. Zotero is
+   * built on Gecko, so both of its read paths - the hidden browser navigation
+   * and the plain request - already go through the same NSS stack a Firefox on
+   * this machine uses; the check is here to show that, with numbers, from the
+   * machine that is being refused, instead of arguing about it.
+   *
+   * Both paths are read even when one of them is known to be broken: the
+   * comparison is the point.
+   */
+  async probeFingerprint(): Promise<FingerprintReading[]> {
+    const readings: FingerprintReading[] = [];
+    const empty = { ja3: null, ja3Hash: null, ja4: null, akamaiHash: null };
+    const send = this.options.transport ?? bindTransport(Zotero.HTTP);
+
+    try {
+      const response = await send("GET", FINGERPRINT_URL, {
+        timeout: this.options.timeoutMs || REQUEST_TIMEOUT_MS,
+        responseType: "text",
+        successCodes: false,
+        headers: {
+          Accept: "application/json, text/plain, */*",
+          "User-Agent": userAgentFor(hostOf(FINGERPRINT_URL)),
+        },
+      });
+      const body =
+        typeof response.response === "string"
+          ? response.response
+          : (response.responseText ?? "");
+      readings.push({
+        via: "xhr",
+        ...empty,
+        ...readFingerprint(body),
+        error: null,
+      });
+    } catch (error) {
+      readings.push({
+        via: "xhr",
+        ...empty,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    if (!this.browserPathAvailable()) return readings;
+
+    try {
+      const loaded = await this.pageLoader()(
+        FINGERPRINT_URL,
+        this.options.timeoutMs || REQUEST_TIMEOUT_MS,
+      );
+      if (loaded.error) throw new Error(loaded.error);
+      readings.push({
+        via: "browser",
+        ...empty,
+        ...readFingerprint(loaded.html),
+        error: null,
+      });
+    } catch (error) {
+      readings.push({
+        via: "browser",
+        ...empty,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return readings;
+  }
+
+  /**
    * Opens Scholar's front page once per session, before the first search.
    *
    * A browser reaches a search page by way of the site: it arrives with the
@@ -968,4 +1039,69 @@ function failureStatus(attempts: ScholarAttempt[]): number {
   );
   if (refusal) return refusal.status;
   return answered.length ? answered[0].status : 0;
+}
+
+// ---------------------------------------------------------------------------
+// Fingerprint self-check
+// ---------------------------------------------------------------------------
+
+/** The third-party page that echoes back what it saw of the handshake. */
+export const FINGERPRINT_URL = "https://tls.peet.ws/api/all";
+
+export interface FingerprintReading {
+  /** Which read path produced it. */
+  via: "browser" | "xhr";
+  /** The fields worth reporting, empty when the read did not work. */
+  ja3: string | null;
+  ja3Hash: string | null;
+  ja4: string | null;
+  akamaiHash: string | null;
+  /** Why there is nothing to report. */
+  error: string | null;
+}
+
+/**
+ * Pulls the fingerprint fields out of whatever came back.
+ *
+ * The site answers with JSON. Read through a request, that is the whole body; a
+ * hidden browser hands back a document with the same JSON rendered inside it,
+ * so the text is unwrapped first and each field is looked up on its own - a
+ * report that lists four of five values is still worth more than a parse error.
+ */
+export function readFingerprint(body: string): Partial<FingerprintReading> {
+  let text = body.trim();
+  if (!text.startsWith("{")) {
+    text = text
+      .replace(/<[^>]*>/g, "")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&");
+  }
+
+  interface FingerprintBody {
+    tls?: { ja3?: string; ja3_hash?: string; ja4?: string };
+    http2?: { akamai_fingerprint_hash?: string };
+  }
+  const parsed = ((): FingerprintBody | null => {
+    try {
+      return JSON.parse(text) as FingerprintBody;
+    } catch {
+      return null;
+    }
+  })();
+
+  const field = (name: string) => {
+    const found = new RegExp(`"${name}"\\s*:\\s*"([^"]*)"`).exec(text);
+    return found?.[1] ?? null;
+  };
+
+  return {
+    ja3: parsed?.tls?.ja3 ?? field("ja3"),
+    ja3Hash: parsed?.tls?.ja3_hash ?? field("ja3_hash"),
+    ja4: parsed?.tls?.ja4 ?? field("ja4"),
+    akamaiHash:
+      parsed?.http2?.akamai_fingerprint_hash ??
+      field("akamai_fingerprint_hash"),
+  };
 }

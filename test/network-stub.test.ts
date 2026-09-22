@@ -94,6 +94,9 @@ installNetworkStub();
 // so a stub installed once at load does not hold. That is how a real alphaXiv
 // count (a made-up arXiv ID gets a default 5 from the live page) ended up in an
 // item that a diagnostic test was asserting on, in an unrelated file.
+// Top level on purpose: this has to hold for every test in every file, and a
+// hook inside a suite would only cover that suite.
+// eslint-disable-next-line mocha/no-top-level-hooks
 beforeEach(installNetworkStub);
 
 describe("the test suite's network boundary", function () {

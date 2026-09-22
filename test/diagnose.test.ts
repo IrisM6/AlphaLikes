@@ -24,6 +24,7 @@ import {
   withValueDecorations,
 } from "../src/modules/likes";
 import { setPref } from "../src/modules/prefs";
+import type { FingerprintReading } from "../src/modules/http";
 
 /** A page shaped like the alphaXiv paper view. */
 function alphaXivPage(likes: number): string {
@@ -48,6 +49,8 @@ interface Stub {
   scholar: number;
   scholarStatus: number;
   userName: string;
+  /** What the fingerprint self-check reports; empty unless a test says so. */
+  fingerprints: FingerprintReading[];
 }
 
 function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
@@ -57,12 +60,16 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     scholar,
     scholarStatus: 200,
     userName: "probe-agent",
+    fingerprints: [],
   };
   const target = service as { requester: Record<string, unknown> };
   const previous = target.requester;
 
   target.requester = {
     ...previous,
+    // Spreading an instance does not carry its prototype methods, and the
+    // fingerprint check is one of them - so the stub answers for it too.
+    probeFingerprint: async () => state.fingerprints,
     // The service asks the requester what the session's opening request to
     // Google answered; the real one keeps that state, a stub reports none.
     sessionWarmup: () => null,
@@ -358,6 +365,63 @@ describe("AlphaLikes diagnostics", function () {
 
       assert.include(report, "没有选中任何条目");
       assert.include(report, "实际请求（0 次）");
+    });
+
+    describe("the fingerprint self-check", function () {
+      const reading = (via: "browser" | "xhr"): FingerprintReading => ({
+        via,
+        ja3: "771,4865-4867,0,0",
+        ja3Hash: "6f7889b9fb1a62a9577e685c1fcfa919",
+        ja4: "t13d1717h2_5b57614c22b0_3cbfd9057e0d",
+        akamaiHash: "6ea73faa8fc5aac76bded7bd238f6433",
+        error: null,
+      });
+
+      it("prints what a third-party page saw, for both read paths", async function () {
+        // The reported question is whether the reads are refused for what they
+        // send or for who has been sending them. The numbers answer it: Zotero
+        // reads with the same handshake a Firefox on the same machine does, so
+        // the answer is in the cookies and the address, not in the TLS layer.
+        const stub = stubRequester(service, 1127, 42);
+        stub.fingerprints = [reading("xhr"), reading("browser")];
+
+        const report = await service.diagnose([Zotero.Items.get(item.id)]);
+
+        assert.include(report, "浏览器指纹自检");
+        assert.include(report, "直接请求");
+        assert.include(report, "浏览器页面加载");
+        assert.include(report, "t13d1717h2_5b57614c22b0_3cbfd9057e0d");
+        assert.include(report, "6f7889b9fb1a62a9577e685c1fcfa919");
+        // The report has to say how the user can compare it with their browser,
+        // or the numbers are just decoration.
+        assert.include(report, "tls.peet.ws");
+        assert.include(report, "Firefox");
+      });
+
+      it("says why a path could not be read instead of dropping it", async function () {
+        const stub = stubRequester(service, 1127, 42);
+        stub.fingerprints = [
+          reading("xhr"),
+          {
+            ...reading("browser"),
+            ja3: null,
+            ja4: null,
+            error: "隐藏浏览器不可用",
+          },
+        ];
+
+        const report = await service.diagnose([Zotero.Items.get(item.id)]);
+
+        assert.include(report, "浏览器页面加载：没有读到 — 隐藏浏览器不可用");
+      });
+
+      it("leaves the section out when the check could not run at all", async function () {
+        stubRequester(service, 1127, 42);
+
+        const report = await service.diagnose([Zotero.Items.get(item.id)]);
+
+        assert.notInclude(report, "浏览器指纹自检");
+      });
     });
   });
 });
