@@ -2,7 +2,7 @@
 
 **给 Zotero 加两列：alphaXiv 点赞数，和引用数（默认走 Google Scholar）。**
 
-[![Zotero 7–10](https://img.shields.io/badge/Zotero-7%E2%80%9310-cc2936?style=flat-square&logo=zotero)](https://www.zotero.org/)
+[![Zotero 7–11](https://img.shields.io/badge/Zotero-7%E2%80%9311-cc2936?style=flat-square&logo=zotero)](https://www.zotero.org/)
 [![Release](https://img.shields.io/github/v/release/IrisM6/AlphaLikes?style=flat-square)](https://github.com/IrisM6/AlphaLikes/releases/latest)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue?style=flat-square)](LICENSE)
 
@@ -16,7 +16,7 @@
 2. Zotero → **工具 → 插件** → 齿轮 → **从文件安装插件…**。
 3. 选下载好的 `.xpi`，按提示重启 Zotero。
 
-支持 Zotero 7 / 8 / 9 / 10，之后的新版本也能直接装。也可以在 **Zotero Addons** 插件商店里搜索 AlphaLikes 一键安装。
+支持 Zotero 7 / 8 / 9 / 10 / 11，之后的新版本也能直接装。也可以在 **Zotero Addons** 插件商店里搜索 AlphaLikes 一键安装。
 
 ## 两列
 
@@ -38,6 +38,10 @@
 - Google Scholar 没有公开 API，插件读的是搜索结果页上的 `Cited by`；被限流或要求人机验证时会自动暂停重试（10 分钟起，最长 2 小时），**不会用别的来源顶替**，同时其它来源照常自动填充。
 - 想继续工作，可以同时勾上 OpenAlex 或 Semantic Scholar。**在浏览器里打开检索页不会解除插件这边的限制**——两边是各自的会话，那个入口只是给你自己核对数字用的。
 
+### 读取节奏
+
+Google Scholar 不喜欢机器一样的节奏，所以两次搜索之间会**随机等 16–30 秒**，打开页面后先向下滚一点、**停留约 3 秒**再读，每读完 **2–5 条**就歇 **10–20 分钟**。也可以把「每批」调大一点让长列表读得快些，四个范围都在 设置 → AlphaLikes 里，每个框旁边写着建议值。
+
 ## 右键菜单
 
 | 菜单项                               | 作用                                                   |
@@ -52,7 +56,11 @@
 
 ## 外观
 
-11 种样式（玻璃胶囊、莫兰迪低饱和、双色拼接……），两列都可按**固定阈值**或**当前列表的分位数**分档着色，颜色框都是取色面板（色域 + 色相条），也能按点赞 / 引用数区间筛选，范围外的条目整格变淡。引用数可以跟随点赞的外观，也可以单独设置。
+11 种样式，**点赞列和引用列共用同一套**：
+
+![AlphaLikes 外观样式一览](docs/images/styles-preview.svg)
+
+两列都可按**固定阈值**或**当前列表的分位数**分档着色，颜色框都是取色面板（色域 + 色相条），也能按点赞 / 引用数区间筛选，范围外的条目整格变淡。引用数可以跟随点赞的外观，也可以单独设置。完整对照表（含引用列的档位）见 [docs/styles-preview.html](docs/styles-preview.html)。
 
 ## 数据与隐私
 
@@ -62,7 +70,8 @@
 
 ## 读不出来时
 
-- **某一列一直空白或显示 `…`**：设置 → AlphaLikes → **诊断读取**，它会把请求地址、状态码等信息复制到剪贴板。
+- **某一列一直空白或显示 `…`**：把鼠标停在那一个格子上。提示里会写清是什么原因（被拒绝、被限流、超时……），以及**多久之后会自动重试**——不用你做任何事，等一下就好。
+- **要等好几分钟**：多半是刚好碰上上面说的「休息」，提示会写着还剩多少分钟。
 - **Google Scholar 被拦住**：等它自动重试，或右键 → **重置谷歌会话**；同时勾上 OpenAlex / Semantic Scholar 可以先照常使用。
 - **想重新开始**：右键 → **清除本插件写入的 Extra 记录**，相关条目会回到未读取状态，下次刷新重新写入。
 

@@ -12,11 +12,15 @@ is typed twice:
   * the split-tag prefixes come from the ``cell-split-prefix*`` messages.
 
 Only the shape of each sample (padding, radii, shadows, fonts) is written out
-here by hand, mirroring the branches of ``applyLikeStyle``. Run:
+here by hand, mirroring the branches of ``applyLikeStyle``.
+
+Two files come out of one run: the page in ``docs/styles-preview.html`` and the
+same table as a picture in ``docs/images/styles-preview.svg``, which the README
+embeds - a README can show an image, not a page. Run:
 
     python3 scripts/gen-styles-preview.py
 
-and commit the result along with the change that motivated it.
+and commit both results along with the change that motivated them.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ FTLS = {
     "en": ROOT / "addon/locale/en-US/addon.ftl",
 }
 OUT = ROOT / "docs/styles-preview.html"
+OUT_SVG = ROOT / "docs/images/styles-preview.svg"
 
 # The colour section's own three buckets, used to draw the styles that have no
 # palette of their own. Mirrors the defaults in prefs.ts.
@@ -45,6 +50,11 @@ SECTION = {"high": "#1a7f37", "mid": "currentColor", "low": "#9aa0a6"}
 # the number in full.
 LIKE_SAMPLE = {"high": "2979", "mid": "42", "low": "7"}
 CITATION_SAMPLE = {"high": "128", "mid": "42", "low": "3"}
+# The README picture is the one place where 玻璃胶囊 and 玻璃圆形 sit next to each
+# other, and a four-digit number turns the circle into a stadium - the same
+# shape as the capsule. Three digits keep them apart; the page above still
+# documents what a longer number does.
+SVG_LIKE_SAMPLE = {"high": "999", "mid": "42", "low": "7"}
 
 
 def read(path: pathlib.Path) -> str:
@@ -376,6 +386,319 @@ def table(
     </table>"""
 
 
+# ---------------------------------------------------------------------------
+# The same table as an SVG
+# ---------------------------------------------------------------------------
+#
+# The README embeds an image, not a page, so the styles have to be drawn as
+# shapes as well. Same data, same branches as `sample()` above, one shape per
+# style: the point of the picture is that it is what the column draws.
+
+
+def mix_with_white(color: str, percent: int) -> str:
+    """`color-mix(in srgb, colorpercent%, white)` - the page's own background."""
+    base = color.strip()
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", base):
+        return "#ffffff"
+    r, g, b = (int(base[i : i + 2], 16) for i in (1, 3, 5))
+    weight = percent / 100
+    parts = (
+        round(channel * weight + 255 * (1 - weight)) for channel in (r, g, b)
+    )
+    return "#" + "".join(f"{part:02x}" for part in parts)
+
+
+def svg_text(
+    x: int,
+    y: int,
+    content: str,
+    size: float,
+    fill: str,
+    weight: int | None = None,
+    anchor: str | None = None,
+) -> str:
+    weight_attr = f' font-weight="{weight}"' if weight else ""
+    anchor_attr = f' text-anchor="{anchor}"' if anchor else ""
+    return (
+        f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}"'
+        f'{weight_attr}{anchor_attr}>{escape(content)}</text>'
+    )
+
+
+def svg_box(
+    x: int,
+    y: int,
+    width: int,
+    height: int,
+    radius: int,
+    fill: str,
+    stroke: str | None = None,
+) -> str:
+    stroke_attr = f' stroke="{stroke}"' if stroke else ""
+    return (
+        f'<rect x="{x}" y="{y}" width="{width}" height="{height}"'
+        f' rx="{radius}" fill="{fill}"{stroke_attr} />'
+    )
+
+
+def svg_sample(
+    style: str,
+    band: str,
+    palettes: dict[str, dict[str, dict[str, str]]],
+    accent: str,
+    prefix: str,
+    content: str,
+    x: int,
+    centre: int,
+) -> tuple[list[str], int]:
+    """One sample as SVG shapes, and how wide it turned out to be."""
+    top = centre - 12
+    baseline = centre + 4
+    digits = 8.6 * len(content)
+
+    if style == "plain":
+        return [svg_text(x, baseline, content, 13, "#1f2328")], round(digits)
+
+    if style == "badge":
+        width = round(digits) + 16
+        return (
+            [
+                svg_box(
+                    x,
+                    top,
+                    width,
+                    24,
+                    12,
+                    mix_with_white(accent, 16),
+                    mix_with_white(accent, 36),
+                ),
+                svg_text(x + 8, baseline, content, 13, accent),
+            ],
+            width,
+        )
+
+    if style == "ring":
+        width = 26 if len(content) <= 3 else round(6.6 * len(content)) + 12
+        return (
+            [
+                svg_box(
+                    x,
+                    top,
+                    width,
+                    24,
+                    width // 2,
+                    mix_with_white(accent, 18),
+                    mix_with_white(accent, 45),
+                ),
+                svg_text(
+                    x + width // 2,
+                    baseline - 1,
+                    content,
+                    11 if len(content) >= 4 else 13,
+                    accent,
+                    None,
+                    "middle",
+                ),
+            ],
+            width,
+        )
+
+    if style == "outline":
+        width = round(digits) + 16
+        return (
+            [
+                svg_box(x, top, width, 24, 12, "#ffffff", accent or "#9AA0A6"),
+                svg_text(x + 8, baseline, content, 13, accent or "#5F6368"),
+            ],
+            width,
+        )
+
+    if style == "bookmark":
+        paint = palettes["bookmark"][band]
+        width = round(digits) + 15
+        return (
+            [
+                svg_box(
+                    x,
+                    top,
+                    width,
+                    24,
+                    4,
+                    paint.get("background", "#ffffff"),
+                    paint.get("border", "#d0d7de"),
+                ),
+                svg_box(
+                    x,
+                    top,
+                    3,
+                    24,
+                    2,
+                    paint.get("color", accent),
+                ),
+                svg_text(x + 10, baseline, content, 13, paint.get("color", "#1f2328")),
+            ],
+            width,
+        )
+
+    if style in ("morandi", "academic", "fresh", "playful"):
+        paint = palettes[style][band]
+        radius = 12 if style in ("morandi", "fresh") else (3 if style == "academic" else 6)
+        offset = 6 if style == "academic" else 8
+        width = round(digits) + offset * 2
+        return (
+            [
+                svg_box(
+                    x,
+                    top,
+                    width,
+                    24,
+                    radius,
+                    paint.get("background", "#ffffff"),
+                    paint.get("border"),
+                ),
+                svg_text(
+                    x + offset,
+                    baseline,
+                    content,
+                    13,
+                    paint.get("color", "#1f2328"),
+                    700 if style == "playful" else None,
+                ),
+            ],
+            width,
+        )
+
+    if style == "split":
+        left = palettes["split"][band]
+        right = {"high": "#F0F0F0", "mid": "#F5F5F5", "low": "#FAFAFA"}[band]
+        left_width = round(7.0 * len(prefix)) + 12
+        right_width = round(digits) + 14
+        return (
+            [
+                svg_box(x, top, left_width, 24, 4, left.get("background", "#ffffff")),
+                svg_box(
+                    x + left_width,
+                    top,
+                    right_width,
+                    24,
+                    4,
+                    right,
+                ),
+                svg_text(
+                    x + 6,
+                    baseline,
+                    prefix,
+                    10.4,
+                    left.get("color", "#1f2328"),
+                ),
+                svg_text(x + left_width + 7, baseline, content, 13, "#333333"),
+            ],
+            left_width + right_width,
+        )
+
+    if style == "dot":
+        width = 24 if len(content) <= 2 else round(6.6 * len(content)) + 12
+        paint = palettes["dot"][band]
+        return (
+            [
+                svg_box(
+                    x,
+                    top,
+                    width,
+                    24,
+                    width // 2,
+                    paint.get("background", "#ffffff"),
+                ),
+                svg_text(
+                    x + width // 2,
+                    baseline - 1,
+                    content,
+                    11,
+                    paint.get("color", "#1f2328"),
+                    None,
+                    "middle",
+                ),
+            ],
+            width,
+        )
+
+    return [svg_text(x, baseline, content, 13, "#1f2328")], round(digits)
+
+
+def svg_page(
+    styles: list[str],
+    labels: dict[str, dict[str, str]],
+    palettes: dict[str, dict[str, dict[str, str]]],
+    prefix_like: str,
+) -> str:
+    """The style table as a picture the README can embed."""
+    width = 1180
+    header = 118
+    row_height = 56
+    height = header + row_height * len(styles) + 52
+    colours = {"high": "#1a7f37", "mid": "#1f2328", "low": "#9aa0a6"}
+    columns = {"high": 330, "mid": 610, "low": 860}
+
+    parts = [
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+        f'height="{height}" viewBox="0 0 {width} {height}" '
+        f'font-family="PingFang SC, Microsoft YaHei, Segoe UI, system-ui, '
+        f'sans-serif">',
+        f'<rect width="{width}" height="{height}" fill="#ffffff" />',
+        svg_text(28, 46, f"AlphaLikes 外观样式 · {len(styles)} 种", 22, "#1f2328", 700),
+        svg_text(
+            28,
+            72,
+            "点赞列与引用列共用同一套样式；此处用点赞数示意，高 / 中 / 低三档自动着色。",
+            13,
+            "#57606a",
+        ),
+        svg_text(330, 104, "高", 13, "#57606a"),
+        svg_text(610, 104, "中", 13, "#57606a"),
+        svg_text(860, 104, "低", 13, "#57606a"),
+        f'<line x1="28" y1="{header - 10}" x2="{width - 28}" '
+        f'y2="{header - 10}" stroke="#d0d7de" />',
+    ]
+
+    for index, style in enumerate(styles):
+        row_y = header + index * row_height
+        centre = row_y + row_height // 2
+        if index % 2:
+            parts.append(
+                svg_box(20, row_y, width - 40, row_height - 6, 8, "#f7f8fa")
+            )
+
+        zh = short_name(labels["zh"].get(style, style))
+        en = short_name(labels["en"].get(style, style))
+        parts.append(svg_text(28, centre - 2, zh, 15, "#1f2328", 600))
+        parts.append(svg_text(28, centre + 16, en, 11, "#8b949e"))
+
+        for band, column in columns.items():
+            sample, _ = svg_sample(
+                style,
+                band,
+                palettes,
+                colours[band],
+                prefix_like,
+                SVG_LIKE_SAMPLE[band],
+                column,
+                centre - 3,
+            )
+            parts.extend(sample)
+
+    parts.append(
+        svg_text(
+            28,
+            height - 22,
+            "样式的配色与形状直接取自插件源码（scripts/gen-styles-preview.py 生成，请勿手动编辑）。",
+            12,
+            "#8b949e",
+        )
+    )
+    parts.append("</svg>")
+    return "\n".join(parts)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
@@ -383,6 +706,12 @@ def main() -> None:
         type=pathlib.Path,
         default=OUT,
         help="where to write the page (default: the committed one)",
+    )
+    parser.add_argument(
+        "--svg",
+        type=pathlib.Path,
+        default=OUT_SVG,
+        help="where to write the README image (default: the committed one)",
     )
     args = parser.parse_args()
 
@@ -429,11 +758,20 @@ def main() -> None:
 """
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(body, encoding="utf-8")
+
+    image = svg_page(styles, labels, palettes, prefix_like)
+    args.svg.parent.mkdir(parents=True, exist_ok=True)
+    args.svg.write_text(image, encoding="utf-8")
     try:
         shown = args.out.relative_to(ROOT)
     except ValueError:
         shown = args.out
     print(f"wrote {shown} ({len(body)} B, {len(styles)} styles)")
+    try:
+        shown_svg = args.svg.relative_to(ROOT)
+    except ValueError:
+        shown_svg = args.svg
+    print(f"wrote {shown_svg} ({len(image)} B, {len(styles)} styles)")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,13 @@ declare namespace _ZoteroTypes {
       "requestIntervalMs": number;
       "requestTimeoutMs": number;
       "cacheTtlDays": number;
+      "scholarIntervalMinSeconds": number;
+      "scholarIntervalMaxSeconds": number;
+      "scholarDwellSeconds": number;
+      "scholarBatchMin": number;
+      "scholarBatchMax": number;
+      "scholarPauseMinMinutes": number;
+      "scholarPauseMaxMinutes": number;
       "likeStyle": string;
       "colorEnabled": boolean;
       "highLikesThreshold": number;

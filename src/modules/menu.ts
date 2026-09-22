@@ -100,12 +100,24 @@ function notify(win: Window, message: string): void {
  * slowly, so without a summary "it worked" and "it silently failed" look
  * exactly the same in the column.
  */
-function refreshSummaryText(summary: RefreshSummary, updated: string): string {
+export function refreshSummaryText(
+  summary: RefreshSummary,
+  updated: string,
+): string {
   if (!summary.total) return t("refresh-nothing");
 
   const parts = [updated];
   if (summary.failed) {
-    parts.push(t("refresh-failed", { failed: summary.failed }));
+    // With a retry time when one is set: "N failed" alone leaves the user
+    // wondering whether they have to do something about it.
+    parts.push(
+      summary.retryMinutes === undefined
+        ? t("refresh-failed", { failed: summary.failed })
+        : t("refresh-failed-retry", {
+            failed: summary.failed,
+            minutes: summary.retryMinutes,
+          }),
+    );
   }
   if (summary.skipped) {
     parts.push(t("refresh-skipped", { skipped: summary.skipped }));

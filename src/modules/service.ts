@@ -105,6 +105,7 @@ import {
   getPref,
   getRangeFilter,
   getRequestPrefs,
+  getScholarPacing,
   getResolverPrefs,
   getTrendPrefs,
   isWithinRange,
@@ -219,6 +220,15 @@ export interface RefreshSummary {
   updated: number;
   /** Items whose count could not be read; their old value is kept. */
   failed: number;
+  /**
+   * Minutes until the earliest automatic retry among the failed items, when
+   * there is one.
+   *
+   * The summary says "will retry in about N minutes" instead of only "failed",
+   * because a failure the user cannot act on should at least tell them they do
+   * not have to.
+   */
+  retryMinutes?: number;
   /** Items that have nothing to look counts up with yet. */
   skipped: number;
 }
@@ -395,6 +405,21 @@ export interface ClearSummary {
   alreadyEmpty: number;
 }
 
+/**
+ * What a failed cell carries: why it failed, and when the next attempt is.
+ *
+ * "读取失败" on its own reads as "this is broken"; the retry time is the part
+ * that tells the user whether to wait or to fix something. The renderer turns
+ * the marker into a sentence.
+ */
+function failureDecorations(
+  reason: FailureReason,
+  retryAfter: number,
+): string[] {
+  const minutes = Math.max(1, Math.ceil((retryAfter - Date.now()) / 60_000));
+  return [reason, `retry:${minutes}`];
+}
+
 export class AlphaLikesService {
   private requester: PacedRequester;
   private itemStates = new Map<number, ItemState>();
@@ -487,7 +512,13 @@ export class AlphaLikesService {
 
   constructor() {
     const { timeoutMs, intervalMs } = getRequestPrefs();
-    this.requester = new PacedRequester({ timeoutMs, intervalMs });
+    this.requester = new PacedRequester({
+      timeoutMs,
+      intervalMs,
+      // A thunk, not a snapshot: the ranges are read for every search, so
+      // editing them in the settings pane changes the next read.
+      scholarPacing: () => getScholarPacing(),
+    });
     this.stopObservingPrefs = observePrefs((name) => this.onPrefChanged(name));
   }
 
@@ -704,6 +735,26 @@ export class AlphaLikesService {
       url: block.url,
       rateLimited: block.rateLimited,
     };
+  }
+
+  /**
+   * Whether the reader is waiting out a burst pause, and for how long.
+   *
+   * A citation row that is being read during a pause looks like a row that is
+   * stuck: the plugin deliberately stops asking Google for several minutes
+   * after a few searches, and the tooltip is where that is explained.
+   */
+  scholarPauseStatus(): { paused: boolean; minutes: number } {
+    try {
+      const wait = this.requester.scholarWait();
+      return {
+        paused: wait.paused && wait.waitMs > 0,
+        minutes: Math.max(1, wait.pauseMinutes),
+      };
+    } catch {
+      // A reader that cannot answer is not a reason to lose the cell.
+      return { paused: false, minutes: 0 };
+    }
   }
 
   /**
@@ -1021,7 +1072,10 @@ export class AlphaLikesService {
         // indistinguishable from a paper with no citations anywhere: it says
         // "N/A" and carries the reason for the tooltip instead.
         return {
-          value: withValueDecorations(CELL_UNAVAILABLE, [state.reason]),
+          value: withValueDecorations(
+            CELL_UNAVAILABLE,
+            failureDecorations(state.reason, state.retryAfter),
+          ),
           text: CELL_UNAVAILABLE,
           count: null,
           highImpact: false,
@@ -1456,7 +1510,16 @@ export class AlphaLikesService {
 
         const updated = await this.populateCitations(item);
         if (updated) summary.updated += 1;
-        else summary.failed += 1;
+        else {
+          summary.failed += 1;
+          const retry = this.retryMinutesFor(item);
+          if (retry !== null) {
+            summary.retryMinutes =
+              summary.retryMinutes === undefined
+                ? retry
+                : Math.min(summary.retryMinutes, retry);
+          }
+        }
         // One row at a time, like the likes: the entry that has been read
         // shows its number while the ones behind it are still reading.
         if (!this.disposed) repaintRows([item.id]);
@@ -1507,8 +1570,12 @@ export class AlphaLikesService {
       if (state.kind === "loading") return CELL_LOADING;
       if (state.kind === "failed" && state.retryAfter > Date.now()) {
         // The reason rides along with the value: it is the only channel the
-        // renderer has, and "N/A" on its own says nothing about what to fix.
-        return withValueDecorations(CELL_UNAVAILABLE, [state.reason]);
+        // renderer has, and a blank cell on its own says nothing about what to
+        // fix or how long to wait.
+        return withValueDecorations(
+          CELL_UNAVAILABLE,
+          failureDecorations(state.reason, state.retryAfter),
+        );
       }
       // A failed lookup whose cooldown elapsed falls through and is retried.
     }
@@ -1531,7 +1598,10 @@ export class AlphaLikesService {
       if (state.kind === "success") return toSortableValue(state.likes);
       if (state.kind === "loading") return CELL_LOADING;
       if (state.retryAfter > Date.now()) {
-        return withValueDecorations(CELL_UNAVAILABLE, [state.reason]);
+        return withValueDecorations(
+          CELL_UNAVAILABLE,
+          failureDecorations(state.reason, state.retryAfter),
+        );
       }
     }
 
@@ -2306,7 +2376,16 @@ export class AlphaLikesService {
             force: true,
           });
           if (updated) summary.updated += 1;
-          else summary.failed += 1;
+          else {
+            summary.failed += 1;
+            const retry = this.retryMinutesFor(item);
+            if (retry !== null) {
+              summary.retryMinutes =
+                summary.retryMinutes === undefined
+                  ? retry
+                  : Math.min(summary.retryMinutes, retry);
+            }
+          }
         } else {
           await this.resolveItem(item, { force: true });
           // A newly resolved ID already fetched its count on the way in.
@@ -2502,6 +2581,14 @@ export class AlphaLikesService {
    */
   private scholarReadAllowed(item: Zotero.Item): boolean {
     return !this.usesGoogleScholar() || this.isSelected(item);
+  }
+
+  /** Minutes until this item is tried again, when a failed read set a time. */
+  private retryMinutesFor(item: Zotero.Item): number | null {
+    const state =
+      this.itemStates.get(item.id) ?? this.citationStates.get(item.id);
+    if (!state || state.kind !== "failed") return null;
+    return Math.max(1, Math.ceil((state.retryAfter - Date.now()) / 60_000));
   }
 
   private readingLikes(): boolean {

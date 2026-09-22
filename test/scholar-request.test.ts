@@ -34,6 +34,22 @@ interface Captured {
   options: Record<string, unknown>;
 }
 
+/**
+ * No waiting at all.
+ *
+ * These tests send several Scholar reads back to back, which is the one thing
+ * the production rhythm exists to prevent; the pacing itself has its own tests.
+ */
+const NO_PACING = {
+  intervalMinMs: 0,
+  intervalMaxMs: 0,
+  dwellMs: 0,
+  batchMin: 1,
+  batchMax: 1,
+  pauseMinMs: 0,
+  pauseMaxMs: 0,
+};
+
 function stubTransport(reply: { status: number; response?: string }): {
   captured: Captured[];
   transport: HttpTransport;
@@ -82,7 +98,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -117,7 +133,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -173,7 +189,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -213,7 +229,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -254,7 +270,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -279,7 +295,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 
@@ -341,7 +357,7 @@ describe("the Google Scholar request", function () {
     const requester = new PacedRequester({
       timeoutMs: 5_000,
       intervalMs: 0,
-      scholarIntervalMs: 0,
+      scholarPacing: NO_PACING,
       transport,
     });
 

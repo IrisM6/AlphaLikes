@@ -791,38 +791,141 @@
       />
     </hbox>
 
+    <separator class="thin" />
+    <label
+      ><html:h2 data-l10n-id="pref-scholar-pacing"
+        >Google Scholar 读取节奏</html:h2
+      ></label
+    >
+    <description data-l10n-id="pref-scholar-pacing-desc" style="opacity: 0.8"
+      >读取会按下面的范围随机安排，避免固定节奏；改完对下一次搜索就生效。</description
+    >
+
     <hbox align="center">
-      <button
-        id="alphalikes-diagnose"
-        data-l10n-id="pref-diagnose"
-        label="诊断读取"
+      <label data-l10n-id="pref-scholar-interval-min"
+        >两次搜索最短间隔（秒）</label
+      >
+      <html:input
+        type="number"
+        preference="scholarIntervalMinSeconds"
+        min="1"
+        max="600"
+        step="1"
+        style="width: 6em"
       />
+      <label
+        data-l10n-id="pref-scholar-interval-min-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 16</label
+      >
     </hbox>
-    <description data-l10n-id="pref-diagnose-note" style="opacity: 0.8"
-      >读取不出来时点这里：它会用当前设置真的请求一次 alphaXiv 与 Google
-      Scholar，并把请求地址、状态码、页面开头、代理设置复制到剪贴板。</description
-    >
-    <description
-      id="alphalikes-diagnose-running"
-      data-l10n-id="pref-diagnose-running"
-      hidden="true"
-      style="opacity: 0.8"
-      >正在请求…</description
-    >
-    <description
-      id="alphalikes-diagnose-copied"
-      data-l10n-id="pref-diagnose-copied"
-      hidden="true"
-      style="opacity: 0.8"
-      >诊断信息已复制到剪贴板，直接粘贴发给我即可。</description
-    >
-    <description
-      id="alphalikes-diagnose-failed"
-      data-l10n-id="pref-diagnose-failed"
-      hidden="true"
-      style="opacity: 0.8"
-      >诊断没能完成；请到「帮助 → 调试输出日志」里找 [AlphaLikes]
-      开头的行。</description
-    >
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-interval-max"
+        >两次搜索最长间隔（秒）</label
+      >
+      <html:input
+        type="number"
+        preference="scholarIntervalMaxSeconds"
+        min="1"
+        max="600"
+        step="1"
+        style="width: 6em"
+      />
+      <label
+        data-l10n-id="pref-scholar-interval-max-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 30</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-dwell">打开页面后停留（秒）</label>
+      <html:input
+        type="number"
+        preference="scholarDwellSeconds"
+        min="0"
+        max="60"
+        step="1"
+        style="width: 6em"
+      />
+      <label
+        data-l10n-id="pref-scholar-dwell-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 3</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-batch-min">每批搜索次数下限</label>
+      <html:input
+        type="number"
+        preference="scholarBatchMin"
+        min="1"
+        max="100"
+        step="1"
+        style="width: 5em"
+      />
+      <label
+        data-l10n-id="pref-scholar-batch-min-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 2</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-batch-max">每批搜索次数上限</label>
+      <html:input
+        type="number"
+        preference="scholarBatchMax"
+        min="1"
+        max="100"
+        step="1"
+        style="width: 5em"
+      />
+      <label
+        data-l10n-id="pref-scholar-batch-max-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 5</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-pause-min"
+        >每批后暂停下限（分钟）</label
+      >
+      <html:input
+        type="number"
+        preference="scholarPauseMinMinutes"
+        min="0"
+        max="600"
+        step="1"
+        style="width: 5em"
+      />
+      <label
+        data-l10n-id="pref-scholar-pause-min-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 10</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-pause-max"
+        >每批后暂停上限（分钟）</label
+      >
+      <html:input
+        type="number"
+        preference="scholarPauseMaxMinutes"
+        min="0"
+        max="600"
+        step="1"
+        style="width: 5em"
+      />
+      <label
+        data-l10n-id="pref-scholar-pause-max-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 20</label
+      >
+    </hbox>
   </groupbox>
 </vbox>

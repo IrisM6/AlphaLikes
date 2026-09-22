@@ -10,6 +10,7 @@
  */
 
 import { assert } from "chai";
+import { getScholarPacing } from "../src/modules/prefs";
 import { config } from "../package.json";
 
 const ADDON_ID = config.addonID;
@@ -163,19 +164,6 @@ function click(
   el.dispatchEvent(new win.MouseEvent("click", event));
 }
 
-/** Whichever diagnostic status line is currently visible, if any. */
-function diagnoseStatus(doc: Document): string {
-  for (const id of [
-    "alphalikes-diagnose-running",
-    "alphalikes-diagnose-copied",
-    "alphalikes-diagnose-failed",
-  ]) {
-    const element = doc.getElementById(id);
-    if (element && !element.hasAttribute("hidden")) return id;
-  }
-  return "";
-}
-
 /** Waits for `check` to hold, up to a few seconds. */
 async function waitFor(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 5_000;
@@ -209,6 +197,7 @@ describe("AlphaLikes settings pane", function () {
         "citationStyle",
         "citationColorsCustomised",
         "citationColorMode",
+        "scholarIntervalMinSeconds",
       ]) {
         saved.set(name, pref(name));
       }
@@ -383,45 +372,83 @@ describe("AlphaLikes settings pane", function () {
     );
   });
 
-  it("offers a diagnostic button that reports where the report went", async function () {
-    // The user cannot find Zotero's debug log, so the failure has to be
-    // readable from the pane itself: pressing this makes the plugin run one
-    // real request per read and copies the report, and the pane says which of
-    // the three things happened.
-    const button = doc.getElementById("alphalikes-diagnose");
-    assert.isOk(button, "the pane offers no way to find out why a read failed");
-    assert.equal(diagnoseStatus(doc), "", "no status line before the click");
+  it("offers every reading-rhythm range, with the number it suggests", async function () {
+    // The pacing is a set of ranges, and a range field without a suggested
+    // value is a question the user has to answer from nothing. The pane has to
+    // show the number next to the field - and it has to be in the unit the
+    // label says, because a range stored in milliseconds under a label that
+    // says seconds is wrong the first time someone types 16.
+    const fields: Array<[string, string, string]> = [
+      ["scholarIntervalMinSeconds", "pref-scholar-interval-min-hint", "16"],
+      ["scholarIntervalMaxSeconds", "pref-scholar-interval-max-hint", "30"],
+      ["scholarDwellSeconds", "pref-scholar-dwell-hint", "3"],
+      ["scholarBatchMin", "pref-scholar-batch-min-hint", "2"],
+      ["scholarBatchMax", "pref-scholar-batch-max-hint", "5"],
+      ["scholarPauseMinMinutes", "pref-scholar-pause-min-hint", "10"],
+      ["scholarPauseMaxMinutes", "pref-scholar-pause-max-hint", "20"],
+    ];
 
-    const instance = Zotero[config.addonInstance] as {
-      api: { diagnose(): Promise<string> };
-    };
-    const original = instance.api.diagnose;
-    const calls: string[] = [];
+    for (const [preference, hintId, suggested] of fields) {
+      // The build prefixes the preference name with its own branch, so the
+      // field is found by what its name ends with.
+      const input = doc.querySelector(`input[preference$="${preference}"]`);
+      assert.isOk(input, `the pane offers no field for ${preference}`);
+      if (!input) continue;
 
-    try {
-      instance.api.diagnose = async () => {
-        calls.push("diagnose");
-        return "AlphaLikes read diagnostic - plugin test";
-      };
-      click(win, doc, button as Element);
-
-      await waitFor(() => calls.length > 0);
-      assert.lengthOf(calls, 1, "the button has to run the diagnostic");
-
-      await waitFor(() => diagnoseStatus(doc) !== "");
-      const status = diagnoseStatus(doc);
-      assert.oneOf(status, [
-        "alphalikes-diagnose-copied",
-        "alphalikes-diagnose-failed",
-      ]);
-      assert.notEqual(
-        status,
-        "alphalikes-diagnose-running",
-        "the running line has to be replaced by the outcome",
+      const hint = input.parentNode?.querySelector(
+        `[data-l10n-id$="${hintId}"]`,
       );
-    } finally {
-      instance.api.diagnose = original;
+      assert.isOk(hint, `no suggested value next to ${preference}`);
+      assert.include(
+        (hint as Element | null)?.textContent ?? "",
+        suggested,
+        `the hint next to ${preference} has to name the value it suggests`,
+      );
     }
+
+    assert.isAtLeast(
+      doc.querySelectorAll('input[preference*="alphalikes.scholar"]').length,
+      7,
+      "the rhythm is seven ranges the user can adjust",
+    );
+  });
+
+  it("writes the pace the user typed, in the unit the label promises", async function () {
+    const input = doc.querySelector(
+      'input[preference$="scholarIntervalMinSeconds"]',
+    ) as HTMLInputElement | null;
+    assert.isOk(input, "the shortest gap is adjustable");
+
+    (input as HTMLInputElement).value = "20";
+    (input as HTMLInputElement).dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
+    (input as HTMLInputElement).dispatchEvent(
+      new Event("change", { bubbles: true }),
+    );
+
+    await waitFor(() => pref("scholarIntervalMinSeconds") === 20);
+    assert.equal(pref("scholarIntervalMinSeconds"), 20);
+    assert.equal(
+      getScholarPacing().intervalMinMs,
+      20_000,
+      "20 in the pane is twenty seconds, not twenty milliseconds",
+    );
+  });
+
+  it("explains a failed read instead of offering a diagnostic read", function () {
+    // The user cannot act on a report, and running one request per source is
+    // exactly the traffic that gets a Google read blocked. What the pane shows
+    // instead is the rhythm the reads run at; the reason a read failed is in
+    // the cell's own tooltip, next to the number it belongs to.
+    assert.isNull(
+      doc.querySelector('[id^="alphalikes-diagnose"]'),
+      "the pane still carries a diagnostic control",
+    );
+    assert.isOk(
+      doc.querySelector('[data-l10n-id$="pref-scholar-pacing"]'),
+      "the pane has to explain the reading rhythm instead",
+    );
   });
 
   it("shows the style's colours when nothing has been edited", function () {

@@ -2,6 +2,7 @@ import { assert } from "chai";
 import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
 import { renderCitationCell, renderLikeCell } from "../src/modules/column";
 import { getLikeStyle } from "../src/modules/prefs";
+import { getService } from "../src/modules/column";
 import {
   CELL_LOADING,
   CELL_UNAVAILABLE,
@@ -414,6 +415,12 @@ describe("AlphaLikes column rendering", function () {
         testDocument(),
       ) as HTMLElement;
 
+      const timed = renderLikeCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["http-403", "retry:9"]),
+        COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
       assert.isTrue(
         refused.title.length > plain.title.length,
         "the tooltip has to add the reason, or a refusal looks like a paper " +
@@ -422,6 +429,12 @@ describe("AlphaLikes column rendering", function () {
       assert.include(refused.title, "403");
       assert.isNotEmpty(plain.title, "an empty cell still explains itself");
       assert.notInclude(plain.title, "403");
+      assert.include(
+        timed.title,
+        "9",
+        "the like column promises the retry too, not only the citation one",
+      );
+      assert.match(timed.title, /重试|retry/i);
     });
 
     it("dot keeps a short number as a circle", function () {
@@ -512,6 +525,76 @@ describe("AlphaLikes column rendering", function () {
 
       assert.equal((cell.firstElementChild as HTMLElement).textContent, "");
       assert.include(cell.title, "429");
+    });
+
+    it("promises the retry the read booked, not only the failure", function () {
+      const booked = renderCitationCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["http-429", "retry:25"]),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.include(booked.title, "429", "the reason is still named");
+      assert.include(
+        booked.title,
+        "25",
+        "the minutes until the automatic retry have to reach the tooltip",
+      );
+      assert.match(
+        booked.title,
+        /重试|retry/i,
+        "and the tooltip has to say that the retry happens by itself",
+      );
+    });
+
+    it("still names a wait when a failure arrived without one", function () {
+      const bare = renderCitationCell(
+        withValueDecorations(CELL_UNAVAILABLE, ["http-5xx"]),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      // A failure with no booked time is still a failure the plugin retries, so
+      // the sentence keeps its shape rather than falling back to "failed".
+      assert.match(bare.title, /重试|retry/i);
+      assert.include(bare.title, "15");
+    });
+
+    it("explains a pending row that is waiting out a burst pause", function () {
+      const service = getService() as unknown as {
+        scholarPauseStatus: () => { paused: boolean; minutes: number };
+      };
+      const original = service.scholarPauseStatus;
+
+      try {
+        service.scholarPauseStatus = () => ({ paused: true, minutes: 7 });
+        const cell = renderCitationCell(
+          CELL_LOADING,
+          CITATION_COLUMN,
+          testDocument(),
+        ) as HTMLElement;
+
+        assert.include(
+          cell.title,
+          "7",
+          "the minutes left are what the user can act on",
+        );
+        assert.match(
+          cell.title,
+          /暂停|pause|继续|resume/i,
+          "a row that is waiting its turn is not a row that is broken",
+        );
+      } finally {
+        service.scholarPauseStatus = original;
+      }
+
+      const plain = renderCitationCell(
+        CELL_LOADING,
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      assert.isNotEmpty(plain.title);
+      assert.notMatch(plain.title, /暂停|pause|resume/i);
     });
 
     it("keeps the plain explanation when nothing is blocked", function () {

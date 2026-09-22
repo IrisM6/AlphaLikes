@@ -25,6 +25,22 @@ import { createPageLoader, hiddenBrowserClass } from "../src/modules/page";
 const SEARCH_URL =
   "https://scholar.google.com/scholar?hl=en&as_sdt=0,5&q=probe";
 
+/**
+ * No waiting at all.
+ *
+ * These tests send several Scholar reads back to back, which is the one thing
+ * the production rhythm exists to prevent; the pacing itself has its own tests.
+ */
+const NO_PACING = {
+  intervalMinMs: 0,
+  intervalMaxMs: 0,
+  dwellMs: 0,
+  batchMin: 1,
+  batchMax: 1,
+  pauseMinMs: 0,
+  pauseMaxMs: 0,
+};
+
 interface Captured {
   method: string;
   url: string;
@@ -87,9 +103,8 @@ function makeRequester(options: {
   return new PacedRequester({
     timeoutMs: 5_000,
     intervalMs: 0,
-    // Two Scholar reads inside one session are the point of these tests, and
-    // the production gap between them is fifteen seconds.
-    scholarIntervalMs: 0,
+    // Two Scholar reads inside one session are the point of these tests.
+    scholarPacing: NO_PACING,
     transport: options.transport,
     pageLoader: options.loader,
   });

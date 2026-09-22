@@ -88,17 +88,36 @@ describe("AlphaLikes Scholar guardrails", function () {
   function useTransport(): void {
     captured = [];
     service.setReadTransport(refusingTransport(captured));
-    // The production gap between two Scholar reads is fifteen seconds; these
-    // tests send several in a row.
+    // These tests send several Scholar reads in a row; production spaces them
+    // out (and pauses between bursts) on purpose.
     const options = (
       service as unknown as {
         requester: {
-          options: { intervalMs: number; scholarIntervalMs?: number };
+          options: {
+            intervalMs: number;
+            scholarPacing?: {
+              intervalMinMs: number;
+              intervalMaxMs: number;
+              dwellMs: number;
+              batchMin: number;
+              batchMax: number;
+              pauseMinMs: number;
+              pauseMaxMs: number;
+            };
+          };
         };
       }
     ).requester.options;
     options.intervalMs = 0;
-    options.scholarIntervalMs = 0;
+    options.scholarPacing = {
+      intervalMinMs: 0,
+      intervalMaxMs: 0,
+      dwellMs: 0,
+      batchMin: 1,
+      batchMax: 1,
+      pauseMinMs: 0,
+      pauseMaxMs: 0,
+    };
   }
 
   describe("counting a block", function () {

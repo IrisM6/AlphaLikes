@@ -292,6 +292,11 @@ describe("AlphaLikes refresh", function () {
       );
       assert.equal(summary.updated, 0);
       assert.equal(summary.failed, 1);
+      assert.isAtLeast(
+        summary.retryMinutes ?? 0,
+        1,
+        "the summary has to carry the wait, or 'N failed' is all the user sees",
+      );
     });
 
     it("leaves citations alone", async function () {

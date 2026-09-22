@@ -169,8 +169,56 @@ async function withTimeout<T>(
   }
 }
 
+/** What the loader does with a page it has loaded. */
+export interface PageLoaderOptions {
+  /**
+   * How long to leave the page alone, scrolling it, before reading it.
+   *
+   * A page that is opened and read in the same instant is not how a person
+   * reads a search result: they arrive, look down the page, and only then take
+   * the number. The wait is also what gives the site's own scripts time to
+   * finish filling the result list in. A function is re-read per load.
+   */
+  dwellMs?: number | (() => number);
+}
+
+/**
+ * Scrolls the loaded page and waits, the way someone looking for a number in a
+ * result list would.
+ *
+ * The scrolling is best-effort: which object holds the browsing context is a
+ * Zotero-internal detail, and a read that cannot reach it should wait and
+ * continue rather than fail.
+ */
+export async function scrollAndSettle(
+  browser: HiddenBrowserInstance,
+  dwellMs: number,
+): Promise<void> {
+  if (dwellMs <= 0) return;
+
+  try {
+    const holder = browser as unknown as {
+      browser?: {
+        contentWindow?: { scrollBy?: (x: number, y: number) => void };
+      };
+      contentWindow?: { scrollBy?: (x: number, y: number) => void };
+    };
+    const win = holder.browser?.contentWindow ?? holder.contentWindow;
+    if (win?.scrollBy) {
+      const step = Math.max(200, Math.round(dwellMs / 3));
+      win.scrollBy(0, step);
+      await Zotero.Promise.delay(Math.round(dwellMs / 3));
+      win.scrollBy(0, step);
+    }
+  } catch {
+    // No window to scroll: the wait below is still worth having.
+  }
+
+  await Zotero.Promise.delay(Math.max(0, dwellMs - Math.round(dwellMs / 3)));
+}
+
 /** The production loader: one hidden browser per page, destroyed afterwards. */
-export function createPageLoader(): PageLoader {
+export function createPageLoader(options: PageLoaderOptions = {}): PageLoader {
   return async (url, timeoutMs) => {
     const { constructor, error } = hiddenBrowserClass();
     if (!constructor) {
@@ -197,6 +245,14 @@ export function createPageLoader(): PageLoader {
       // moment before the page-data actor reports the response it got, so the
       // status is asked for again. It is worth having - the report prints it -
       // but it is not what the read depends on.
+      const dwellMs = Math.max(
+        0,
+        typeof options.dwellMs === "function"
+          ? options.dwellMs()
+          : (options.dwellMs ?? 0),
+      );
+      await scrollAndSettle(browser, dwellMs);
+
       let status: number | null = null;
       let html = "";
       for (let attempt = 0; attempt < 4; attempt += 1) {

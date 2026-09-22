@@ -20,10 +20,10 @@ import { CITATION_REJECTED_STATUSES } from "./citations";
 import {
   ARXIV_API_INTERVAL_MS,
   GOOGLE_SCHOLAR_HOME,
-  GOOGLE_SCHOLAR_INTERVAL_MS,
   REQUEST_TIMEOUT_MS,
 } from "./constants";
 import { createPageLoader, type PageLoader, type PageLoadResult } from "./page";
+import type { ScholarPacing } from "./prefs";
 
 /**
  * How a request is actually sent.
@@ -50,14 +50,19 @@ export interface RequesterOptions {
   timeoutMs: number;
   intervalMs: number;
   /**
-   * Minimum gap between two Google Scholar reads, on top of `intervalMs`.
+   * The Google Scholar rhythm: interval range, page dwell, burst size, pause.
    *
-   * The site is the one place where the gap is part of the answer rather than
-   * politeness: a rhythm no person has is what "unusual traffic" is made of.
-   * Tests that need two Scholar reads inside one session set this to zero and
-   * drive the pacing logic (and the queue they share) without the wait.
+   * The site is the one place where the rhythm is part of the answer rather
+   * than politeness: a cadence no person has is what "unusual traffic" is made
+   * of. Each read draws a fresh interval from the range, the page is left to
+   * settle for a moment after it loads, and after a burst of a few searches the
+   * reader stands down for several minutes.
+   *
+   * A function is re-read per search, so the settings take effect on the next
+   * read rather than the next session. A test can pass a fast one and drive the
+   * logic without the wait.
    */
-  scholarIntervalMs?: number;
+  scholarPacing?: ScholarPacing | (() => ScholarPacing);
   /** Defaults to `Zotero.HTTP.request`, bound to its owner. */
   transport?: HttpTransport;
   /** Defaults to Zotero's hidden browser; injected in tests. */
@@ -113,6 +118,30 @@ export interface ScholarPage {
 }
 
 /** How much of a response body the report quotes. */
+/**
+ * The Scholar rhythm used when no caller supplied one.
+ *
+ * Production always passes the user's settings; this keeps the reader usable on
+ * its own (a test, the fingerprint probe) with the values the pane recommends.
+ */
+const DEFAULT_SCHOLAR_PACING: ScholarPacing = {
+  intervalMinMs: 16_000,
+  intervalMaxMs: 30_000,
+  dwellMs: 3_000,
+  batchMin: 2,
+  batchMax: 5,
+  pauseMinMs: 10 * 60_000,
+  pauseMaxMs: 20 * 60_000,
+};
+
+/** A number inside a range, endpoints included. */
+function randomBetween(min: number, max: number): number {
+  const low = Math.min(min, max);
+  const high = Math.max(min, max);
+  if (high <= low) return low;
+  return low + Math.round(Math.random() * (high - low));
+}
+
 const BODY_HEAD_LIMIT = 160;
 
 /** The opening characters of a response body, whitespace collapsed. */
@@ -521,6 +550,18 @@ export class PacedRequester {
   /** One chain per host: reads of different sites never wait for each other. */
   private tails = new Map<string, Promise<unknown>>();
   private pacing = new Map<string, PacingState>();
+  /**
+   * How many Scholar searches this burst holds, how many have run, and when the
+   * pause after it ends.
+   *
+   * Kept per reader, not per host: Google Scholar is the only host read this
+   * way, and the burst is a property of the reading session.
+   */
+  private scholarBurst = {
+    count: 0,
+    limit: 0,
+    pausedUntil: 0,
+  };
   private warmed = false;
   private warmup: WarmupResult | null = null;
   private disposed = false;
@@ -717,13 +758,76 @@ export class PacedRequester {
     if (/(^|\.)arxiv\.org$/i.test(host)) {
       return Math.max(base, ARXIV_API_INTERVAL_MS);
     }
-    if (/(^|\.)scholar\.google\.com$/i.test(host)) {
-      return Math.max(
-        base,
-        this.options.scholarIntervalMs ?? GOOGLE_SCHOLAR_INTERVAL_MS,
-      );
+    if (this.isScholarHost(host)) {
+      // A new point in the range for every read: a fixed delay is a rhythm,
+      // and a rhythm is what a site looking for a robot looks for.
+      const { intervalMinMs, intervalMaxMs } = this.scholarPacing();
+      return Math.max(base, randomBetween(intervalMinMs, intervalMaxMs));
     }
     return base;
+  }
+
+  private isScholarHost(host: string): boolean {
+    return /(^|\.)scholar\.google\.com$/i.test(host);
+  }
+
+  private scholarPacing(): ScholarPacing {
+    const option = this.options.scholarPacing;
+    // A function is re-read per call, so editing the range in the settings pane
+    // changes the rhythm of the very next search, not of the next session.
+    if (typeof option === "function") return option();
+    return option ?? DEFAULT_SCHOLAR_PACING;
+  }
+
+  /** How long a loaded page is left to settle before it is read. */
+  private dwellMs(): number {
+    return Math.max(0, this.scholarPacing().dwellMs);
+  }
+
+  /**
+   * How long the next Scholar read has to wait, and whether that wait is a
+   * burst pause.
+   *
+   * After a few searches the reader stands down for several minutes; that
+   * shape - a few pages, then a while away - is what a person's reading looks
+   * like, and a script's does not.
+   */
+  scholarWait(): { waitMs: number; paused: boolean; pauseMinutes: number } {
+    const state = this.scholarBurst;
+    const now = Date.now();
+    if (state.pausedUntil > now) {
+      const waitMs = state.pausedUntil - now;
+      return {
+        waitMs,
+        paused: true,
+        pauseMinutes: Math.max(1, Math.ceil(waitMs / 60_000)),
+      };
+    }
+    return { waitMs: 0, paused: false, pauseMinutes: 0 };
+  }
+
+  /**
+   * Counts one finished Scholar search and starts a pause when one is due.
+   *
+   * Searches, not requests: the session's opening request is a visit to the
+   * site's front page rather than a search, and it does not eat into a burst.
+   */
+  private noteScholarSearch(): void {
+    const state = this.scholarBurst;
+    if (state.limit <= 0) state.limit = this.nextBurstSize();
+    state.count += 1;
+    if (state.count < state.limit) return;
+
+    const { pauseMinMs, pauseMaxMs } = this.scholarPacing();
+    state.count = 0;
+    state.limit = this.nextBurstSize();
+    state.pausedUntil = Date.now() + randomBetween(pauseMinMs, pauseMaxMs);
+  }
+
+  /** How many searches this burst holds, drawn from the configured range. */
+  private nextBurstSize(): number {
+    const { batchMin, batchMax } = this.scholarPacing();
+    return Math.max(1, Math.round(randomBetween(batchMin, batchMax)));
   }
 
   /**
@@ -736,6 +840,14 @@ export class PacedRequester {
       if (this.disposed)
         throw new Error("AlphaLikes request queue has stopped");
 
+      const scholar = this.isScholarHost(host);
+      if (scholar) {
+        // The burst pause comes first: while it runs, no interval in the world
+        // would make the next search due.
+        const pause = this.scholarWait();
+        if (pause.waitMs > 0) await Zotero.Promise.delay(pause.waitMs);
+      }
+
       const state = this.pacing.get(host) ?? { lastStartedAt: 0 };
       const wait = Math.max(
         0,
@@ -746,6 +858,7 @@ export class PacedRequester {
       state.lastStartedAt = Date.now();
       this.pacing.set(host, state);
 
+      if (scholar) this.noteScholarSearch();
       return task();
     });
 
@@ -910,7 +1023,9 @@ export class PacedRequester {
   /** The loader in use: the injected one, else Zotero's hidden browser. */
   private pageLoader(): PageLoader {
     if (this.options.pageLoader) return this.options.pageLoader;
-    if (!this.createdLoader) this.createdLoader = createPageLoader();
+    if (!this.createdLoader) {
+      this.createdLoader = createPageLoader({ dwellMs: () => this.dwellMs() });
+    }
     return this.createdLoader;
   }
 

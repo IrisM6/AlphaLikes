@@ -19,8 +19,8 @@ cell-citations-loading = 正在读取引用数…
 cell-citations-loading-from = 正在读取引用数（{sources}）…
 cell-unavailable = 未找到点赞数
 cell-citations-unavailable = 未找到引用数
-cell-unavailable-reason = 读取失败：{reason}
-cell-citations-unavailable-reason = 读取失败：{reason}
+cell-unavailable-reason = 读取失败：{reason}·{retry}
+cell-citations-unavailable-reason = 读取失败：{reason}·{retry}
 cell-filtered = 已被点赞数范围筛选隐藏
 cell-cleared = 记录已清除，右键刷新可重新读取
 cell-trend = 较上次快照 {delta}（当前 {likes}）
@@ -43,6 +43,8 @@ failure-network = 请求未到达站点（网络、DNS、代理或超时）
 failure-empty = 对方返回空响应
 failure-no-count = 页面里没有那个数字
 failure-not-selected = 未选中时不查询 Google Scholar；选中它，或用右键刷新
+cell-retry-in = 约 {minutes} 分钟后自动重试
+cell-burst-pause = 这一批已读满，约 {minutes} 分钟后继续读取
 
 # --- 刷新结果 ---------------------------------------------------------------
 
@@ -51,6 +53,7 @@ notify-refresh-citations-title = AlphaLikes · 引用数
 refresh-likes-updated = 已重新读取 {updated} 条点赞数
 refresh-citations-updated = 已重新读取 {updated} 条引用数
 refresh-failed = {failed} 条未能读取（保留原值）
+refresh-failed-retry = {failed} 条未能读取（保留原值，约 {minutes} 分钟后自动重试）
 refresh-skipped = {skipped} 条缺少 DOI / arXiv ID
 refresh-nothing = 没有可刷新的条目。
 refresh-joining = ；
@@ -165,14 +168,25 @@ pref-citations-source-note = 数字只来自勾选的来源；多选时显示最
 pref-citations-s2-note = Semantic Scholar 未提供 key 时会限流。
 pref-citations-sources = 引用数来源（可多选；多选时显示最大的数字）
 
-pref-diagnose = 诊断读取
-pref-diagnose-note = 读取不出来时点这里：会真实请求一次，并把结果复制到剪贴板。
-pref-diagnose-running = 正在请求…
-pref-diagnose-copied = 诊断信息已复制到剪贴板。
-pref-diagnose-failed = 诊断未完成；请到「帮助 → 调试输出日志」查看 [AlphaLikes] 开头的行。
 
 pref-refresh-title = 刷新与网络
 pref-refresh-desc = 两个刷新动作互不影响，只作用于选中的条目。
+pref-scholar-pacing = Google Scholar 读取节奏
+pref-scholar-pacing-desc = 读取会按下面的范围随机安排，避免固定节奏；改完立即生效。
+pref-scholar-interval-min = 两次搜索最短间隔（秒）
+pref-scholar-interval-min-hint = 建议 16
+pref-scholar-interval-max = 两次搜索最长间隔（秒）
+pref-scholar-interval-max-hint = 建议 30
+pref-scholar-dwell = 打开页面后停留（秒）
+pref-scholar-dwell-hint = 建议 3（会顺便向下滚动一下再读取）
+pref-scholar-batch-min = 每批最多搜索次数（下限）
+pref-scholar-batch-min-hint = 建议 2
+pref-scholar-batch-max = 每批最多搜索次数（上限）
+pref-scholar-batch-max-hint = 建议 5
+pref-scholar-pause-min = 每批后暂停（分钟，下限）
+pref-scholar-pause-min-hint = 建议 10
+pref-scholar-pause-max = 每批后暂停（分钟，上限）
+pref-scholar-pause-max-hint = 建议 20
 pref-refresh-ttl = 缓存多少天后重新读取点赞数（0 = 不自动）
 pref-refresh-interval = 同一域名请求的最小间隔（毫秒）
 pref-refresh-timeout = 请求超时（毫秒）

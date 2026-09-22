@@ -28,8 +28,8 @@ export const MESSAGES = {
   "cell-trend": "{delta} since the previous snapshot (now {likes})",
   "cell-high-impact": "Top 10% of its field and year",
   "cell-citations-unavailable": "No citation count found",
-  "cell-unavailable-reason": "Read failed: {reason}",
-  "cell-citations-unavailable-reason": "Read failed: {reason}",
+  "cell-unavailable-reason": "Read failed: {reason} · {retry}",
+  "cell-citations-unavailable-reason": "Read failed: {reason} · {retry}",
   "failure-http-403": "the site refused the request (HTTP 403)",
   "failure-http-429": "the request was rate limited (HTTP 429)",
   "failure-http-4xx": "the request was refused (HTTP 4xx)",
@@ -40,6 +40,9 @@ export const MESSAGES = {
   "failure-no-count": "the page arrived without that number",
   "failure-not-selected":
     "Google Scholar is not read for unselected items; select it or refresh from the context menu",
+  "cell-retry-in": "retrying automatically in about {minutes} minutes",
+  "cell-burst-pause":
+    "this burst is finished; reading resumes in about {minutes} minutes",
   "cell-cleared":
     "Records cleared; refresh from the context menu to read them again",
   "cell-scholar-rate-limited":
@@ -61,6 +64,8 @@ export const MESSAGES = {
   "refresh-likes-updated": "Re-read {updated} like count(s)",
   "refresh-citations-updated": "Re-read {updated} citation count(s)",
   "refresh-failed": "{failed} could not be read (the old value is kept)",
+  "refresh-failed-retry":
+    "{failed} could not be read (the old value is kept; retrying automatically in about {minutes} minutes)",
   "refresh-skipped": "{skipped} have no DOI / arXiv ID",
   "refresh-nothing": "Nothing to refresh.",
   "refresh-joining": "; ",

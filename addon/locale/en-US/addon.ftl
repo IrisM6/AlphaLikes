@@ -20,8 +20,8 @@ cell-citations-loading = Reading the citation count…
 cell-citations-loading-from = Reading the citation count ({sources})…
 cell-unavailable = No like count found
 cell-citations-unavailable = No citation count found
-cell-unavailable-reason = Read failed: {reason}
-cell-citations-unavailable-reason = Read failed: {reason}
+cell-unavailable-reason = Read failed: {reason} · {retry}
+cell-citations-unavailable-reason = Read failed: {reason} · {retry}
 cell-filtered = Hidden by the like-count filter
 cell-cleared = Records cleared; refresh from the context menu to read them again
 cell-trend = {delta} since the previous snapshot (now {likes})
@@ -44,6 +44,8 @@ failure-network = the request never reached the site (network, DNS, proxy or tim
 failure-empty = the site answered with an empty response
 failure-no-count = the page arrived without that number
 failure-not-selected = Google Scholar is not read for unselected items; select it or refresh from the context menu
+cell-retry-in = retrying automatically in about {minutes} minutes
+cell-burst-pause = this burst is finished; reading resumes in about {minutes} minutes
 
 # --- Refresh summaries ------------------------------------------------------
 
@@ -52,6 +54,7 @@ notify-refresh-citations-title = AlphaLikes · citations
 refresh-likes-updated = Re-read {updated} like count(s)
 refresh-citations-updated = Re-read {updated} citation count(s)
 refresh-failed = {failed} could not be read (the old value is kept)
+refresh-failed-retry = {failed} could not be read (the old value is kept; retrying automatically in about {minutes} minutes)
 refresh-skipped = {skipped} have no DOI / arXiv ID
 refresh-nothing = Nothing to refresh.
 refresh-joining = "; "
@@ -166,14 +169,25 @@ pref-citations-source-note = Numbers come only from the ticked sources; with sev
 pref-citations-s2-note = Semantic Scholar rate limits without a key.
 pref-citations-sources = Citation sources (several may be ticked; the largest number is shown)
 
-pref-diagnose = Diagnose a read
-pref-diagnose-note = When a read does not come through, click here: it makes one real request and copies the result to the clipboard.
-pref-diagnose-running = Requesting…
-pref-diagnose-copied = The diagnosis is on the clipboard.
-pref-diagnose-failed = The diagnosis did not finish; look for [AlphaLikes] lines in Help → Debug Output Logging.
 
 pref-refresh-title = Refresh and network
 pref-refresh-desc = The two refresh actions are independent and act only on the selected items.
+pref-scholar-pacing = Google Scholar reading rhythm
+pref-scholar-pacing-desc = Reads are spread across the ranges below instead of repeating one interval; changes apply to the next search.
+pref-scholar-interval-min = Shortest gap between two searches (s)
+pref-scholar-interval-min-hint = suggested 16
+pref-scholar-interval-max = Longest gap between two searches (s)
+pref-scholar-interval-max-hint = suggested 30
+pref-scholar-dwell = Let the page settle for (s)
+pref-scholar-dwell-hint = suggested 3 (the page is scrolled a little first)
+pref-scholar-batch-min = Searches per burst (lower bound)
+pref-scholar-batch-min-hint = suggested 2
+pref-scholar-batch-max = Searches per burst (upper bound)
+pref-scholar-batch-max-hint = suggested 5
+pref-scholar-pause-min = Pause after a burst (minutes, lower bound)
+pref-scholar-pause-min-hint = suggested 10
+pref-scholar-pause-max = Pause after a burst (minutes, upper bound)
+pref-scholar-pause-max-hint = suggested 20
 pref-refresh-ttl = Re-read like counts after (days, 0 = never)
 pref-refresh-interval = Minimum delay between requests to the same host (ms)
 pref-refresh-timeout = Request timeout (ms)

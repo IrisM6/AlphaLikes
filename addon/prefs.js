@@ -26,6 +26,26 @@ pref("requestIntervalMs", 1500);
 pref("requestTimeoutMs", 15000);
 pref("cacheTtlDays", 0);
 
+// --- Google Scholar pacing -------------------------------------------------
+//
+// A fixed rhythm is itself a signature, so the reads are spread out: two
+// Scholar searches are 16-30 s apart, the page is scrolled and left to settle
+// for ~3 s before it is read, and after every 2-5 searches the plugin waits
+// 10-20 minutes before the next one. All four ranges are adjustable, and the
+// settings pane shows the suggested values next to each field.
+//
+// The intervals and the dwell are seconds, the pause is minutes: a range stored
+// in the unit the pane displays, so `16` means sixteen seconds and not sixteen
+// milliseconds.
+
+pref("scholarIntervalMinSeconds", 16);
+pref("scholarIntervalMaxSeconds", 30);
+pref("scholarDwellSeconds", 3);
+pref("scholarBatchMin", 2);
+pref("scholarBatchMax", 5);
+pref("scholarPauseMinMinutes", 10);
+pref("scholarPauseMaxMinutes", 20);
+
 // --- Appearance -----------------------------------------------------------
 //
 // plain | badge | ring | bookmark | morandi | academic | fresh | playful |

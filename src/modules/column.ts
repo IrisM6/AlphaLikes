@@ -470,6 +470,14 @@ export function renderCitationCell(
     // Its own message, not the like column's: "reading from alphaXiv" over a
     // citation cell names the wrong site entirely, and the user who reported
     // it read that as the like counts being refreshed too.
+    const pause = getService().scholarPauseStatus();
+    if (pause.paused) {
+      // A row that waits minutes for its turn is not a broken row, and the
+      // number of minutes left is the only thing the user can act on.
+      cell.title = t("cell-burst-pause", { minutes: String(pause.minutes) });
+      return cell;
+    }
+
     const sources = getCitationSourcePreferences()
       .map((key) => CITATION_SOURCE_LABELS[key] ?? key)
       .join("、");
@@ -517,15 +525,36 @@ export function renderCitationCell(
  * value precisely so it can be turned into a sentence here: a refusal, a rate
  * limit, a dead network and a changed page all look identical otherwise.
  */
+/**
+ * How a failed cell carries the time until its next attempt.
+ *
+ * The cell value is the only channel the renderer has, so the number travels
+ * with it as a decoration; the tooltip turns it into a sentence.
+ */
+const RETRY_MARKER = "retry:";
+
+/** Used when a failure arrived without a time of its own. */
+const CATCH_ALL_RETRY_MINUTES = "15";
+
 function failureTooltip(decorations: string[], fallback: MessageId): string {
   const reason: FailureReason | null = failureReasonIn(decorations);
   if (!reason) return t(fallback);
+
+  // The read sets how long until it tries again; "读取失败" without it reads as
+  // "this is broken", and the wait is the part the user acts on.
+  const minutes = decorations
+    .find((entry) => entry.startsWith(RETRY_MARKER))
+    ?.slice(RETRY_MARKER.length);
+  const retry =
+    minutes && /^\d+$/.test(minutes)
+      ? t("cell-retry-in", { minutes })
+      : t("cell-retry-in", { minutes: CATCH_ALL_RETRY_MINUTES });
 
   return t(
     fallback === "cell-unavailable"
       ? "cell-unavailable-reason"
       : "cell-citations-unavailable-reason",
-    { reason: t(`failure-${reason}` as MessageId) },
+    { reason: t(`failure-${reason}` as MessageId), retry },
   );
 }
 

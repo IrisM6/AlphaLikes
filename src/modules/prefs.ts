@@ -127,6 +127,24 @@ export const PREF_DEFAULTS = {
   contactEmail: "",
   /** Minimum delay between two requests to the same host. */
   requestIntervalMs: 1500,
+  /**
+   * Google Scholar reads are spread out rather than metronomed.
+   *
+   * Every value here is a range the user can widen or narrow in the settings
+   * pane; the reader picks a new point in it for each read, so the traffic
+   * never repeats a rhythm. Seconds and minutes, not milliseconds: the pane
+   * shows the numbers the user typed, and typing on a range that is stored in
+   * milliseconds goes wrong the first time someone enters `16`.
+   */
+  scholarIntervalMinSeconds: 16,
+  scholarIntervalMaxSeconds: 30,
+  /** How long a loaded page is left to settle (and scrolled) before reading. */
+  scholarDwellSeconds: 3,
+  /** Searches per burst, and the pause that follows each burst. */
+  scholarBatchMin: 2,
+  scholarBatchMax: 5,
+  scholarPauseMinMinutes: 10,
+  scholarPauseMaxMinutes: 20,
   requestTimeoutMs: 15_000,
   /** `0` disables automatic re-fetching of cached like counts. */
   cacheTtlDays: 0,
@@ -669,6 +687,46 @@ export function getRequestPrefs() {
     timeoutMs: clamp(getPref("requestTimeoutMs"), 1_000, 60_000),
     intervalMs: clamp(getPref("requestIntervalMs"), 0, 30_000),
     cacheTtlDays: Math.max(0, getPref("cacheTtlDays")),
+  };
+}
+
+/**
+ * The rhythm Google Scholar is read with.
+ *
+ * Ranges rather than values: the reader draws a fresh point from each range for
+ * every search, so the traffic never settles into a pattern. The bounds are
+ * ordered here as well as clamped, because a user who types the maximum into
+ * the minimum field should still get a working plugin rather than an error.
+ */
+export interface ScholarPacing {
+  intervalMinMs: number;
+  intervalMaxMs: number;
+  dwellMs: number;
+  batchMin: number;
+  batchMax: number;
+  pauseMinMs: number;
+  pauseMaxMs: number;
+}
+
+export function getScholarPacing(): ScholarPacing {
+  // Seconds in the pane, milliseconds for the reader.
+  const intervalMinMs =
+    clamp(getPref("scholarIntervalMinSeconds"), 1, 600) * 1_000;
+  const intervalMaxMs =
+    clamp(getPref("scholarIntervalMaxSeconds"), 1, 600) * 1_000;
+  const batchMin = clamp(getPref("scholarBatchMin"), 1, 100);
+  const batchMax = clamp(getPref("scholarBatchMax"), 1, 100);
+  const pauseMinMs = clamp(getPref("scholarPauseMinMinutes"), 0, 600) * 60_000;
+  const pauseMaxMs = clamp(getPref("scholarPauseMaxMinutes"), 0, 600) * 60_000;
+
+  return {
+    intervalMinMs: Math.min(intervalMinMs, intervalMaxMs),
+    intervalMaxMs: Math.max(intervalMinMs, intervalMaxMs),
+    dwellMs: clamp(getPref("scholarDwellSeconds"), 0, 60) * 1_000,
+    batchMin: Math.min(batchMin, batchMax),
+    batchMax: Math.max(batchMin, batchMax),
+    pauseMinMs: Math.min(pauseMinMs, pauseMaxMs),
+    pauseMaxMs: Math.max(pauseMinMs, pauseMaxMs),
   };
 }
 
