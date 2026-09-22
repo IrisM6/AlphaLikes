@@ -8,11 +8,13 @@
  * that decided the outcome - the exact URL, the exact headers, the status, the
  * exception, and the first characters of the answer.
  *
- * The settings pane has a button that runs this and copies the text to the
- * clipboard, and written to Zotero's debug log as a fallback.
+ * Nothing in the settings pane runs this: the pane is for the settings a user
+ * changes, not for troubleshooting. The report is produced on request (the
+ * `diagnose` API method) and written to Zotero's debug log as a fallback.
  */
 
 import { trimBodyHead, type ScholarAttempt } from "./http";
+import { zoteroSupportLine } from "./support";
 
 export { trimBodyHead };
 
@@ -106,9 +108,13 @@ function formatProbe(probe: HttpProbe): string[] {
 }
 
 export function formatDiagnosis(input: DiagnosisInput): string {
+  // Empty unless the running Zotero is outside the range this build declares,
+  // so the report says nothing about versions in the ordinary case.
+  const support = zoteroSupportLine(input.zoteroVersion);
   const lines: string[] = [
     `AlphaLikes 读取诊断 · 插件 ${input.pluginVersion}`,
     `Zotero ${input.zoteroVersion}（Gecko ${input.gecko}）· ${input.platform}`,
+    ...(support ? [support] : []),
     `代理：${input.proxy}`,
     `Google 同意 cookie：${input.consentCookie ? "已写入" : "未写入"}`,
     "",

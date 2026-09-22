@@ -14,13 +14,14 @@ is typed twice:
 Only the shape of each sample (padding, radii, shadows, fonts) is written out
 here by hand, mirroring the branches of ``applyLikeStyle``.
 
-Two files come out of one run: the page in ``docs/styles-preview.html`` and the
-same table as a picture in ``docs/images/styles-preview.svg``, which the README
-embeds - a README can show an image, not a page. Run:
+The README image is rasterised with ``rsvg-convert`` when it is installed
+(``librsvg2-bin``), because ImageMagick's built-in SVG renderer drops strokes -
+and a badge is mostly its border. Without it the SVG is still written and the
+PNG falls back to ImageMagick. Run:
 
     python3 scripts/gen-styles-preview.py
 
-and commit both results along with the change that motivated them.
+and commit the result along with the change that motivated it.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from __future__ import annotations
 import argparse
 import pathlib
 import re
+import subprocess
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -40,7 +42,9 @@ FTLS = {
     "en": ROOT / "addon/locale/en-US/addon.ftl",
 }
 OUT = ROOT / "docs/styles-preview.html"
-OUT_SVG = ROOT / "docs/images/styles-preview.svg"
+# The same styles as a picture, for the README (and the marketplace page).
+IMAGE = ROOT / "docs/images/styles-preview.svg"
+IMAGE_PNG = ROOT / "docs/images/styles-preview.png"
 
 # The colour section's own three buckets, used to draw the styles that have no
 # palette of their own. Mirrors the defaults in prefs.ts.
@@ -49,12 +53,13 @@ SECTION = {"high": "#1a7f37", "mid": "currentColor", "low": "#9aa0a6"}
 # stadium for four digits instead of clipping, and that the dot style prints
 # the number in full.
 LIKE_SAMPLE = {"high": "2979", "mid": "42", "low": "7"}
+# The ring and the badge are the two styles people mix up - both are pill-shaped
+# at four digits, and the difference is what happens below that. The image gives
+# the ring a three-digit high sample so the row shows a circle next to the
+# badge's pill, which is the whole distinction. The HTML page keeps 2979 for
+# both, because there it is documenting the widening.
+IMAGE_SAMPLE = {"ring": {"high": "999", "mid": "42", "low": "7"}}
 CITATION_SAMPLE = {"high": "128", "mid": "42", "low": "3"}
-# The README picture is the one place where 玻璃胶囊 and 玻璃圆形 sit next to each
-# other, and a four-digit number turns the circle into a stadium - the same
-# shape as the capsule. Three digits keep them apart; the page above still
-# documents what a longer number does.
-SVG_LIKE_SAMPLE = {"high": "999", "mid": "42", "low": "7"}
 
 
 def read(path: pathlib.Path) -> str:
@@ -387,316 +392,342 @@ def table(
 
 
 # ---------------------------------------------------------------------------
-# The same table as an SVG
+# The README image
 # ---------------------------------------------------------------------------
 #
-# The README embeds an image, not a page, so the styles have to be drawn as
-# shapes as well. Same data, same branches as `sample()` above, one shape per
-# style: the point of the picture is that it is what the column draws.
+# The point of this second output is that the README can show what the styles
+# look like without sending anyone to the HTML page. It is built from the same
+# four sources as the page (style list, labels, palettes, prefixes), so it
+# cannot show a style the plugin does not offer or a colour it does not use -
+# but the shapes are written out here a second time, as SVG primitives, because
+# a rasterised box has to know its own pixel geometry. Keep this table and the
+# branches in ``sample()`` in step: they are two renderings of one design.
+
+SVG_FONT = (
+    "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', "
+    "'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif"
+)
+# What `currentColor` resolves to wherever the sample is not inside a coloured
+# column (the mid band of a style with no palette of its own).
+CURRENT = "#1f2328"
+INK = "#1f2328"
+MUTED = "#57606a"
+FAINT = "#8b949e"
+
+# Per style: box kind, corner radius, horizontal padding, font size, weight and
+# whether the box is drawn from the style's own palette or from the band colour.
+SHAPES: dict[str, dict[str, object]] = {
+    "plain": {"kind": "none"},
+    "badge": {"kind": "box", "radius": 10, "pad": 8, "size": 13, "round": 10},
+    "ring": {"kind": "circle", "diameter": 22, "pad": 4, "size": 11},
+    "outline": {"kind": "box", "radius": 10, "pad": 8, "size": 13},
+    "bookmark": {"kind": "bookmark", "radius": 4, "pad": 8, "size": 13},
+    "morandi": {"kind": "box", "radius": 10, "pad": 8, "size": 13},
+    "academic": {"kind": "box", "radius": 3, "pad": 6, "size": 13},
+    "fresh": {"kind": "box", "radius": 10, "pad": 8, "size": 13},
+    "playful": {"kind": "box", "radius": 6, "pad": 8, "size": 13, "shadow": True},
+    "split": {"kind": "split", "radius": 4, "pad": 6, "size": 13},
+    "dot": {"kind": "dot", "diameter": 18, "pad": 5, "size": 10.5},
+}
 
 
-def mix_with_white(color: str, percent: int) -> str:
-    """`color-mix(in srgb, colorpercent%, white)` - the page's own background."""
-    base = color.strip()
-    if not re.fullmatch(r"#[0-9a-fA-F]{6}", base):
-        return "#ffffff"
-    r, g, b = (int(base[i : i + 2], 16) for i in (1, 3, 5))
-    weight = percent / 100
-    parts = (
-        round(channel * weight + 255 * (1 - weight)) for channel in (r, g, b)
-    )
-    return "#" + "".join(f"{part:02x}" for part in parts)
+def ink(color: str | None, fallback: str = INK) -> str:
+    """A colour usable in SVG: `currentColor` and blanks become something."""
+    if not color or color == "currentColor":
+        return fallback
+    return color
 
 
-def svg_text(
-    x: int,
-    y: int,
-    content: str,
-    size: float,
-    fill: str,
-    weight: int | None = None,
-    anchor: str | None = None,
-) -> str:
-    weight_attr = f' font-weight="{weight}"' if weight else ""
-    anchor_attr = f' text-anchor="{anchor}"' if anchor else ""
+def alpha(hex_color: str, factor: float) -> str:
+    """`#rrggbb` at an alpha, as the `rgba()` an SVG rasteriser understands."""
+    value = hex_color.lstrip("#")
+    if len(value) == 3:
+        value = "".join(c * 2 for c in value)
+    try:
+        r, g, b = (int(value[i : i + 2], 16) for i in (0, 2, 4))
+    except ValueError:
+        return hex_color
+    return f"rgba({r}, {g}, {b}, {factor:.2f})"
+
+
+def text_width(text: str, size: float) -> float:
+    """A rough advance width: enough to size a pill, not typography."""
+    total = 0.0
+    for char in text:
+        if char.isspace():
+            total += size * 0.28
+        elif ord(char) > 0x2E80:
+            total += size
+        elif char.isdigit():
+            total += size * 0.56
+        else:
+            total += size * 0.52
+    return total
+
+
+def svg_text(x: float, y: float, text: str, size: float, fill: str, weight: int = 400) -> str:
+    """Text centred on (x, y).
+
+    The baseline is worked out here rather than handed to `dominant-baseline`:
+    the value a rasteriser chooses for "middle" varies, and a sample that sits
+    two pixels high in a 20 px pill is the difference between "this is what the
+    column looks like" and "this is a drawing of it".
+    """
+    baseline = y + size * 0.35
     return (
-        f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}"'
-        f'{weight_attr}{anchor_attr}>{escape(content)}</text>'
+        f'<text x="{x:.1f}" y="{baseline:.1f}" font-family="{SVG_FONT}" '
+        f'font-size="{size}" font-weight="{weight}" fill="{fill}" '
+        f'text-anchor="middle">{escape(text)}</text>'
     )
 
 
-def svg_box(
-    x: int,
-    y: int,
-    width: int,
-    height: int,
-    radius: int,
-    fill: str,
-    stroke: str | None = None,
-) -> str:
-    stroke_attr = f' stroke="{stroke}"' if stroke else ""
-    return (
-        f'<rect x="{x}" y="{y}" width="{width}" height="{height}"'
-        f' rx="{radius}" fill="{fill}"{stroke_attr} />'
-    )
-
-
-def svg_sample(
+def svg_chip(
     style: str,
     band: str,
     palettes: dict[str, dict[str, dict[str, str]]],
     accent: str,
     prefix: str,
-    content: str,
-    x: int,
-    centre: int,
-) -> tuple[list[str], int]:
-    """One sample as SVG shapes, and how wide it turned out to be."""
-    top = centre - 12
-    baseline = centre + 4
-    digits = 8.6 * len(content)
+    text: str,
+    cx: float,
+    cy: float,
+) -> tuple[list[str], float]:
+    """One sample chip, centred on (cx, cy); returns its parts and its width."""
+    accent = ink(accent)
+    shape = SHAPES.get(style, {"kind": "none"})
+    kind = shape.get("kind")
+    size = float(shape.get("size", 13))
+    pad = float(shape.get("pad", 8))
 
-    if style == "plain":
-        return [svg_text(x, baseline, content, 13, "#1f2328")], round(digits)
+    if kind == "none":
+        width = text_width(text, size)
+        return [svg_text(cx, cy, text, size, accent)], width
 
-    if style == "badge":
-        width = round(digits) + 16
+    if kind == "circle":
+        diameter = float(shape["diameter"])
+        width = diameter if len(text) <= 3 else max(diameter, text_width(text, size) + pad * 2)
+        height = diameter
         return (
             [
-                svg_box(
-                    x,
-                    top,
-                    width,
-                    24,
-                    12,
-                    mix_with_white(accent, 16),
-                    mix_with_white(accent, 36),
-                ),
-                svg_text(x + 8, baseline, content, 13, accent),
+                f'<rect x="{cx - width / 2:.1f}" y="{cy - height / 2:.1f}" '
+                f'width="{width:.1f}" height="{height:.1f}" rx="{height / 2:.1f}" '
+                f'fill="{alpha(accent, 0.18)}" stroke="{alpha(accent, 0.45)}" stroke-width="1"/>',
+                svg_text(cx, cy, text, size, accent),
             ],
             width,
         )
 
-    if style == "ring":
-        width = 26 if len(content) <= 3 else round(6.6 * len(content)) + 12
-        return (
-            [
-                svg_box(
-                    x,
-                    top,
-                    width,
-                    24,
-                    width // 2,
-                    mix_with_white(accent, 18),
-                    mix_with_white(accent, 45),
-                ),
-                svg_text(
-                    x + width // 2,
-                    baseline - 1,
-                    content,
-                    11 if len(content) >= 4 else 13,
-                    accent,
-                    None,
-                    "middle",
-                ),
-            ],
-            width,
-        )
-
-    if style == "outline":
-        width = round(digits) + 16
-        return (
-            [
-                svg_box(x, top, width, 24, 12, "#ffffff", accent or "#9AA0A6"),
-                svg_text(x + 8, baseline, content, 13, accent or "#5F6368"),
-            ],
-            width,
-        )
-
-    if style == "bookmark":
-        paint = palettes["bookmark"][band]
-        width = round(digits) + 15
-        return (
-            [
-                svg_box(
-                    x,
-                    top,
-                    width,
-                    24,
-                    4,
-                    paint.get("background", "#ffffff"),
-                    paint.get("border", "#d0d7de"),
-                ),
-                svg_box(
-                    x,
-                    top,
-                    3,
-                    24,
-                    2,
-                    paint.get("color", accent),
-                ),
-                svg_text(x + 10, baseline, content, 13, paint.get("color", "#1f2328")),
-            ],
-            width,
-        )
-
-    if style in ("morandi", "academic", "fresh", "playful"):
-        paint = palettes[style][band]
-        radius = 12 if style in ("morandi", "fresh") else (3 if style == "academic" else 6)
-        offset = 6 if style == "academic" else 8
-        width = round(digits) + offset * 2
-        return (
-            [
-                svg_box(
-                    x,
-                    top,
-                    width,
-                    24,
-                    radius,
-                    paint.get("background", "#ffffff"),
-                    paint.get("border"),
-                ),
-                svg_text(
-                    x + offset,
-                    baseline,
-                    content,
-                    13,
-                    paint.get("color", "#1f2328"),
-                    700 if style == "playful" else None,
-                ),
-            ],
-            width,
-        )
-
-    if style == "split":
-        left = palettes["split"][band]
-        right = {"high": "#F0F0F0", "mid": "#F5F5F5", "low": "#FAFAFA"}[band]
-        left_width = round(7.0 * len(prefix)) + 12
-        right_width = round(digits) + 14
-        return (
-            [
-                svg_box(x, top, left_width, 24, 4, left.get("background", "#ffffff")),
-                svg_box(
-                    x + left_width,
-                    top,
-                    right_width,
-                    24,
-                    4,
-                    right,
-                ),
-                svg_text(
-                    x + 6,
-                    baseline,
-                    prefix,
-                    10.4,
-                    left.get("color", "#1f2328"),
-                ),
-                svg_text(x + left_width + 7, baseline, content, 13, "#333333"),
-            ],
-            left_width + right_width,
-        )
-
-    if style == "dot":
-        width = 24 if len(content) <= 2 else round(6.6 * len(content)) + 12
+    if kind == "dot":
+        diameter = float(shape["diameter"])
+        width = diameter if len(text) <= 2 else max(diameter, text_width(text, size) + pad * 2)
+        height = diameter
         paint = palettes["dot"][band]
         return (
             [
-                svg_box(
-                    x,
-                    top,
-                    width,
-                    24,
-                    width // 2,
-                    paint.get("background", "#ffffff"),
-                ),
-                svg_text(
-                    x + width // 2,
-                    baseline - 1,
-                    content,
-                    11,
-                    paint.get("color", "#1f2328"),
-                    None,
-                    "middle",
-                ),
+                f'<rect x="{cx - width / 2:.1f}" y="{cy - height / 2:.1f}" '
+                f'width="{width:.1f}" height="{height:.1f}" rx="{height / 2:.1f}" '
+                f'fill="{ink(paint.get("background"))}"/>',
+                svg_text(cx, cy, text, size, ink(paint.get("color"), "#ffffff"), 600),
             ],
             width,
         )
 
-    return [svg_text(x, baseline, content, 13, "#1f2328")], round(digits)
+    if kind == "split":
+        # The left half is the band colour and carries the label, the right half
+        # is the number on a light plate - one pill, two fills.
+        left = palettes["split"][band]
+        right = {"high": "#F0F0F0", "mid": "#F5F5F5", "low": "#FAFAFA"}[band]
+        label = prefix
+        left_width = text_width(label, size * 0.8) + pad * 2
+        right_width = text_width(text, size) + pad * 2 + 2
+        width = left_width + right_width
+        height = 20
+        x = cx - width / 2
+        y = cy - height / 2
+        parts = [
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height}" '
+            f'rx="{shape["radius"]} " fill="{ink(right)}"/>',
+            f'<path d="M {x + shape["radius"]:.1f} {y:.1f} H {x + left_width:.1f} V {y + height} '
+            f'H {x + shape["radius"]:.1f} A {shape["radius"]} {shape["radius"]} 0 0 1 {x:.1f} '
+            f'{y + height - shape["radius"]:.1f} V {y + shape["radius"]:.1f} '
+            f'A {shape["radius"]} {shape["radius"]} 0 0 1 {x + shape["radius"]:.1f} {y:.1f} Z" '
+            f'fill="{ink(left.get("background"))}"/>',
+            svg_text(x + left_width / 2, cy, label, size * 0.8, ink(left.get("color"), "#ffffff")),
+            svg_text(x + left_width + right_width / 2, cy, text, size, "#333333"),
+        ]
+        return parts, width
+
+    # Everything else is a box: filled from the style's own palette when it has
+    # one, and otherwise a translucent wash of the band colour.
+    own = palettes.get(style, {}).get(band)
+    radius = float(shape.get("radius", 4))
+    width = text_width(text, size) + pad * 2
+    height = 20
+    x = cx - width / 2
+    y = cy - height / 2
+    parts: list[str] = []
+
+    if own:
+        background = ink(own.get("background"), "#ffffff")
+        colour = ink(own.get("color"))
+        border = own.get("border")
+    elif style == "outline":
+        background = "none"
+        colour = accent
+        border = accent
+    else:
+        background = alpha(accent, 0.16) if style == "badge" else accent
+        colour = accent if style == "badge" else "#ffffff"
+        border = alpha(accent, 0.36) if style == "badge" else None
+
+    # 活泼明快 drops its offset shadow in the low band - the style is about
+    # shouting, and a low number is not shouting.
+    if shape.get("shadow") and band != "low":
+        # 活泼明快 offsets a solid black copy instead of blurring one.
+        parts.append(
+            f'<rect x="{x + 2:.1f}" y="{y + 2:.1f}" width="{width:.1f}" height="{height}" '
+            f'rx="{radius}" fill="#000000"/>'
+        )
+
+    stroke = ink(border) if border else "none"
+    parts.append(
+        f'<rect x="{x:.1f}" y="{y:.1f}" width="{width:.1f}" height="{height}" '
+        f'rx="{radius}" fill="{background}" stroke="{stroke}" stroke-width="1"/>'
+    )
+    if kind == "bookmark" and border:
+        # The left edge is three pixels wide, which is what makes it read as a
+        # bookmark rather than a box.
+        parts.append(
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="3" height="{height}" fill="{ink(border)}"/>'
+        )
+    parts.append(svg_text(cx, cy, text, size, colour, 500))
+    return parts, width
 
 
-def svg_page(
+def build_svg(
     styles: list[str],
     labels: dict[str, dict[str, str]],
     palettes: dict[str, dict[str, dict[str, str]]],
     prefix_like: str,
 ) -> str:
-    """The style table as a picture the README can embed."""
-    width = 1180
-    header = 118
-    row_height = 56
-    height = header + row_height * len(styles) + 52
-    colours = {"high": "#1a7f37", "mid": "#1f2328", "low": "#9aa0a6"}
-    columns = {"high": 330, "mid": 610, "low": 860}
+    row_height = 50
+    top = 92
+    width = 900
+    height = top + row_height * len(styles) + 24
+    columns = {"high": 430.0, "mid": 620.0, "low": 790.0}
 
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
-        f'height="{height}" viewBox="0 0 {width} {height}" '
-        f'font-family="PingFang SC, Microsoft YaHei, Segoe UI, system-ui, '
-        f'sans-serif">',
-        f'<rect width="{width}" height="{height}" fill="#ffffff" />',
-        svg_text(28, 46, f"AlphaLikes 外观样式 · {len(styles)} 种", 22, "#1f2328", 700),
-        svg_text(
-            28,
-            72,
-            "点赞列与引用列共用同一套样式；此处用点赞数示意，高 / 中 / 低三档自动着色。",
-            13,
-            "#57606a",
-        ),
-        svg_text(330, 104, "高", 13, "#57606a"),
-        svg_text(610, 104, "中", 13, "#57606a"),
-        svg_text(860, 104, "低", 13, "#57606a"),
-        f'<line x1="28" y1="{header - 10}" x2="{width - 28}" '
-        f'y2="{header - 10}" stroke="#d0d7de" />',
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}">',
+        f'<rect width="{width}" height="{height}" fill="#ffffff"/>',
+        f'<text x="24" y="34" font-family="{SVG_FONT}" font-size="17" '
+        f'font-weight="600" fill="{INK}">AlphaLikes 外观样式（{len(styles)} 种）</text>',
+        f'<text x="24" y="56" font-family="{SVG_FONT}" font-size="12" '
+        f'fill="{MUTED}">点赞列与引用列通用 · 高 / 中 / 低三档用同一种样式 · '
+        f"自带配色的样式固定用色，其余跟随设置里的「颜色」一节</text>",
+        f'<text x="24" y="78" font-family="{SVG_FONT}" font-size="11" '
+        f'fill="{FAINT}">此图由 scripts/gen-styles-preview.py 从插件源码生成，请勿手动编辑</text>',
     ]
 
     for index, style in enumerate(styles):
-        row_y = header + index * row_height
-        centre = row_y + row_height // 2
+        centre = top + row_height * index + row_height / 2
         if index % 2:
             parts.append(
-                svg_box(20, row_y, width - 40, row_height - 6, 8, "#f7f8fa")
+                f'<rect x="0" y="{centre - row_height / 2:.1f}" width="{width}" '
+                f'height="{row_height}" fill="#f6f8fa"/>'
             )
-
-        zh = short_name(labels["zh"].get(style, style))
-        en = short_name(labels["en"].get(style, style))
-        parts.append(svg_text(28, centre - 2, zh, 15, "#1f2328", 600))
-        parts.append(svg_text(28, centre + 16, en, 11, "#8b949e"))
-
-        for band, column in columns.items():
-            sample, _ = svg_sample(
-                style,
-                band,
-                palettes,
-                colours[band],
-                prefix_like,
-                SVG_LIKE_SAMPLE[band],
-                column,
-                centre - 3,
-            )
-            parts.extend(sample)
-
-    parts.append(
-        svg_text(
-            28,
-            height - 22,
-            "样式的配色与形状直接取自插件源码（scripts/gen-styles-preview.py 生成，请勿手动编辑）。",
-            12,
-            "#8b949e",
+        zh_name = short_name(labels["zh"].get(style, style))
+        en_name = short_name(labels["en"].get(style, style))
+        parts.append(
+            f'<text x="24" y="{centre - 4:.1f}" font-family="{SVG_FONT}" font-size="14" '
+            f'font-weight="600" fill="{INK}">{escape(zh_name)}</text>'
         )
-    )
+        parts.append(
+            f'<text x="24" y="{centre + 13:.1f}" font-family="{SVG_FONT}" font-size="10.5" '
+            f'fill="{FAINT}">{escape(en_name)}</text>'
+        )
+        values = IMAGE_SAMPLE.get(style, LIKE_SAMPLE)
+        for band, cx in columns.items():
+            accent = SECTION[band]
+            text = values[band]
+            chip, _ = svg_chip(style, band, palettes, accent, prefix_like, text, cx, centre)
+            parts.extend(chip)
+
     parts.append("</svg>")
-    return "\n".join(parts)
+    return "\n".join(part for part in parts if part)
+
+
+def write_image(
+    styles: list[str],
+    labels: dict[str, dict[str, str]],
+    palettes: dict[str, dict[str, dict[str, str]]],
+    prefix_like: str,
+) -> None:
+    """Writes the README image, PNG included when a rasteriser is around."""
+    svg = build_svg(styles, labels, palettes, prefix_like)
+    IMAGE.parent.mkdir(parents=True, exist_ok=True)
+    IMAGE.write_text(svg + "\n", encoding="utf-8")
+    print(f"wrote {IMAGE.relative_to(ROOT)} ({len(svg)} B)")
+
+    # librsvg first: it honours strokes and font stacks the way a browser does.
+    try:
+        result = subprocess.run(
+            [
+                "rsvg-convert",
+                "-z",
+                "2",
+                "-b",
+                "white",
+                "-o",
+                str(IMAGE_PNG),
+                str(IMAGE),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and IMAGE_PNG.exists():
+            _shrink(IMAGE_PNG)
+            print(f"wrote {IMAGE_PNG.relative_to(ROOT)} ({IMAGE_PNG.stat().st_size} B, rsvg)")
+            return
+    except FileNotFoundError:
+        pass
+
+    for command in (["magick"], ["convert"]):
+        try:
+            result = subprocess.run(
+                [*command, "-density", "192", str(IMAGE), "-background", "white",
+                 "-flatten", "-strip", str(IMAGE_PNG)],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            continue
+        if result.returncode == 0 and IMAGE_PNG.exists():
+            _shrink(IMAGE_PNG)
+            print(
+                f"wrote {IMAGE_PNG.relative_to(ROOT)} ({IMAGE_PNG.stat().st_size} B, "
+                f"imagemagick - install librsvg2-bin for an exact one)"
+            )
+            return
+    print("no rasteriser found (rsvg-convert/magick/convert): the SVG is committed")
+
+
+def _shrink(path: pathlib.Path) -> None:
+    """Flat art with antialiased text: 8-bit and 256 colours, no metadata.
+
+    Keeps the README image around 60 KB instead of 330 KB, which matters for a
+    file that is loaded on every view of the repository page.
+    """
+    for command in (["magick"], ["convert"]):
+        try:
+            result = subprocess.run(
+                [*command, str(path), "-depth", "8", "-colors", "256", "-strip", str(path)],
+                capture_output=True,
+                text=True,
+            )
+        except FileNotFoundError:
+            return
+        if result.returncode == 0:
+            return
 
 
 def main() -> None:
@@ -706,12 +737,6 @@ def main() -> None:
         type=pathlib.Path,
         default=OUT,
         help="where to write the page (default: the committed one)",
-    )
-    parser.add_argument(
-        "--svg",
-        type=pathlib.Path,
-        default=OUT_SVG,
-        help="where to write the README image (default: the committed one)",
     )
     args = parser.parse_args()
 
@@ -758,20 +783,14 @@ def main() -> None:
 """
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(body, encoding="utf-8")
-
-    image = svg_page(styles, labels, palettes, prefix_like)
-    args.svg.parent.mkdir(parents=True, exist_ok=True)
-    args.svg.write_text(image, encoding="utf-8")
     try:
         shown = args.out.relative_to(ROOT)
     except ValueError:
         shown = args.out
     print(f"wrote {shown} ({len(body)} B, {len(styles)} styles)")
-    try:
-        shown_svg = args.svg.relative_to(ROOT)
-    except ValueError:
-        shown_svg = args.svg
-    print(f"wrote {shown_svg} ({len(image)} B, {len(styles)} styles)")
+
+    if args.out == OUT:
+        write_image(styles, labels, palettes, prefix_like)
 
 
 if __name__ == "__main__":

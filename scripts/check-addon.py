@@ -966,6 +966,46 @@ check(
 )
 
 # ---------------------------------------------------------------------------
+# The declared Zotero range
+# ---------------------------------------------------------------------------
+
+# Three different files tell the user (or Zotero itself) which Zotero versions
+# this build is for, and they are edited at different times: the manifest is
+# what decides whether Zotero loads the plugin at all, the README badge is the
+# first thing anyone reads, and the package description is what the marketplace
+# shows. Zotero 11 is the top of the range even though it does not exist yet -
+# the plugin uses no version-pinned API, so the range can be declared ahead of
+# the release instead of waiting for it.
+if manifest_ok:
+    zotero_app = manifest.get("applications", {}).get("zotero", {})
+    check(
+        zotero_app.get("strict_max_version") == "11.*",
+        "addon/manifest.json must allow Zotero 11 (strict_max_version: '11.*')",
+    )
+    check(
+        zotero_app.get("strict_min_version") == "6.999",
+        "addon/manifest.json must still start at Zotero 7 "
+        "(strict_min_version '6.999' is how a manifest says Zotero 7)",
+    )
+
+readme_text = read(ROOT / "README.md")
+check(
+    "Zotero-7%E2%80%9311" in readme_text,
+    "the README badge must say Zotero 7-11 (it is what the range is read from)",
+)
+check(
+    "Zotero-7%E2%80%9310" not in readme_text
+    and "支持 Zotero 7 / 8 / 9 / 10，" not in readme_text,
+    "the README still quotes the old Zotero 7-10 range",
+)
+
+pkg_json = json.loads(read(ROOT / "package.json"))
+check(
+    "Zotero 7-11" in pkg_json.get("description", ""),
+    "package.json description must quote the same range as the manifest",
+)
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 

@@ -780,12 +780,45 @@ async function registerCitationsColumn(
   registeredDataKeys.push(...keys);
 }
 
+/** The part of `Zotero.ItemTreeManager` this plugin calls on shutdown. */
+export interface ColumnRegistry {
+  unregisterColumn?: (dataKey: string) => unknown;
+  unregisterColumns?: (dataKeys: string[]) => unknown;
+}
+
+/**
+ * Unregisters the columns this build registered.
+ *
+ * `unregisterColumn` (singular) is the supported call: the plural form has been
+ * deprecated since Zotero 7 and calls the singular one internally, so a future
+ * major may drop the plural - while Zotero 7 itself only has the plural. Both
+ * are tried, newest first, and if neither exists the plugin says so instead of
+ * throwing during shutdown, where an exception would leave the add-on looking
+ * half-removed.
+ */
+export async function unregisterColumns(
+  dataKeys: string[],
+  registry: ColumnRegistry = Zotero.ItemTreeManager as ColumnRegistry,
+): Promise<void> {
+  if (typeof registry.unregisterColumn === "function") {
+    for (const dataKey of dataKeys) await registry.unregisterColumn(dataKey);
+    return;
+  }
+  if (typeof registry.unregisterColumns === "function") {
+    await registry.unregisterColumns(dataKeys);
+    return;
+  }
+  Zotero.debug(
+    "[AlphaLikes] Zotero offers neither unregisterColumn nor unregisterColumns; the columns stay registered until restart",
+  );
+}
+
 export async function shutdownAlphaXivLikesColumn(): Promise<void> {
   service?.dispose();
   service = null;
 
   if (registeredDataKeys.length) {
-    await Zotero.ItemTreeManager.unregisterColumns(registeredDataKeys);
+    await unregisterColumns(registeredDataKeys);
     registeredDataKeys = [];
   }
 }
