@@ -19,7 +19,7 @@ import {
   CELL_UNAVAILABLE,
 } from "../src/modules/likes";
 import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
-import { setPref } from "../src/modules/prefs";
+import { getPref, setPref } from "../src/modules/prefs";
 
 /** A page shaped like the alphaXiv paper view. */
 function alphaXivPage(likes: number): Document {
@@ -563,6 +563,107 @@ describe("AlphaLikes refresh", function () {
         }
       }
     }
+  });
+
+  describe("keeping the two actions apart", function () {
+    /**
+     * An item with a known arXiv ID and nothing cached: the like cell is the
+     * one that starts a read as soon as it is asked for a value, which is what
+     * a repaint does to every visible row.
+     */
+    async function blankLikesItem(title: string, id: string) {
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", title);
+      target.setField("date", "2026-09-22");
+      target.setField("DOI", `10.1234/alphalikes.${id}`);
+      target.setField("extra", `alphaxiv_arxiv_id: ${id}`);
+      await target.saveTx();
+      return target;
+    }
+
+    async function discard(target: Zotero.Item) {
+      try {
+        await target.eraseTx();
+      } catch {
+        // The library may already be gone when the run tears down.
+      }
+    }
+
+    it("starts no like read while a citation read is running", async function () {
+      // Reported: "刷新引用量和点赞数要分开，我刷新引用量把点赞数也刷新了". The two
+      // actions share the item list and the repaint, so the reading one has to
+      // say which column it belongs to; otherwise the repaint is enough to set
+      // the other column going.
+      const target = await blankLikesItem(
+        "AlphaLikes separation probe (likes)",
+        "2401.00041",
+      );
+
+      try {
+        stub = stubRequester(service, 444, 5);
+        stub.hold = true;
+
+        const running = service.refreshCitations([Zotero.Items.get(target.id)]);
+        // What the tree does to every visible row while a read is in flight.
+        service.getCellData(target);
+
+        assert.deepEqual(
+          stub.served.filter((url) => url.includes("alphaxiv.org")),
+          [],
+          "a citation refresh must not start a like read on the way",
+        );
+
+        stub.hold = false;
+        stub.release?.();
+        await running;
+      } finally {
+        await discard(target);
+      }
+    });
+
+    it("starts no citation read while a like read is running", async function () {
+      // The same rule the other way round. Read through a cheap source, so the
+      // test does not depend on what the UI has selected: Google Scholar is
+      // only read for selected items.
+      const previous = getPref("citationSourcePreferences");
+      const target = await blankLikesItem(
+        "AlphaLikes separation probe (citations)",
+        "2401.00042",
+      );
+
+      try {
+        setPref("citationSourcePreferences", "openAlex");
+        stub = stubRequester(service, 444, 5);
+        stub.hold = true;
+
+        const running = service.refreshItems([Zotero.Items.get(target.id)]);
+        const value = service.getCitationCellData(target);
+
+        assert.deepEqual(
+          stub.served.filter(
+            (url) =>
+              url.includes("openalex.org") ||
+              url.includes("semanticscholar.org") ||
+              url.includes("scholar.google"),
+          ),
+          [],
+          "a like refresh must not start a citation read on the way",
+        );
+        assert.equal(
+          value,
+          "",
+          "and the citation cell stays blank rather than loading",
+        );
+
+        stub.hold = false;
+        stub.release?.();
+        await running;
+      } finally {
+        setPref("citationSourcePreferences", previous);
+        await discard(target);
+      }
+    });
   });
 
   it("does not re-read the like counts on the way", async function () {

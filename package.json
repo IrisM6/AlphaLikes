@@ -1,7 +1,7 @@
 {
   "name": "zotero-alphalikes",
   "type": "module",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "alphaXiv like counts and citation counts as item-tree columns: 11 styles whose colours are all editable, one banding rule shared by both columns, several citation sources (the largest wins), fully automatic matching, Zotero 7-10",
   "config": {
     "addonName": "AlphaLikes",

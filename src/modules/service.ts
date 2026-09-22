@@ -454,6 +454,17 @@ export class AlphaLikesService {
   private scholarRetryPaused = false;
   /** How many rounds of Google Scholar refusals this episode has had. */
   private scholarRound = 0;
+  /**
+   * Which column is being refreshed right now, if either.
+   *
+   * An explicit refresh means "read this, and only this": while the citation
+   * column is being re-read, a row that gets painted must not start a like
+   * read of its own (and the other way round). Reported: "刷新引用量和点赞数
+   * 要分开，我刷新引用量把点赞数也刷新了" - the two actions share the item list
+   * and the repaint, so without this the one that repaints drags the other
+   * along: a row with no count starts a read the moment it is asked for one.
+   */
+  private readScope: "likes" | "citations" | null = null;
   /** Item ids the last few repaints saw selected, with the time they did. */
   private selectionCache: { at: number; ids: Set<number> } | null = null;
 
@@ -970,6 +981,21 @@ export class AlphaLikesService {
     const extra = safeGetField(item, "extra");
     const cached = readCitations(extra);
 
+    if (this.readingLikes()) {
+      // The likes column is being refreshed; this column is not part of that.
+      // The stored number still shows - it is what the row had - but nothing
+      // starts a read from here: not the cell, and not the background refresh
+      // an expired value would otherwise schedule.
+      if (cached) return this.citationPlanFrom(cached);
+      return {
+        value: "",
+        text: "",
+        count: null,
+        highImpact: false,
+        source: null,
+      };
+    }
+
     if (cached) {
       this.citationStates.delete(item.id);
       if (this.isCitationCacheStale(extra, prefs.cacheTtlDays)) {
@@ -1391,6 +1417,17 @@ export class AlphaLikesService {
   }
 
   private async readCitations(items: Zotero.Item[]): Promise<RefreshSummary> {
+    this.readScope = "citations";
+    try {
+      return await this.readCitationsScoped(items);
+    } finally {
+      this.readScope = null;
+    }
+  }
+
+  private async readCitationsScoped(
+    items: Zotero.Item[],
+  ): Promise<RefreshSummary> {
     const targets = items.filter(Boolean);
     const summary: RefreshSummary = {
       total: targets.length,
@@ -1455,7 +1492,9 @@ export class AlphaLikesService {
     const cached = readCachedLikes(extra);
 
     if (cached !== null) {
-      if (this.isCacheStale(extra)) this.scheduleStaleRefresh(item, arxivID);
+      if (this.isCacheStale(extra) && !this.readingCitations()) {
+        this.scheduleStaleRefresh(item, arxivID);
+      }
       this.itemStates.delete(item.id);
       return toSortableValue(cached);
     }
@@ -1474,7 +1513,7 @@ export class AlphaLikesService {
       // A failed lookup whose cooldown elapsed falls through and is retried.
     }
 
-    if (!this.disposed) {
+    if (!this.disposed && !this.readingCitations()) {
       this.itemStates.set(item.id, { kind: "loading" });
       void this.populateLikes(item, arxivID);
     }
@@ -1482,6 +1521,10 @@ export class AlphaLikesService {
   }
 
   private cellForUnknownID(item: Zotero.Item): string {
+    // Resolving an item ends in a like read, so it belongs to the likes column
+    // and not to a citation refresh.
+    if (this.readingCitations()) return "";
+
     const state = this.itemStates.get(item.id);
 
     if (state) {
@@ -1952,6 +1995,10 @@ export class AlphaLikesService {
     }
 
     notes.push(
+      "诊断只做上面写出的这几次真实请求：点赞与引用各测一次，这是它自己的动作，" +
+        "与右键的刷新无关——「刷新 alphaXiv 点赞」和「刷新引用数」互不影响，各读各的。",
+    );
+    notes.push(
       "这份报告只包含这些真实请求的结果，不会改动任何缓存或设置；把整段贴回来即可。",
     );
 
@@ -2211,6 +2258,17 @@ export class AlphaLikesService {
    * marker so the refresh is visible instead of looking like nothing happened.
    */
   async refreshItems(items: Zotero.Item[]): Promise<RefreshSummary> {
+    this.readScope = "likes";
+    try {
+      return await this.refreshLikesScoped(items);
+    } finally {
+      this.readScope = null;
+    }
+  }
+
+  private async refreshLikesScoped(
+    items: Zotero.Item[],
+  ): Promise<RefreshSummary> {
     const targets = items.filter(Boolean);
     const summary: RefreshSummary = {
       total: targets.length,
@@ -2444,6 +2502,14 @@ export class AlphaLikesService {
    */
   private scholarReadAllowed(item: Zotero.Item): boolean {
     return !this.usesGoogleScholar() || this.isSelected(item);
+  }
+
+  private readingLikes(): boolean {
+    return this.readScope === "likes";
+  }
+
+  private readingCitations(): boolean {
+    return this.readScope === "citations";
   }
 
   private usesGoogleScholar(): boolean {
