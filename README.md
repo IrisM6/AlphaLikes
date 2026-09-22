@@ -87,7 +87,7 @@ _界面示意图；主题、列宽和实际点赞数会因 Zotero 环境及 alph
 
 ### 从 GitHub Release 安装
 
-1. 下载最新的 [`alphalikes.xpi`](https://github.com/IrisM6/AlphaLikes/releases/latest/download/alphalikes.xpi)。
+1. 在 [最新版本](https://github.com/IrisM6/AlphaLikes/releases/latest) 里下载 `.xpi`（文件名带版本号，例如 `alphalikes-v1.1.2.xpi`）。
 2. 在 Zotero 中打开 **工具 → 插件**。
 3. 点击齿轮菜单，选择 **Install Plugin From File… / 从文件安装插件…**。
 4. 选择下载的 `.xpi`，按提示重启 Zotero。
@@ -296,7 +296,7 @@ npm run test
 npm run build
 ```
 
-生产构建位于 `.scaffold/build/`，其中包含 `alphalikes.xpi` 和更新清单。发布使用模板流程：
+生产构建位于 `.scaffold/build/`，其中包含 `alphalikes.xpi` 和更新清单。发布使用模板流程（打包出来的 `alphalikes.xpi` 以带版本号的名字上传，例如 `alphalikes-v1.1.2.xpi`，更新清单里的链接也指向这个名字）：
 
 ```bash
 npm run release
