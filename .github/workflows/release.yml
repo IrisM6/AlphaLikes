@@ -4,6 +4,14 @@ on:
   push:
     tags:
       - v**
+  # A tag can also arrive without a release: publishing by hand from a working
+  # copy is how the versioned asset name and the update manifest are produced,
+  # so every tag push here first asks whether a release already exists. Two
+  # publishers racing over one release is worse than a skipped run - the second
+  # one rebuilds the XPI (the build is not byte-reproducible), rewrites
+  # `update.json` with the hash of that other build, and leaves the update check
+  # pointing at a hash no download can match.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -11,7 +19,28 @@ permissions:
   pull-requests: write
 
 jobs:
+  existing-release:
+    name: Is this tag already published?
+    runs-on: ubuntu-latest
+    outputs:
+      found: ${{ steps.look.outputs.found }}
+    steps:
+      - id: look
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${GITHUB_REF_NAME} already exists; nothing to publish."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
   create-release:
+    needs:
+      - existing-release
+    if: needs.existing-release.outputs.found == 'false'
     uses: zotero-plugin-dev/workflows/.github/workflows/release-plugin.yml@main
     # You can customize any of the inputs here.
     # If you omit an input, its default value will be used.
@@ -20,16 +49,45 @@ jobs:
       release: "npm run release"
     secrets: inherit
 
+  # `npm run release` uploads the XPI under its build name, while the update
+  # manifest links to the versioned one, so a downloaded file says which release
+  # it is. Renaming it here keeps the two in step whichever way it was built.
+  versioned-asset:
+    needs:
+      - existing-release
+      - create-release
+    if: needs.existing-release.outputs.found == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+      - name: Give the asset the release's version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version=$(node -p "require('./package.json').version")
+          mkdir -p /tmp/asset
+          gh release download "${GITHUB_REF_NAME}" --pattern 'alphalikes.xpi' --dir /tmp/asset
+          cp /tmp/asset/alphalikes.xpi "/tmp/asset/alphalikes-v${version}.xpi"
+          gh release upload "${GITHUB_REF_NAME}" "/tmp/asset/alphalikes-v${version}.xpi" --clobber
+          gh release delete-asset "${GITHUB_REF_NAME}" alphalikes.xpi --yes
+
   # The release job writes the body from the conventional commits since the
   # previous tag and gives up with "_No significant changes._" when that range
-  # is empty — which it always is on the shallow checkout a runner makes. Every
-  # the first few releases therefore shipped an empty body, on the release page and
-  # in the marketplace listing, which shows the body. This job puts the newest
-  # CHANGELOG.md section in its place.
+  # is empty — which it always is on the shallow checkout a runner makes. The
+  # first few releases therefore shipped an empty body, on the release page
+  # and in the marketplace listing, which shows the body. This job puts the
+  # newest CHANGELOG.md section in its place.
   release-notes:
     name: Release notes from CHANGELOG.md
     needs:
-      - create-release
+      - existing-release
+      - versioned-asset
+    if: needs.existing-release.outputs.found == 'false'
     runs-on: ubuntu-latest
     permissions:
       contents: write
