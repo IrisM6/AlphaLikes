@@ -588,13 +588,23 @@ describe("AlphaLikes column rendering", function () {
       assert.notInclude(cell.title, "Google Scholar");
     });
 
-    it("still lets the like column name its own source", function () {
-      const cell = renderLikeCell(
+    it("keeps the like column on its own message", function () {
+      // The two columns say different things while a read is in flight. The
+      // like column names where its numbers come from; the citation column
+      // must not borrow that message, whatever the two are worded like.
+      const likes = renderLikeCell(
         CELL_LOADING,
         COLUMN,
         testDocument(),
       ) as HTMLElement;
-      assert.include(cell.title, "alphaXiv");
+      const citations = renderCitationCell(
+        CELL_LOADING,
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+
+      assert.notEqual(likes.title, citations.title);
+      assert.notInclude(citations.title, "alphaXiv");
     });
   });
 });

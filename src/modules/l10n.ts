@@ -15,44 +15,42 @@ export const MESSAGES = {
   "column-citations-label": "Citations",
   "menu-refresh": "Refresh alphaXiv Likes",
   "menu-refresh-citations": "Refresh citation counts",
-  "menu-open-scholar": "Open this paper's Google Scholar page in your browser",
+  "menu-open-scholar": "Open the search page in Google Scholar in your browser",
   "notify-open-scholar":
-    "Opened the search page in your browser (with the browser's own session). It does not lift the limit on the plugin's side: the plugin reads through Zotero's own session and the two do not affect each other.",
-  "menu-reset-google":
-    "Reset the Google session (clear Google cookies, then retry)",
+    "Opened the search page in your browser. That is the browser's own session and does not affect what the plugin reads.",
+  "menu-reset-google": "Reset the Google session (clear cookies and retry)",
 
-  "cell-loading": "Loading from alphaXiv…",
+  "cell-loading": "Reading…",
   "cell-citations-loading": "Reading the citation count…",
-  "cell-citations-loading-from": "Reading the citation count from {sources}…",
-  "cell-unavailable": "No alphaXiv likes found for this item",
+  "cell-citations-loading-from": "Reading the citation count ({sources})…",
+  "cell-unavailable": "No like count found",
   "cell-filtered": "Hidden by the like-count filter",
-  "cell-trend": "{delta} likes since the previous snapshot (currently {likes})",
-  "cell-high-impact": "In the top 10% of its field and year",
-  "cell-citations-unavailable": "No citation count found for this item",
-  "cell-unavailable-reason": "The read failed: {reason} It retries later.",
-  "cell-citations-unavailable-reason":
-    "The read failed: {reason} It retries later.",
-  "failure-http-403": "the site refused the request (HTTP 403).",
-  "failure-http-429": "the site is rate limiting (HTTP 429).",
-  "failure-http-4xx": "the request was refused (HTTP 4xx).",
-  "failure-http-5xx": "the site answered with a server error (HTTP 5xx).",
+  "cell-trend": "{delta} since the previous snapshot (now {likes})",
+  "cell-high-impact": "Top 10% of its field and year",
+  "cell-citations-unavailable": "No citation count found",
+  "cell-unavailable-reason": "Read failed: {reason}",
+  "cell-citations-unavailable-reason": "Read failed: {reason}",
+  "failure-http-403": "the site refused the request (HTTP 403)",
+  "failure-http-429": "the request was rate limited (HTTP 429)",
+  "failure-http-4xx": "the request was refused (HTTP 4xx)",
+  "failure-http-5xx": "the site answered with a server error (HTTP 5xx)",
   "failure-network":
-    "the request never reached the site (network, DNS, proxy or timeout).",
-  "failure-empty": "the site answered with an empty response.",
-  "failure-no-count": "the page arrived but the number was not in it.",
+    "the request never reached the site (network, DNS, proxy or timeout)",
+  "failure-empty": "the site answered with an empty response",
+  "failure-no-count": "the page arrived without that number",
   "failure-not-selected":
-    "未选中时不会自动查询 Google Scholar（避免触发验证）；选中它，或用右键菜单刷新",
+    "Google Scholar is not read for unselected items; select it or refresh from the context menu",
   "cell-cleared":
-    "This plugin's records were cleared from this item. Refresh the likes or the citations to read them again.",
+    "Records cleared; refresh from the context menu to read them again",
   "cell-scholar-rate-limited":
-    "Google Scholar is rate limiting this network address (HTTP 429); retrying automatically in about {minutes} minutes. The limit applies to the address, not to this plugin.",
+    "Google Scholar is rate limiting this address (HTTP 429); retrying in about {minutes} minutes",
   "cell-scholar-blocked":
-    "Google Scholar asked for a human check; retrying automatically in about {minutes} minutes. You can open the same search page in your own browser to look at it (that is the browser's session and does not change what the plugin reads), or right-click → Reset the Google session to retry with a clean one.",
+    "Google Scholar is asking for a human check; retrying in about {minutes} minutes",
   "cell-quantile-high": "High for the items in view",
   "cell-quantile-low": "Low for the items in view",
   "cell-quantile-mid": "Mid-range for the items in view",
   "cell-quantile-title":
-    "{label} — high from {high} likes, low up to {low} (ranked against {sample} items)",
+    "{label}: high from {high} likes, low up to {low} (ranked against {sample} items)",
   "cell-split-prefix": "likes",
   "cell-split-prefix-citations": "cited",
   "cell-citation-source": "Source: {source}",
@@ -62,31 +60,31 @@ export const MESSAGES = {
   "notify-refresh-citations-title": "AlphaLikes · citations",
   "refresh-likes-updated": "Re-read {updated} like count(s)",
   "refresh-citations-updated": "Re-read {updated} citation count(s)",
-  "refresh-failed": "{failed} could not be read (the previous value is kept)",
-  "refresh-skipped": "{skipped} have no DOI or arXiv ID to look up",
+  "refresh-failed": "{failed} could not be read (the old value is kept)",
+  "refresh-skipped": "{skipped} have no DOI / arXiv ID",
   "refresh-nothing": "Nothing to refresh.",
   "refresh-joining": "; ",
 
   // --- Batch actions -------------------------------------------------------
 
-  "progress-error": "AlphaLikes: the update failed: {message}",
+  "progress-error": "AlphaLikes could not finish this update: {message}",
 
   // --- Google Scholar's human check ---------------------------------------
   // --- Clearing this plugin's own records ----------------------------------
-  "menu-clear": "Clear this plugin's Extra records",
+  "menu-clear": "Remove the Extra records this plugin wrote",
   "notify-clear-title": "AlphaLikes · clear",
   "clear-done":
-    "Removed this plugin's records from {count} item(s); everything else in Extra is untouched. These items stay unwritten until a refresh.",
+    "Cleared the plugin's records from {count} item(s); everything else in Extra is untouched, and nothing is written again until the next refresh.",
   "clear-none":
-    "No AlphaLikes records to remove; everything else in Extra is untouched. These items stay unwritten until a refresh.",
+    "There was nothing of the plugin's to clear; nothing is written again until the next refresh.",
 
   "notify-scholar-title": "AlphaLikes · Google Scholar",
   "notify-scholar-rate-limited":
-    "Google Scholar rate limited (429) this read from Zotero, so citation counts cannot be read yet. It tries again automatically in about {minutes} minutes; if it keeps failing, the context menu can reset the Google session, which is the same thing as arriving in a browser that was never here.",
+    "Google Scholar is rate limiting (HTTP 429); retrying automatically in about {minutes} minutes.",
   "notify-scholar-blocked":
-    "Google Scholar asked for a human check, so citation counts cannot be read for now; retrying automatically in about {minutes} minutes. You can also right-click → Reset the Google session to drop Zotero's Google cookies and retry immediately (opening the page in your browser is a different session and does not affect the plugin).",
+    "Google Scholar is asking for a human check; retrying automatically in about {minutes} minutes.",
   "notify-scholar-paused":
-    "Google Scholar has refused several rounds in a row, so the automatic retrying has stopped (more retries only make its verdict worse). Refresh by hand when the network is quiet, or right-click → Reset the Google session to drop Zotero's Google cookies; selecting OpenAlex / Semantic Scholar as well is a way to keep working in the meantime.",
+    "Google Scholar has refused several rounds; automatic retrying has stopped. Refresh by hand when the network is quiet, or reset the Google session.",
   "reset-google-done":
     "Cleared {cookies} Google cookie(s); re-reading the citation counts now.",
 
