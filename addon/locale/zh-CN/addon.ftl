@@ -177,6 +177,7 @@ pref-refresh-title = 刷新与网络
 pref-refresh-desc = 两个刷新动作互不影响，只作用于选中的条目。
 pref-scholar-pacing = Google Scholar 读取节奏
 pref-scholar-pacing-desc = 读取会按下面的范围随机安排，避免固定节奏；改完立即生效。
+pref-scholar-pace-current = 当前：两次搜索间隔 {min}–{max} 秒，页面停留 {dwell} 秒，每 {batchMin}–{batchMax} 次后暂停 {pauseMin}–{pauseMax} 分钟
 pref-scholar-interval-min = 两次搜索最短间隔（秒）
 pref-scholar-interval-min-hint = 建议 16
 pref-scholar-interval-max = 两次搜索最长间隔（秒）

@@ -434,6 +434,17 @@ describe("AlphaLikes settings pane", function () {
       20_000,
       "20 in the pane is twenty seconds, not twenty milliseconds",
     );
+
+    // Put the field back: the pane is one document for the whole file, and a
+    // borrowed value would otherwise be read by whatever runs next.
+    (input as HTMLInputElement).value = "16";
+    (input as HTMLInputElement).dispatchEvent(
+      new Event("input", { bubbles: true }),
+    );
+    (input as HTMLInputElement).dispatchEvent(
+      new Event("change", { bubbles: true }),
+    );
+    await waitFor(() => pref("scholarIntervalMinSeconds") === 16);
   });
 
   it("explains a failed read instead of offering a diagnostic read", function () {
@@ -449,6 +460,63 @@ describe("AlphaLikes settings pane", function () {
       doc.querySelector('[data-l10n-id$="pref-scholar-pacing"]'),
       "the pane has to explain the reading rhythm instead",
     );
+  });
+
+  it("reads the rhythm back as a sentence, and follows the fields", async function () {
+    // Seven number boxes are hard to read as a rhythm. The line under them
+    // says what the settings currently add up to, and follows an edit, so a
+    // value that has drifted from the suggestion next to it is visible.
+    const summary = doc.getElementById("alphalikes-scholar-pace-current");
+    assert.isOk(summary, "the pane does not say what the rhythm currently is");
+
+    // The pane asks the window's localization for the sentence and fills the
+    // values in when the promise resolves, so a read has to wait a turn.
+    await Zotero.Promise.delay(200);
+    const text = (summary?.textContent ?? "").replace(/\s+/g, " ");
+
+    // What the sentence has to name is the settings as they stand, not a
+    // hard-coded set of numbers: the pane is shared by the whole file.
+    for (const name of [
+      "scholarIntervalMinSeconds",
+      "scholarIntervalMaxSeconds",
+      "scholarDwellSeconds",
+      "scholarBatchMin",
+      "scholarBatchMax",
+      "scholarPauseMinMinutes",
+      "scholarPauseMaxMinutes",
+    ]) {
+      assert.include(
+        text,
+        String(pref(name)),
+        `the summary does not name the current ${name}`,
+      );
+    }
+
+    const field = doc.querySelector(
+      '[preference="extensions.zotero.alphalikes.scholarIntervalMaxSeconds"]',
+    ) as HTMLInputElement | null;
+    assert.isOk(field, "the interval maximum field is missing");
+
+    const before = String(pref("scholarIntervalMaxSeconds"));
+    const changed = Number(before) === 45 ? 46 : 45;
+    (field as HTMLInputElement).value = String(changed);
+    field?.dispatchEvent(new win.Event("input", { bubbles: true }));
+    field?.dispatchEvent(new win.Event("change", { bubbles: true }));
+
+    try {
+      await Zotero.Promise.delay(200);
+      const updated = (summary?.textContent ?? "").replace(/\s+/g, " ");
+      assert.include(
+        updated,
+        String(changed),
+        "an edited field has to show up in the summary",
+      );
+    } finally {
+      (field as HTMLInputElement).value = before;
+      field?.dispatchEvent(new win.Event("input", { bubbles: true }));
+      field?.dispatchEvent(new win.Event("change", { bubbles: true }));
+      await Zotero.Promise.delay(50);
+    }
   });
 
   it("shows the style's colours when nothing has been edited", function () {

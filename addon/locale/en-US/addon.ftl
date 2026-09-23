@@ -178,6 +178,7 @@ pref-refresh-title = Refresh and network
 pref-refresh-desc = The two refresh actions are independent and act only on the selected items.
 pref-scholar-pacing = Google Scholar reading rhythm
 pref-scholar-pacing-desc = Reads are spread across the ranges below instead of repeating one interval; changes apply to the next search.
+pref-scholar-pace-current = In effect: {min}–{max} seconds between searches, {dwell} seconds on a loaded page, and a {pauseMin}–{pauseMax} minute rest after every {batchMin}–{batchMax} searches
 pref-scholar-interval-min = Shortest gap between two searches (s)
 pref-scholar-interval-min-hint = suggested 16
 pref-scholar-interval-max = Longest gap between two searches (s)

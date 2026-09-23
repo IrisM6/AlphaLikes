@@ -753,6 +753,114 @@
     return 1;
   }
 
+  /**
+   * The one-line summary of the read rhythm.
+   *
+   * Seven numbers in seven boxes are hard to read as a rhythm; the line under
+   * them says the same thing as a sentence and follows the fields as they are
+   * edited, so a value that no longer matches the suggestion next to it can be
+   * seen for what it is instead of having to be compared by eye.
+   */
+  function wireScholarPaceSummary(doc) {
+    var target = doc.getElementById("alphalikes-scholar-pace-current");
+    if (!target) return 0;
+
+    // The build prefixes Fluent variables the same way it prefixes message
+    // ids, so the arguments have to carry that prefix too.
+    var REF = "__addonRef__";
+
+    var fields = [
+      ["scholarIntervalMinSeconds", "min"],
+      ["scholarIntervalMaxSeconds", "max"],
+      ["scholarDwellSeconds", "dwell"],
+      ["scholarBatchMin", "batchMin"],
+      ["scholarBatchMax", "batchMax"],
+      ["scholarPauseMinMinutes", "pauseMin"],
+      ["scholarPauseMaxMinutes", "pauseMax"],
+    ];
+
+    function values() {
+      var out = {};
+      for (var index = 0; index < fields.length; index += 1) {
+        var name = fields[index][0];
+        var raw = Number(readPref(name));
+        out[REF + "-" + fields[index][1]] = String(
+          Number.isFinite(raw) ? Math.max(0, Math.round(raw)) : 0,
+        );
+      }
+      return out;
+    }
+
+    // The sentence is assembled here rather than by handing Fluent a list of
+    // arguments: the build renames the message's variables (`{ min }` becomes
+    // `{ alphalikes-min }`, without the `$`), so they are no longer variable
+    // references Fluent can fill in - they read as message references and come
+    // out literally. The plugin's own `t()` works around this the same way, by
+    // splitting on the placeholder and joining the value in.
+    function fill(text, args) {
+      var filled = text.split("{ ").join("{").split(" }").join("}");
+      for (var key in args) {
+        if (!Object.prototype.hasOwnProperty.call(args, key)) continue;
+        filled = filled.split("{" + key + "}").join(args[key]);
+      }
+      return filled;
+    }
+
+    function plain(args) {
+      var at = function (name) {
+        return args[REF + "-" + name];
+      };
+      return (
+        "当前：两次搜索间隔 " +
+        at("min") +
+        "–" +
+        at("max") +
+        " 秒，页面停留 " +
+        at("dwell") +
+        " 秒，每 " +
+        at("batchMin") +
+        "–" +
+        at("batchMax") +
+        " 次后暂停 " +
+        at("pauseMin") +
+        "–" +
+        at("pauseMax") +
+        " 分钟"
+      );
+    }
+
+    function render() {
+      var args = values();
+      var id = target.getAttribute("data-l10n-id");
+      if (id && doc.l10n && doc.l10n.formatValue) {
+        doc.l10n.formatValue(id).then(
+          function (text) {
+            target.textContent = text ? fill(text, args) : plain(args);
+          },
+          function () {
+            target.textContent = plain(args);
+          },
+        );
+        return;
+      }
+      target.textContent = plain(args);
+    }
+
+    var wired = 0;
+    for (var index = 0; index < fields.length; index += 1) {
+      var input = doc.querySelector(
+        'input[preference$="' + fields[index][0] + '"]',
+      );
+      if (!input) continue;
+      input.addEventListener("input", render);
+      input.addEventListener("change", render);
+      wired += 1;
+    }
+
+    render();
+    return wired;
+  }
+
   // -------------------------------------------------------------------------
 
   function wire() {
@@ -771,6 +879,7 @@
       syncStyleColors(doc);
       wireSources(doc);
       wireAppearanceLink(doc);
+      wireScholarPaceSummary(doc);
     } catch (error) {
       Zotero.logError(
         new Error("[AlphaPulse] settings pane setup failed: " + error),

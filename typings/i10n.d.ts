@@ -134,6 +134,7 @@ export type FluentMessageId =
   | 'pref-scholar-interval-max-hint'
   | 'pref-scholar-interval-min'
   | 'pref-scholar-interval-min-hint'
+  | 'pref-scholar-pace-current'
   | 'pref-scholar-pacing'
   | 'pref-scholar-pacing-desc'
   | 'pref-scholar-pause-max'
