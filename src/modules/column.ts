@@ -1,5 +1,5 @@
 /**
- * Registration and rendering of the AlphaLikes item-tree column.
+ * Registration and rendering of the AlphaPulse item-tree column.
  */
 
 import { config } from "../../package.json";
@@ -731,7 +731,7 @@ export async function registerAlphaXivLikesColumn(): Promise<string[]> {
   );
   if (!registeredDataKeys.length) {
     throw new Error(
-      "AlphaLikes could not register its Zotero item-tree column",
+      "AlphaPulse could not register its Zotero item-tree column",
     );
   }
 
@@ -772,7 +772,7 @@ async function registerCitationsColumn(
   );
   if (!keys.length) {
     Zotero.debug(
-      "[AlphaLikes] Zotero refused the Citations column; like counts keep working",
+      "[AlphaPulse] Zotero refused the Citations column; like counts keep working",
     );
     return;
   }
@@ -809,7 +809,7 @@ export async function unregisterColumns(
     return;
   }
   Zotero.debug(
-    "[AlphaLikes] Zotero offers neither unregisterColumn nor unregisterColumns; the columns stay registered until restart",
+    "[AlphaPulse] Zotero offers neither unregisterColumn nor unregisterColumns; the columns stay registered until restart",
   );
 }
 

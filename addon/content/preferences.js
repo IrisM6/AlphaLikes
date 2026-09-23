@@ -41,7 +41,7 @@
     // Not fatal: the pane is written with Chinese fallback text, so it stays
     // readable, and Zotero still parses the linkset from the markup.
     Zotero.logError(
-      new Error("[AlphaLikes] could not insert " + FTL_FILE + ": " + error),
+      new Error("[AlphaPulse] could not insert " + FTL_FILE + ": " + error),
     );
   }
 
@@ -63,7 +63,7 @@
     try {
       Zotero.Prefs.set(BRANCH + name, value, true);
     } catch (error) {
-      Zotero.debug("[AlphaLikes] could not write " + name + ": " + error);
+      Zotero.debug("[AlphaPulse] could not write " + name + ": " + error);
     }
   }
 
@@ -458,12 +458,12 @@
   /** The style's own colours, for the previews and the restore buttons. */
   function styleColors(style) {
     try {
-      var api = Zotero.AlphaLikes && Zotero.AlphaLikes.api;
+      var api = Zotero.AlphaPulse && Zotero.AlphaPulse.api;
       if (api && typeof api.styleColors === "function") {
         return api.styleColors(String(style || ""));
       }
     } catch (error) {
-      Zotero.debug("[AlphaLikes] styleColors unavailable: " + error);
+      Zotero.debug("[AlphaPulse] styleColors unavailable: " + error);
     }
     return { high: "", mid: "", low: "" };
   }
@@ -773,7 +773,7 @@
       wireAppearanceLink(doc);
     } catch (error) {
       Zotero.logError(
-        new Error("[AlphaLikes] settings pane setup failed: " + error),
+        new Error("[AlphaPulse] settings pane setup failed: " + error),
       );
     }
     return true;

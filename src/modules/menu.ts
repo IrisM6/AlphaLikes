@@ -1,11 +1,15 @@
 /**
- * Item context-menu entries.
+ * The plugin's one menu entry.
+ *
+ * An icon, the plugin's name, and the actions underneath — the same entry in
+ * the Tools menu and in the item context menu, so there is one place to look
+ * rather than five entries scattered down a right-click.
  *
  * Everything here is an explicit action on the *data*: re-read the like counts,
- * re-read the citation counts, open Google Scholar's verification page, or take
- * this plugin's records back out of `Extra`. Looking a paper up is not one of
- * them — matching runs on its own, in the background, at the confidence
- * threshold the settings ask for.
+ * re-read the citation counts, open the paper's alphaXiv page, open Google
+ * Scholar's verification page, or take this plugin's records back out of
+ * `Extra`. Looking a paper up is not one of them — matching runs on its own, in
+ * the background, at the confidence threshold the settings ask for.
  *
  * The clear action deletes only what this plugin wrote (`alphaxiv_*` lines,
  * through `stripAlphaLikesData`); everything else an item has in `Extra` stays
@@ -16,18 +20,32 @@
  * both ends of that line rather than memory.
  */
 
+import pkg from "../../package.json";
 import { getService } from "./column";
 import { getCitationPrefs, getCitationSourcePreferences } from "./prefs";
 import { t } from "./l10n";
 import { toast } from "./notify";
 import type { RefreshSummary } from "./service";
 
+const MENU_ID = "alphalikes-menu";
+const MENU_POPUP_ID = "alphalikes-menu-popup";
+const TOOLS_MENU_ID = "alphalikes-tools-menu";
+const TOOLS_POPUP_ID = "alphalikes-tools-popup";
 const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const REFRESH_CITATIONS_ID = "alphalikes-refresh-citations";
+const OPEN_ALPHAXIV_ID = "alphalikes-open-alphaxiv";
 const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
 const RESET_GOOGLE_ID = "alphalikes-reset-google";
 const CLEAR_ID = "alphalikes-clear-data";
+
+/**
+ * The icon on the one menu entry.
+ *
+ * The bootstrap maps `content/` to `chrome://alphalikes/`, which is the same
+ * path the settings pane uses for its own icon.
+ */
+const ICON_URL = "chrome://alphalikes/content/icons/favicon.png";
 
 type WindowWithAlert = Window & {
   alert?: (message: string) => void;
@@ -39,16 +57,7 @@ function createMenuItem(
   label: string,
   onCommand: () => void,
 ): Element {
-  const xulDocument = doc as Document & {
-    createXULElement?: (name: string) => Element;
-  };
-
-  const element = xulDocument.createXULElement
-    ? xulDocument.createXULElement("menuitem")
-    : doc.createElementNS(
-        "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
-        "menuitem",
-      );
+  const element = createXULElement(doc, "menuitem");
 
   element.setAttribute("id", id);
   element.setAttribute("label", label);
@@ -56,20 +65,58 @@ function createMenuItem(
   return element;
 }
 
-function createSeparator(doc: Document, id: string): Element {
+function createXULElement(doc: Document, name: string): Element {
   const xulDocument = doc as Document & {
     createXULElement?: (name: string) => Element;
   };
 
-  const element = xulDocument.createXULElement
-    ? xulDocument.createXULElement("menuseparator")
+  return xulDocument.createXULElement
+    ? xulDocument.createXULElement(name)
     : doc.createElementNS(
         "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul",
-        "menuseparator",
+        name,
       );
+}
 
+function createSeparator(doc: Document, id: string): Element {
+  const element = createXULElement(doc, "menuseparator");
   element.setAttribute("id", id);
   return element;
+}
+
+/**
+ * The plugin's one entry: an icon, the name, and the actions underneath.
+ *
+ * Every action this plugin offers lives in here and nowhere else. A row of
+ * five context-menu entries is what the earlier versions had, and it read as
+ * five unrelated features rather than one plugin; the submenu is also what
+ * makes the alphaXiv and Scholar pages discoverable, since nothing on the item
+ * row suggests they exist.
+ */
+function createMenu(
+  doc: Document,
+  id: string,
+  popupId: string,
+  label: string,
+): { menu: Element; popup: Element } {
+  const menu = createXULElement(doc, "menu");
+  menu.setAttribute("id", id);
+  menu.setAttribute("label", label);
+  menu.setAttribute("class", "menu-iconic");
+  menu.setAttribute("image", ICON_URL);
+  // XUL draws the icon from `list-style-image`; the attribute above is what
+  // the platform's own menu items use, and both are set so neither engine
+  // version is left without one.
+  (menu as HTMLElement).setAttribute(
+    "style",
+    `list-style-image: url("${ICON_URL}");`,
+  );
+
+  const popup = createXULElement(doc, "menupopup");
+  popup.setAttribute("id", popupId);
+  menu.append(popup);
+
+  return { menu, popup };
 }
 
 function selectedItems(win: Window): Zotero.Item[] {
@@ -85,7 +132,7 @@ function notify(win: Window, message: string): void {
   try {
     target.alert?.(message);
   } catch {
-    Zotero.debug(`[AlphaLikes] ${message}`);
+    Zotero.debug(`[AlphaPulse] ${message}`);
   }
 }
 
@@ -100,6 +147,96 @@ function notify(win: Window, message: string): void {
  * slowly, so without a summary "it worked" and "it silently failed" look
  * exactly the same in the column.
  */
+/**
+ * What each entry of the menu should look like, from the four things it
+ * depends on.
+ *
+ * A pure function of those four, so the rule can be read and tested without a
+ * live popup: whether an entry is offered is decided here and nowhere else,
+ * and the popup handler merely copies the answer onto the elements.
+ */
+export interface MenuState {
+  /** How many rows are selected. */
+  count: number;
+  citationsEnabled: boolean;
+  findsScholar: boolean;
+  /** Whether any selected row has a paper on alphaXiv to open. */
+  openableAlphaXiv: boolean;
+}
+
+export interface MenuVisibility {
+  entry: boolean;
+  refresh: boolean;
+  refreshCitations: boolean;
+  openAlphaXiv: boolean;
+  openScholar: boolean;
+  resetGoogle: boolean;
+  clear: boolean;
+}
+
+export function menuVisibility(state: MenuState): MenuVisibility {
+  return {
+    // With nothing selected the entry leaves the item menu; the Tools menu
+    // keeps it, because resetting the Google session is about the session and
+    // not about a row, and the caller ignores this field for that host.
+    entry: state.count > 0,
+    refresh: state.count > 0,
+    // Nothing to refresh or verify while the Citations column is off.
+    refreshCitations: state.count > 0 && state.citationsEnabled,
+    openAlphaXiv: state.count > 0 && state.openableAlphaXiv,
+    openScholar: state.citationsEnabled && state.findsScholar,
+    resetGoogle: state.citationsEnabled && state.findsScholar,
+    clear: state.count > 0,
+  };
+}
+
+/** Whether the Citations column is on, with a failed read counting as "off". */
+function isCitationsEnabled(): boolean {
+  try {
+    return getCitationPrefs().enabled;
+  } catch (error) {
+    Zotero.debug(
+      `[AlphaPulse] Could not read the citation preferences: ${error}`,
+    );
+    return false;
+  }
+}
+
+/** Whether Google Scholar is among the sources, guarded the same way. */
+function readsGoogleScholar(): boolean {
+  try {
+    return getCitationSourcePreferences().includes("googleScholar");
+  } catch (error) {
+    Zotero.debug(`[AlphaPulse] Could not read the citation sources: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Hides or shows one XUL entry.
+ *
+ * `hidden` is the attribute XUL reads; the property is set as well because
+ * that is what a test (and any plain DOM code) checks.
+ */
+function setHidden(element: Element, hidden: boolean): void {
+  const target = element as HTMLElement;
+  target.hidden = hidden;
+  if (hidden) element.setAttribute("hidden", "true");
+  else element.removeAttribute("hidden");
+}
+
+/** Whether any of the selected rows has an alphaXiv page to open. */
+function hasAlphaXivPage(item: Zotero.Item): boolean {
+  try {
+    return getService().alphaXivPageURL(item) !== null;
+  } catch (error) {
+    Zotero.debug(
+      `[AlphaPulse] Could not read the arXiv ID of an item: ${error}`,
+    );
+    return false;
+  }
+}
+
 export function refreshSummaryText(
   summary: RefreshSummary,
   updated: string,
@@ -172,7 +309,7 @@ async function refreshSelectedCitations(win: Window): Promise<void> {
 /**
  * Takes this plugin's records back out of the selected items' `Extra`.
  *
- * Deliberately narrow: only the lines AlphaLikes wrote are removed, and the
+ * Deliberately narrow: only the lines AlphaPulse wrote are removed, and the
  * items are then left alone until a refresh asks for them again, so the
  * automatic lookup cannot write them straight back. The summary says both of
  * those things, because "cleared" that reappears a second later looks like a
@@ -223,6 +360,28 @@ async function resetGoogleSession(win: Window): Promise<void> {
 }
 
 /**
+ * Opens the paper's alphaXiv page in the user's browser.
+ *
+ * The like count comes from that page, and until now the only way to see it
+ * was to build the address by hand: the number in the column is a summary of
+ * something the user cannot look at. The first selected item that has an arXiv
+ * ID is the one opened - with a mixed selection there is no single page to
+ * open, and guessing one would be worse than saying so.
+ */
+function openAlphaXivPage(win: Window): void {
+  const items = selectedItems(win);
+  const target = items.find((item) => getService().alphaXivPageURL(item));
+
+  if (!target) {
+    notify(win, t("error-no-arxiv-id"));
+    return;
+  }
+
+  getService().openAlphaXivPage(target);
+  toast(t("notify-alphaxiv-title"), t("notify-open-alphaxiv"));
+}
+
+/**
  * Opens the paper's own Scholar search in the user's browser.
  *
  * With a notice, because this action was long described as a way to lift the
@@ -245,74 +404,109 @@ function openScholarVerification(win: Window): void {
 export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
   try {
     const doc = win.document;
-    const popup = doc.getElementById("zotero-itemmenu");
-    if (!popup || doc.getElementById(REFRESH_ID)) return;
+    const itemPopup = doc.getElementById("zotero-itemmenu");
+    const toolsPopup = doc.getElementById("menu_ToolsPopup");
+    if (doc.getElementById(MENU_ID) || (!itemPopup && !toolsPopup)) return;
 
-    const refresh = createMenuItem(doc, REFRESH_ID, t("menu-refresh"), () => {
-      void refreshSelectedItems(win);
-    });
-    const refreshCitations = createMenuItem(
-      doc,
-      REFRESH_CITATIONS_ID,
-      t("menu-refresh-citations"),
-      () => {
-        void refreshSelectedCitations(win);
-      },
-    );
-    // Google Scholar is the only provider that can ask the user to prove they
-    // are human, so this entry exists only while it is among the sources.
-    const openScholar = createMenuItem(
-      doc,
-      OPEN_SCHOLAR_ID,
-      t("menu-open-scholar"),
-      () => {
-        openScholarVerification(win);
-      },
-    );
+    // One set of commands, two hosts: the Tools menu is where a user looks for
+    // a plugin, and the item menu is where the selection already is.
+    const hosts: Array<{ host: Element | null; id: string; popupId: string }> =
+      [
+        { host: itemPopup, id: MENU_ID, popupId: MENU_POPUP_ID },
+        { host: toolsPopup, id: TOOLS_MENU_ID, popupId: TOOLS_POPUP_ID },
+      ];
 
-    const resetGoogle = createMenuItem(
-      doc,
-      RESET_GOOGLE_ID,
-      t("menu-reset-google"),
-      () => {
-        void resetGoogleSession(win);
-      },
-    );
+    for (const { host, id, popupId } of hosts) {
+      if (!host || doc.getElementById(id)) continue;
 
-    const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
-      void clearSelectedItems(win);
-    });
+      const { menu, popup } = createMenu(
+        doc,
+        id,
+        popupId,
+        pkg.config.addonName,
+      );
 
-    // One group, in the order the actions are usually wanted: read, read,
-    // verify, and - last - take this plugin's records back out of `Extra`.
-    popup.append(
-      createSeparator(doc, SEPARATOR_ID),
-      refresh,
-      refreshCitations,
-      openScholar,
-      resetGoogle,
-      clear,
-    );
+      const refresh = createMenuItem(doc, REFRESH_ID, t("menu-refresh"), () => {
+        void refreshSelectedItems(win);
+      });
+      const refreshCitations = createMenuItem(
+        doc,
+        REFRESH_CITATIONS_ID,
+        t("menu-refresh-citations"),
+        () => {
+          void refreshSelectedCitations(win);
+        },
+      );
+      const openAlphaXiv = createMenuItem(
+        doc,
+        OPEN_ALPHAXIV_ID,
+        t("menu-open-alphaxiv"),
+        () => {
+          openAlphaXivPage(win);
+        },
+      );
+      // Google Scholar is the only provider that can ask the user to prove
+      // they are human, so these two exist only while it is among the sources.
+      const openScholar = createMenuItem(
+        doc,
+        OPEN_SCHOLAR_ID,
+        t("menu-open-scholar"),
+        () => {
+          openScholarVerification(win);
+        },
+      );
+      const resetGoogle = createMenuItem(
+        doc,
+        RESET_GOOGLE_ID,
+        t("menu-reset-google"),
+        () => {
+          void resetGoogleSession(win);
+        },
+      );
+      const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
+        void clearSelectedItems(win);
+      });
 
-    popup.addEventListener("popupshowing", () => {
-      const count = selectedItems(win).length;
-      const citationPrefs = getCitationPrefs();
-      const findsScholar =
-        getCitationSourcePreferences().includes("googleScholar");
+      // In the order the actions are usually wanted: read, read, go and look,
+      // verify, and - last, behind a separator - take the records back out.
+      popup.append(
+        refresh,
+        refreshCitations,
+        openAlphaXiv,
+        openScholar,
+        resetGoogle,
+        createSeparator(doc, SEPARATOR_ID),
+        clear,
+      );
+      host.append(menu);
 
-      (refresh as HTMLElement).hidden = count === 0;
-      // Nothing to refresh or verify while the Citations column is off.
-      (refreshCitations as HTMLElement).hidden =
-        count === 0 || !citationPrefs.enabled;
-      (openScholar as HTMLElement).hidden =
-        !citationPrefs.enabled || !findsScholar;
-      // Same condition as the check itself: both are about Google Scholar.
-      (resetGoogle as HTMLElement).hidden =
-        !citationPrefs.enabled || !findsScholar;
-      (clear as HTMLElement).hidden = count === 0;
-    });
+      popup.addEventListener("popupshowing", () => {
+        // The four inputs are read defensively - a note, an attachment, an
+        // item whose fields throw - and the decision itself is `menuVisibility`.
+        // The earlier version computed this inline and let the first throw end
+        // the whole handler, which left every entry in whatever state the
+        // previous opening gave it: entries that looked available and did
+        // nothing when clicked.
+        const items = selectedItems(win);
+        const visibility = menuVisibility({
+          count: items.length,
+          citationsEnabled: isCitationsEnabled(),
+          findsScholar: readsGoogleScholar(),
+          openableAlphaXiv: items.some((item) => hasAlphaXivPage(item)),
+        });
+
+        setHidden(refresh, !visibility.refresh);
+        setHidden(refreshCitations, !visibility.refreshCitations);
+        setHidden(openAlphaXiv, !visibility.openAlphaXiv);
+        setHidden(openScholar, !visibility.openScholar);
+        setHidden(resetGoogle, !visibility.resetGoogle);
+        setHidden(clear, !visibility.clear);
+        // Only the item menu hides its whole entry; see `menuVisibility`.
+        if (id === MENU_ID) setHidden(menu, !visibility.entry);
+      });
+    }
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] Could not register the item menu: ${error}`);
+    Zotero.debug(`[AlphaPulse] Could not register the item menu: ${error}`);
   }
 }
 
@@ -320,9 +514,16 @@ export function unregisterItemMenu(win: Window): void {
   try {
     const doc = win.document;
     for (const id of [
+      // The popups go with their menus, and are listed anyway: a menu whose
+      // popup was left behind is a menu that comes back empty.
+      MENU_ID,
+      MENU_POPUP_ID,
+      TOOLS_MENU_ID,
+      TOOLS_POPUP_ID,
       SEPARATOR_ID,
       REFRESH_ID,
       REFRESH_CITATIONS_ID,
+      OPEN_ALPHAXIV_ID,
       OPEN_SCHOLAR_ID,
       RESET_GOOGLE_ID,
       CLEAR_ID,

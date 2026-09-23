@@ -112,7 +112,7 @@ export function formatDiagnosis(input: DiagnosisInput): string {
   // so the report says nothing about versions in the ordinary case.
   const support = zoteroSupportLine(input.zoteroVersion);
   const lines: string[] = [
-    `AlphaLikes 读取诊断 · 插件 ${input.pluginVersion}`,
+    `AlphaPulse 读取诊断 · 插件 ${input.pluginVersion}`,
     `Zotero ${input.zoteroVersion}（Gecko ${input.gecko}）· ${input.platform}`,
     ...(support ? [support] : []),
     `代理：${input.proxy}`,

@@ -1,5 +1,5 @@
 /**
- * arXiv identifier parsing and the AlphaLikes `Extra` field cache format.
+ * arXiv identifier parsing and the AlphaPulse `Extra` field cache format.
  *
  * Everything in this module is pure so it can be unit tested outside Zotero.
  */
@@ -102,7 +102,7 @@ export function extractArxivIDFromDOI(doi: string): string | null {
 /**
  * Resolves an arXiv ID for an item.
  *
- * Priority: explicit AlphaLikes match (a user confirmation always wins), then
+ * Priority: explicit AlphaPulse match (a user confirmation always wins), then
  * the DataCite arXiv DOI, then a canonical `arxiv.org` URL, then `arXiv:`
  * metadata lines inside `Extra`.
  */
@@ -228,7 +228,7 @@ export function upsertLikesCache(
   return next;
 }
 
-/** Every `Extra` line AlphaLikes owns, for the "clear data" action. */
+/** Every `Extra` line AlphaPulse owns, for the "clear data" action. */
 const OWNED_LINE_RES = [
   CACHE_LINE_RE,
   ARXIV_ID_ANY_LINE_RE,
@@ -239,14 +239,14 @@ const OWNED_LINE_RES = [
   SCHOLAR_TITLE_ANY_LINE_RE,
 ];
 
-/** Whether `Extra` still holds any line AlphaLikes owns. */
+/** Whether `Extra` still holds any line AlphaPulse owns. */
 export function hasAlphaLikesData(extra: string): boolean {
   return (extra || "")
     .split(/\r?\n/)
     .some((line) => OWNED_LINE_RES.some((re) => re.test(line)));
 }
 
-/** Removes every line AlphaLikes owns, leaving the rest of `Extra` intact. */
+/** Removes every line AlphaPulse owns, leaving the rest of `Extra` intact. */
 export function stripAlphaLikesData(extra: string): string {
   const stripped = (extra || "")
     .split(/\r?\n/)

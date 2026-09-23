@@ -1,5 +1,5 @@
 /**
- * Public surface of the AlphaLikes core.
+ * Public surface of the AlphaPulse core.
  *
  * The implementation lives in focused modules; this barrel keeps the original
  * import path (and the existing test suite) working.

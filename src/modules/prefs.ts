@@ -310,7 +310,7 @@ export function setPref<K extends PrefName>(name: K, value: unknown): void {
       true,
     );
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] Could not write preference ${name}: ${error}`);
+    Zotero.debug(`[AlphaPulse] Could not write preference ${name}: ${error}`);
   }
 }
 
@@ -731,7 +731,7 @@ export function getScholarPacing(): ScholarPacing {
 }
 
 /**
- * Calls `handler` whenever any AlphaLikes preference changes.
+ * Calls `handler` whenever any AlphaPulse preference changes.
  *
  * Zotero keys observers by the exact full preference name, so each key has to
  * be registered individually.
@@ -751,7 +751,7 @@ export function observePrefs(handler: (name: string) => void): () => void {
             try {
               handler(name);
             } catch (error) {
-              Zotero.debug(`[AlphaLikes] Preference observer failed: ${error}`);
+              Zotero.debug(`[AlphaPulse] Preference observer failed: ${error}`);
             }
           },
           true,

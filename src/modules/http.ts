@@ -171,7 +171,7 @@ export function isGoogleHost(host: string): boolean {
 /**
  * The User-Agent a request goes out with.
  *
- * The APIs get an honest `AlphaLikes/<version>` token, because that is what
+ * The APIs get an honest `AlphaPulse/<version>` token, because that is what
  * arXiv and OpenAlex ask for and it lets them throttle by client rather than
  * by address. Google is different: Scholar answers an unfamiliar agent with
  * the "your computer or network may be sending automated queries" page even
@@ -303,7 +303,7 @@ export function usePlainUserAgentFor(host: string): void {
         VersionHeader?: { registerPlainUAHost?: (host: string) => void };
       }
     ).VersionHeader?.registerPlainUAHost?.(host);
-    Zotero.debug(`[AlphaLikes] ${host} 的请求不再携带 Zotero 标识`);
+    Zotero.debug(`[AlphaPulse] ${host} 的请求不再携带 Zotero 标识`);
   } catch {
     // Older builds without the hook: the agent we send is plain already.
   }
@@ -893,7 +893,7 @@ export class PacedRequester {
     const previous = this.tails.get(host) ?? Promise.resolve();
     const run = previous.then(async () => {
       if (this.disposed)
-        throw new Error("AlphaLikes request queue has stopped");
+        throw new Error("AlphaPulse request queue has stopped");
 
       const scholar = this.isScholarHost(host);
       if (scholar) {
@@ -1058,7 +1058,7 @@ export class PacedRequester {
         if (this.pathPreference !== winner.via) {
           this.pathPreference = winner.via;
           Zotero.debug(
-            `[AlphaLikes] Google Scholar 读取改用${
+            `[AlphaPulse] Google Scholar 读取改用${
               winner.via === "browser" ? "浏览器页面加载" : "直接请求"
             }方式`,
           );

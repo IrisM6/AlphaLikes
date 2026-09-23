@@ -1,4 +1,4 @@
-# AlphaLikes 界面文案（简体中文）。
+# AlphaPulse 界面文案（简体中文）。
 # 供列标题、右键菜单、单元格提示（src/modules/l10n.ts）与设置面板使用。
 
 # --- 列与菜单 ---------------------------------------------------------------
@@ -10,6 +10,10 @@ menu-refresh-citations = 刷新引用数
 menu-open-scholar = 在浏览器中打开 Google Scholar 搜索页
 notify-open-scholar = 已在浏览器中打开搜索页。这是浏览器自己的会话，不影响插件读取。
 menu-reset-google = 重置谷歌会话（清 Cookie 后重试）
+menu-open-alphaxiv = 打开 alphaXiv 页面
+notify-alphaxiv-title = AlphaPulse · alphaXiv
+notify-open-alphaxiv = 已在默认浏览器打开这篇论文的 alphaXiv 页面。
+error-no-arxiv-id = 选中的条目里没有一个能确定 arXiv ID，无法打开 alphaXiv 页面。
 menu-clear = 清除本插件写入的 Extra 记录
 
 # --- 单元格 -----------------------------------------------------------------
@@ -48,8 +52,8 @@ cell-burst-pause = 这一批已读满，约 {minutes} 分钟后继续读取
 
 # --- 刷新结果 ---------------------------------------------------------------
 
-notify-refresh-likes-title = AlphaLikes · 点赞
-notify-refresh-citations-title = AlphaLikes · 引用数
+notify-refresh-likes-title = AlphaPulse · 点赞
+notify-refresh-citations-title = AlphaPulse · 引用数
 refresh-likes-updated = 已重新读取 {updated} 条点赞数
 refresh-citations-updated = 已重新读取 {updated} 条引用数
 refresh-failed = {failed} 条未能读取（保留原值）
@@ -57,16 +61,16 @@ refresh-failed-retry = {failed} 条未能读取（保留原值，约 {minutes} �
 refresh-skipped = {skipped} 条缺少 DOI / arXiv ID
 refresh-nothing = 没有可刷新的条目。
 refresh-joining = ；
-progress-error = AlphaLikes 无法完成本次更新：{message}
+progress-error = AlphaPulse 无法完成本次更新：{message}
 
-notify-scholar-title = AlphaLikes · Google Scholar
+notify-scholar-title = AlphaPulse · Google Scholar
 notify-scholar-blocked = Google Scholar 要求人机验证，约 {minutes} 分钟后自动重试。
 notify-scholar-rate-limited = Google Scholar 限流（HTTP 429），约 {minutes} 分钟后自动重试。
 notify-scholar-paused = Google Scholar 连续被拒，已停止自动重试；可在网络空闲时手动刷新，或重置谷歌会话。
 
 # --- 清除 -------------------------------------------------------------------
 
-notify-clear-title = AlphaLikes · 清除
+notify-clear-title = AlphaPulse · 清除
 clear-done = 已清除 {count} 个条目中的插件记录，其余内容原样保留；刷新前不会自动写入。
 clear-none = 没有可清除的插件记录；这些条目在刷新前不会自动写入。
 reset-google-done = 已清除 {cookies} 个 Google Cookie，正在重新读取引用数。

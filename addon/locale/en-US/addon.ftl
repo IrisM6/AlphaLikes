@@ -1,4 +1,4 @@
-# AlphaLikes interface strings (English).
+# AlphaPulse interface strings (English).
 # Used by the column labels, the context menu, the cell tooltips
 # (src/modules/l10n.ts) and the settings pane.
 
@@ -11,6 +11,10 @@ menu-refresh-citations = Refresh citation counts
 menu-open-scholar = Open the search page in Google Scholar in your browser
 notify-open-scholar = Opened the search page in your browser. That is the browser's own session and does not affect what the plugin reads.
 menu-reset-google = Reset the Google session (clear cookies and retry)
+menu-open-alphaxiv = Open the alphaXiv page
+notify-alphaxiv-title = AlphaPulse · alphaXiv
+notify-open-alphaxiv = The paper's alphaXiv page is open in your browser.
+error-no-arxiv-id = None of the selected items has an arXiv ID, so there is no alphaXiv page to open.
 menu-clear = Remove the Extra records this plugin wrote
 
 # --- Cells ------------------------------------------------------------------
@@ -49,8 +53,8 @@ cell-burst-pause = this burst is finished; reading resumes in about {minutes} mi
 
 # --- Refresh summaries ------------------------------------------------------
 
-notify-refresh-likes-title = AlphaLikes · likes
-notify-refresh-citations-title = AlphaLikes · citations
+notify-refresh-likes-title = AlphaPulse · likes
+notify-refresh-citations-title = AlphaPulse · citations
 refresh-likes-updated = Re-read {updated} like count(s)
 refresh-citations-updated = Re-read {updated} citation count(s)
 refresh-failed = {failed} could not be read (the old value is kept)
@@ -58,16 +62,16 @@ refresh-failed-retry = {failed} could not be read (the old value is kept; retryi
 refresh-skipped = {skipped} have no DOI / arXiv ID
 refresh-nothing = Nothing to refresh.
 refresh-joining = "; "
-progress-error = AlphaLikes could not finish this update: {message}
+progress-error = AlphaPulse could not finish this update: {message}
 
-notify-scholar-title = AlphaLikes · Google Scholar
+notify-scholar-title = AlphaPulse · Google Scholar
 notify-scholar-blocked = Google Scholar is asking for a human check; retrying automatically in about {minutes} minutes.
 notify-scholar-rate-limited = Google Scholar is rate limiting (HTTP 429); retrying automatically in about {minutes} minutes.
 notify-scholar-paused = Google Scholar has refused several rounds; automatic retrying has stopped. Refresh by hand when the network is quiet, or reset the Google session.
 
 # --- Clear ------------------------------------------------------------------
 
-notify-clear-title = AlphaLikes · clear
+notify-clear-title = AlphaPulse · clear
 clear-done = Cleared the plugin's records from {count} item(s); everything else in Extra is untouched, and nothing is written again until the next refresh.
 clear-none = There was nothing of the plugin's to clear; nothing is written again until the next refresh.
 reset-google-done = Cleared {cookies} Google cookie(s); re-reading the citation counts now.

@@ -24,7 +24,7 @@ export function toast(headline: string, message: string, ms = 10_000): void {
     ).ProgressWindow;
 
     if (!ProgressWindow) {
-      Zotero.debug(`[AlphaLikes] ${headline}: ${message}`);
+      Zotero.debug(`[AlphaPulse] ${headline}: ${message}`);
       return;
     }
 
@@ -35,7 +35,7 @@ export function toast(headline: string, message: string, ms = 10_000): void {
     window.startCloseTimer(ms);
   } catch (error) {
     // A notification is a courtesy; never let it break the work behind it.
-    Zotero.debug(`[AlphaLikes] could not show a notification: ${error}`);
+    Zotero.debug(`[AlphaPulse] could not show a notification: ${error}`);
   }
 }
 
@@ -44,6 +44,6 @@ export function openExternal(url: string): void {
   try {
     Zotero.launchURL(url);
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] could not open ${url}: ${error}`);
+    Zotero.debug(`[AlphaPulse] could not open ${url}: ${error}`);
   }
 }

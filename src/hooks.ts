@@ -8,7 +8,7 @@ import { registerItemMenu, unregisterItemMenu } from "./modules/menu";
 import { observePrefs } from "./modules/prefs";
 
 /**
- * Registers the AlphaLikes pane in Zotero's settings window.
+ * Registers the AlphaPulse pane in Zotero's settings window.
  *
  * `Zotero.PreferencePanes` is not part of the bundled Zotero typings yet, so
  * the call is made through a narrow structural type.
@@ -44,7 +44,7 @@ function registerPreferencePane(): void {
   } catch (error) {
     Zotero.logError(
       new Error(
-        `[AlphaLikes] Could not register the preference pane: ${error}`,
+        `[AlphaPulse] Could not register the preference pane: ${error}`,
       ),
     );
   }
@@ -68,7 +68,7 @@ function ensureWindowLocalization(win: Window): void {
     };
     target.MozXULElement?.insertFTLIfNeeded?.(FTL_FILE);
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] Could not link ${FTL_FILE}: ${error}`);
+    Zotero.debug(`[AlphaPulse] Could not link ${FTL_FILE}: ${error}`);
   }
 }
 
@@ -110,7 +110,7 @@ async function onStartup(): Promise<void> {
       void Zotero.ItemTreeManager.refreshColumns?.();
     });
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] Could not observe preferences: ${error}`);
+    Zotero.debug(`[AlphaPulse] Could not observe preferences: ${error}`);
   }
 
   for (const win of Zotero.getMainWindows()) {
@@ -118,7 +118,7 @@ async function onStartup(): Promise<void> {
   }
 
   addon.data.initialized = true;
-  Zotero.debug("[AlphaLikes] alphaXiv Likes column registered");
+  Zotero.debug("[AlphaPulse] alphaXiv Likes column registered");
 }
 
 async function onMainWindowLoad(win: _ZoteroTypes.MainWindow): Promise<void> {

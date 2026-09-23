@@ -1,5 +1,5 @@
 /**
- * The stateful core of AlphaLikes.
+ * The stateful core of AlphaPulse.
  *
  * `getCellData()` is a synchronous API because Zotero's item-tree data
  * provider is synchronous: it returns a cached value or a loading marker
@@ -399,7 +399,7 @@ export function repaintRows(ids: Iterable<number>): void {
 export interface ClearSummary {
   /** Items the action was run on. */
   total: number;
-  /** Items that actually had AlphaLikes lines in `Extra`. */
+  /** Items that actually had AlphaPulse lines in `Extra`. */
   cleared: number;
   /** Items that had none - nothing was removed, but they are left alone now. */
   alreadyEmpty: number;
@@ -779,6 +779,28 @@ export class AlphaLikesService {
     openExternal(this.scholarVerificationURL(item));
   }
 
+  /**
+   * The alphaXiv page the like count comes from, when the paper has an ID.
+   *
+   * Null rather than a guess: alphaXiv addresses papers by arXiv ID only, so
+   * an item whose ID could not be resolved has no page to open, and the menu
+   * entry hides itself instead of landing the user on the site's front page.
+   */
+  alphaXivPageURL(item?: Zotero.Item | null): string | null {
+    if (!item) return null;
+    const arxivID = this.getItemArxivID(item);
+    return arxivID ? buildAlphaXivURL(arxivID) : null;
+  }
+
+  /** Opens that page in the default browser. False when there is no page. */
+  openAlphaXivPage(item?: Zotero.Item | null): boolean {
+    const url = this.alphaXivPageURL(item);
+    if (!url) return false;
+
+    openExternal(url);
+    return true;
+  }
+
   /** The title Scholar is asked about: the picked result, else the item's. */
   private scholarSearchTitle(item: Zotero.Item): string {
     const pinned = readScholarTitle(safeGetField(item, "extra"));
@@ -965,7 +987,7 @@ export class AlphaLikesService {
     if (items.length && !this.disposed) await this.refreshCitations(items);
 
     this.debug(
-      `[AlphaLikes] 已清除 ${cookies} 个 Google Cookie 并重试 ${items.length} 个条目`,
+      `[AlphaPulse] 已清除 ${cookies} 个 Google Cookie 并重试 ${items.length} 个条目`,
     );
     return { cookies, items: items.length };
   }
@@ -2114,7 +2136,7 @@ export class AlphaLikesService {
     try {
       return await requester.probeFingerprint();
     } catch (error) {
-      this.debug(`[AlphaLikes] 指纹自检失败：${String(error)}`);
+      this.debug(`[AlphaPulse] 指纹自检失败：${String(error)}`);
       return [];
     }
   }
@@ -2403,7 +2425,7 @@ export class AlphaLikesService {
   }
 
   /**
-   * Removes every line AlphaLikes wrote into `Extra`.
+   * Removes every line AlphaPulse wrote into `Extra`.
    *
    * Strictly scoped: only the lines this plugin owns (`alphaxiv_*`, matched by
    * `stripAlphaLikesData`) are removed, so a user's own notes, `tex.*` keys or
@@ -2604,7 +2626,7 @@ export class AlphaLikesService {
   }
 
   private debug(message: string): void {
-    Zotero.debug(`[AlphaLikes] ${message}`);
+    Zotero.debug(`[AlphaPulse] ${message}`);
   }
 
   dispose(): void {

@@ -1,13 +1,13 @@
 {
-  "name": "zotero-alphalikes",
+  "name": "zotero-alphapulse",
   "type": "module",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Zotero columns for alphaXiv likes and citation counts: 11 editable styles, Google Scholar / OpenAlex / Semantic Scholar citation sources, automatic arXiv matching, Zotero 7-11",
   "config": {
-    "addonName": "AlphaLikes",
+    "addonName": "AlphaPulse",
     "addonID": "alphalikes@iris",
     "addonRef": "alphalikes",
-    "addonInstance": "AlphaLikes",
+    "addonInstance": "AlphaPulse",
     "prefsPrefix": "extensions.zotero.alphalikes"
   },
   "repository": {

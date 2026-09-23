@@ -313,7 +313,7 @@ describe("the Google Scholar request", function () {
 
   it("names this plugin to the APIs, which ask for a contactable agent", function () {
     const agent = userAgentFor("api.openalex.org");
-    assert.include(agent, "AlphaLikes");
+    assert.include(agent, "AlphaPulse");
     assert.notInclude(agent, "Mozilla");
   });
 

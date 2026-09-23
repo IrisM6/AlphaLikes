@@ -59,8 +59,8 @@ export const MESSAGES = {
   "cell-citation-source": "Source: {source}",
 
   // --- Refresh summaries ---------------------------------------------------
-  "notify-refresh-likes-title": "AlphaLikes · likes",
-  "notify-refresh-citations-title": "AlphaLikes · citations",
+  "notify-refresh-likes-title": "AlphaPulse · likes",
+  "notify-refresh-citations-title": "AlphaPulse · citations",
   "refresh-likes-updated": "Re-read {updated} like count(s)",
   "refresh-citations-updated": "Re-read {updated} citation count(s)",
   "refresh-failed": "{failed} could not be read (the old value is kept)",
@@ -72,18 +72,23 @@ export const MESSAGES = {
 
   // --- Batch actions -------------------------------------------------------
 
-  "progress-error": "AlphaLikes could not finish this update: {message}",
+  "progress-error": "AlphaPulse could not finish this update: {message}",
 
   // --- Google Scholar's human check ---------------------------------------
   // --- Clearing this plugin's own records ----------------------------------
   "menu-clear": "Remove the Extra records this plugin wrote",
-  "notify-clear-title": "AlphaLikes · clear",
+  "menu-open-alphaxiv": "Open the alphaXiv page",
+  "notify-alphaxiv-title": "AlphaPulse · alphaXiv",
+  "notify-open-alphaxiv": "The paper's alphaXiv page is open in your browser.",
+  "error-no-arxiv-id":
+    "None of the selected items has an arXiv ID, so there is no alphaXiv page to open.",
+  "notify-clear-title": "AlphaPulse · clear",
   "clear-done":
     "Cleared the plugin's records from {count} item(s); everything else in Extra is untouched, and nothing is written again until the next refresh.",
   "clear-none":
     "There was nothing of the plugin's to clear; nothing is written again until the next refresh.",
 
-  "notify-scholar-title": "AlphaLikes · Google Scholar",
+  "notify-scholar-title": "AlphaPulse · Google Scholar",
   "notify-scholar-rate-limited":
     "Google Scholar is rate limiting (HTTP 429); retrying automatically in about {minutes} minutes.",
   "notify-scholar-blocked":
@@ -123,7 +128,7 @@ export async function loadStrings(): Promise<void> {
   }
 
   Zotero.debug(
-    "[AlphaLikes] Fluent strings were not available; using the built-in text",
+    "[AlphaPulse] Fluent strings were not available; using the built-in text",
   );
 }
 
@@ -157,7 +162,7 @@ async function tryLoadStrings(): Promise<boolean> {
     cache = next;
     return complete;
   } catch (error) {
-    Zotero.debug(`[AlphaLikes] Could not load locale strings: ${error}`);
+    Zotero.debug(`[AlphaPulse] Could not load locale strings: ${error}`);
     return false;
   }
 }

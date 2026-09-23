@@ -1,4 +1,4 @@
-// AlphaLikes default preferences.
+// AlphaPulse default preferences.
 //
 // Keys are written here without the branch prefix; `zotero-plugin build`
 // prefixes them with `extensions.zotero.alphalikes.` and regenerates
@@ -137,7 +137,7 @@ pref("citationRangeFilterMax", 0);
 
 // --- Cleared items ---------------------------------------------------------
 //
-// Item ids whose AlphaLikes records were removed from `Extra` by the context
+// Item ids whose AlphaPulse records were removed from `Extra` by the context
 // menu. They are not looked up again until an explicit refresh, so a cleared
 // item stays cleared across restarts; the list itself lives here rather than
 // in `Extra`, which is the field the action is meant to empty.

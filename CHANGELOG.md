@@ -1,6 +1,13 @@
-# AlphaLikes
+# AlphaPulse
 
-给 Zotero 加两列：**alphaXiv 点赞数** 和 **引用数**（默认走 Google Scholar）。装了就能用，不用填 API key、不用注册、也不用手动绑定论文。数字写在条目的 `Extra` 字段里，可以随文献库同步。
+**AlphaPulse**（原名 AlphaLikes）给 Zotero 加两列：**alphaXiv 点赞数** 和 **引用数**（默认走 Google Scholar）。装了就能用，不用填 API key、不用注册、也不用手动绑定论文。数字写在条目的 `Extra` 字段里，可以随文献库同步。
+
+## 这一版的新东西
+
+- **改叫 AlphaPulse 了。** 插件名、设置面板、提示文案和商店条目里的名字都换成 AlphaPulse；内部的 add-on ID（`alphalikes@iris`）和仓库地址保持不变，所以老用户照常自动升级，不需要重装。
+- **多了一个入口：工具 → AlphaPulse（或右键条目 → AlphaPulse）。** 一个图标加插件名，悬停展开全部功能；原来散在右键里的五项收进这一个菜单，工具菜单里那份永远在。
+- **新增「打开 alphaXiv 页面」**：在浏览器里打开这篇论文的 alphaXiv 页面，也就是点赞数真正的出处；条目还没识别出 arXiv ID 时会自动隐藏这一项。
+- Zotero 11 的适配：同意 cookie 的写入按当前 Gecko 认识的时间单位走（见下）。
 
 ## 一、alphaXiv 点赞数
 
@@ -50,5 +57,5 @@
 
 ## 兼容与隐私
 
-- 支持 **Zotero 7 / 8 / 9 / 10 / 11**：范围只在一个地方定义，manifest、README 和包描述由测试与静态检查盯着不能让它们走散；插件只用 Zotero 7 起就有的接口，可选接口一律先探测再调用。（发布前在 7.0.32 / 8.0.4 / 9.0.6 / 10.0.3 和 11.0 开发版这几个真实版本上各跑一遍完整测试套件。）
+- 支持 **Zotero 7 / 8 / 9 / 10 / 11**：范围只在一个地方定义，manifest、README 和包描述由测试与静态检查盯着不能让它们走散；插件只用 Zotero 7 起就有的接口，可选接口一律先探测再调用。（发布前在 7.0.32 / 8.0.4 / 9.0.6 / 10.0.3 和 11.0 开发版这几个真实版本上各跑一遍完整测试套件。）Zotero 11 用的是 Gecko 145，那里的 cookie 接口把过期时间当**毫秒**读：老写法传秒值不会被报错，只会被当成 1970 年，于是同意 cookie 静悄悄写不进去、每次读引用都落在 Google 的同意页上。现在按接口本身（`maybeCapExpiry`）选时间单位，两边都对。
 - 所有记录都写在条目的 `Extra` 字段里（`alphaxiv_*` 行），可随文献库同步；联网请求只发往 alphaXiv、arXiv、OpenAlex、Semantic Scholar、Crossref、Google Scholar 等学术站点，不发送文献库内容或个人信息。

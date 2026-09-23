@@ -403,9 +403,16 @@ def table(
 # a rasterised box has to know its own pixel geometry. Keep this table and the
 # branches in ``sample()`` in step: they are two renderings of one design.
 
+# The stack is ordered for the three places this file is read: a browser on
+# macOS or Windows (system UI, then the two CJK families those systems ship), a
+# Linux desktop, and the rasteriser that makes the README's PNG. `Noto Sans CJK
+# JP` is in the list because that is the family name fontconfig reports for the
+# Noto CJK collection that Linux distributions install - without it, the
+# renderer that honours strokes best draws every Chinese glyph as a blank.
 SVG_FONT = (
     "system-ui, -apple-system, 'Segoe UI', 'PingFang SC', "
-    "'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif"
+    "'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', "
+    "'Noto Sans SC', sans-serif"
 )
 # What `currentColor` resolves to wherever the sample is not inside a coloured
 # column (the mid band of a style with no palette of its own).
@@ -620,7 +627,7 @@ def build_svg(
         f'viewBox="0 0 {width} {height}">',
         f'<rect width="{width}" height="{height}" fill="#ffffff"/>',
         f'<text x="24" y="34" font-family="{SVG_FONT}" font-size="17" '
-        f'font-weight="600" fill="{INK}">AlphaLikes 外观样式（{len(styles)} 种）</text>',
+        f'font-weight="600" fill="{INK}">AlphaPulse 外观样式（{len(styles)} 种）</text>',
         f'<text x="24" y="56" font-family="{SVG_FONT}" font-size="12" '
         f'fill="{MUTED}">点赞列与引用列通用 · 高 / 中 / 低三档用同一种样式 · '
         f"自带配色的样式固定用色，其余跟随设置里的「颜色」一节</text>",
@@ -691,6 +698,27 @@ def write_image(
     except FileNotFoundError:
         pass
 
+    # cairosvg is the next best thing when librsvg is missing: it is a real SVG
+    # renderer, so strokes survive, which is most of what a badge is.
+    try:
+        import cairosvg  # type: ignore[import-not-found]
+
+        cairosvg.svg2png(
+            url=str(IMAGE),
+            write_to=str(IMAGE_PNG),
+            scale=2,
+            background_color="white",
+        )
+        if IMAGE_PNG.exists():
+            _shrink(IMAGE_PNG)
+            print(
+                f"wrote {IMAGE_PNG.relative_to(ROOT)} "
+                f"({IMAGE_PNG.stat().st_size} B, cairosvg)"
+            )
+            return
+    except Exception:
+        pass
+
     for command in (["magick"], ["convert"]):
         try:
             result = subprocess.run(
@@ -750,7 +778,7 @@ def main() -> None:
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8" />
-    <title>AlphaLikes 外观样式一览 / Appearance styles</title>
+    <title>AlphaPulse 外观样式一览 / Appearance styles</title>
   </head>
   <body
     style="
@@ -762,7 +790,7 @@ def main() -> None:
       color: #1f2328;
     "
   >
-    <h1 style="margin: 0 0 4px; font-size: 20px">AlphaLikes 外观样式一览</h1>
+    <h1 style="margin: 0 0 4px; font-size: 20px">AlphaPulse 外观样式一览</h1>
     <p style="margin: 0 0 18px; opacity: 0.7">
       共 {len(styles)} 种样式，点赞列与引用列都会套用。没有自带配色的样式使用「颜色」一节里的
       高/中/低三档（此处用 Zotero 的默认绿色示意）。此页由

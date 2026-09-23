@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static checks for the AlphaLikes add-on assets.
+"""Static checks for the AlphaPulse add-on assets.
 
 These guard invariants that Zotero only surfaces at runtime, where a mistake is
 invisible: a broken preference pane renders as an empty settings page, and a
@@ -781,6 +781,32 @@ check(
 )
 # Every entry that is added has to be removed again: a menu item left behind
 # comes back a second time when the window registers its menu again.
+# One entry, an icon and the plugin's name on it: the actions live inside it,
+# and the name comes from the manifest rather than a literal, so a rename
+# cannot leave the menu saying something else.
+check(
+    re.search(r'createXULElement\(doc, "menu"\)', menu_ts) is not None
+    and "list-style-image" in menu_ts,
+    "the plugin's menu entry is not an icon plus its name",
+)
+check(
+    "pkg.config.addonName" in menu_ts,
+    "the menu entry does not take its label from the package name",
+)
+check(
+    "menu-open-alphaxiv" in menu_ts and "openAlphaXivPage" in menu_ts,
+    "there is no entry for opening a paper's alphaXiv page",
+)
+check(
+    "&quot;zotero-itemmenu&quot;" not in menu_ts and '"zotero-itemmenu"' in menu_ts,
+    "the context menu host is not the item menu popup",
+)
+check(
+    '"menu_ToolsPopup"' in menu_ts,
+    "the Tools menu does not offer the plugin either, so there is no place to "
+    "find it without a selected row",
+)
+
 _MENU_IDS = re.findall(r'^const ([A-Z][A-Z_]*_ID) = "([^"]+)";', menu_ts, re.MULTILINE)
 check(bool(_MENU_IDS), "could not read the menu item ids from src/modules/menu.ts")
 _teardown = menu_ts.split("export function unregisterItemMenu")[-1]

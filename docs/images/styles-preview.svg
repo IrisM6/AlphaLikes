@@ -1,107 +1,107 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="666" viewBox="0 0 900 666">
 <rect width="900" height="666" fill="#ffffff"/>
-<text x="24" y="34" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="17" font-weight="600" fill="#1f2328">AlphaLikes 外观样式（11 种）</text>
-<text x="24" y="56" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="12" fill="#57606a">点赞列与引用列通用 · 高 / 中 / 低三档用同一种样式 · 自带配色的样式固定用色，其余跟随设置里的「颜色」一节</text>
-<text x="24" y="78" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="11" fill="#8b949e">此图由 scripts/gen-styles-preview.py 从插件源码生成，请勿手动编辑</text>
-<text x="24" y="113.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">纯文本</text>
-<text x="24" y="130.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Plain text</text>
-<text x="430.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#1a7f37" text-anchor="middle">2979</text>
-<text x="620.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#1f2328" text-anchor="middle">42</text>
-<text x="790.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#9aa0a6" text-anchor="middle">7</text>
+<text x="24" y="34" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="17" font-weight="600" fill="#1f2328">AlphaPulse 外观样式（11 种）</text>
+<text x="24" y="56" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="12" fill="#57606a">点赞列与引用列通用 · 高 / 中 / 低三档用同一种样式 · 自带配色的样式固定用色，其余跟随设置里的「颜色」一节</text>
+<text x="24" y="78" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="11" fill="#8b949e">此图由 scripts/gen-styles-preview.py 从插件源码生成，请勿手动编辑</text>
+<text x="24" y="113.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">纯文本</text>
+<text x="24" y="130.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Plain text</text>
+<text x="430.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#1a7f37" text-anchor="middle">2979</text>
+<text x="620.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#1f2328" text-anchor="middle">42</text>
+<text x="790.0" y="121.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#9aa0a6" text-anchor="middle">7</text>
 <rect x="0" y="142.0" width="900" height="50" fill="#f6f8fa"/>
-<text x="24" y="163.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">玻璃胶囊</text>
-<text x="24" y="180.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Glass pill</text>
+<text x="24" y="163.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">玻璃胶囊</text>
+<text x="24" y="180.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Glass pill</text>
 <rect x="407.4" y="157.0" width="45.1" height="20" rx="10.0" fill="rgba(26, 127, 55, 0.16)" stroke="rgba(26, 127, 55, 0.36)" stroke-width="1"/>
-<text x="430.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#1a7f37" text-anchor="middle">2979</text>
+<text x="430.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#1a7f37" text-anchor="middle">2979</text>
 <rect x="604.7" y="157.0" width="30.6" height="20" rx="10.0" fill="rgba(31, 35, 40, 0.16)" stroke="rgba(31, 35, 40, 0.36)" stroke-width="1"/>
-<text x="620.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#1f2328" text-anchor="middle">42</text>
+<text x="620.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#1f2328" text-anchor="middle">42</text>
 <rect x="778.4" y="157.0" width="23.3" height="20" rx="10.0" fill="rgba(154, 160, 166, 0.16)" stroke="rgba(154, 160, 166, 0.36)" stroke-width="1"/>
-<text x="790.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#9aa0a6" text-anchor="middle">7</text>
-<text x="24" y="213.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">玻璃圆形</text>
-<text x="24" y="230.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Glass circle</text>
+<text x="790.0" y="171.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#9aa0a6" text-anchor="middle">7</text>
+<text x="24" y="213.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">玻璃圆形</text>
+<text x="24" y="230.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Glass circle</text>
 <rect x="419.0" y="206.0" width="22.0" height="22.0" rx="11.0" fill="rgba(26, 127, 55, 0.18)" stroke="rgba(26, 127, 55, 0.45)" stroke-width="1"/>
-<text x="430.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="11.0" font-weight="400" fill="#1a7f37" text-anchor="middle">999</text>
+<text x="430.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="11.0" font-weight="400" fill="#1a7f37" text-anchor="middle">999</text>
 <rect x="609.0" y="206.0" width="22.0" height="22.0" rx="11.0" fill="rgba(31, 35, 40, 0.18)" stroke="rgba(31, 35, 40, 0.45)" stroke-width="1"/>
-<text x="620.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="11.0" font-weight="400" fill="#1f2328" text-anchor="middle">42</text>
+<text x="620.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="11.0" font-weight="400" fill="#1f2328" text-anchor="middle">42</text>
 <rect x="779.0" y="206.0" width="22.0" height="22.0" rx="11.0" fill="rgba(154, 160, 166, 0.18)" stroke="rgba(154, 160, 166, 0.45)" stroke-width="1"/>
-<text x="790.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="11.0" font-weight="400" fill="#9aa0a6" text-anchor="middle">7</text>
+<text x="790.0" y="220.8" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="11.0" font-weight="400" fill="#9aa0a6" text-anchor="middle">7</text>
 <rect x="0" y="242.0" width="900" height="50" fill="#f6f8fa"/>
-<text x="24" y="263.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">侧边强调块</text>
-<text x="24" y="280.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Accent block</text>
+<text x="24" y="263.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">侧边强调块</text>
+<text x="24" y="280.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Accent block</text>
 <rect x="407.4" y="257.0" width="45.1" height="20" rx="4.0" fill="#FDF9E8" stroke="#D4AF37" stroke-width="1"/>
 <rect x="407.4" y="257.0" width="3" height="20" fill="#D4AF37"/>
-<text x="430.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#A67C00" text-anchor="middle">2979</text>
+<text x="430.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#A67C00" text-anchor="middle">2979</text>
 <rect x="604.7" y="257.0" width="30.6" height="20" rx="4.0" fill="#F5F6F7" stroke="#9AA0A6" stroke-width="1"/>
 <rect x="604.7" y="257.0" width="3" height="20" fill="#9AA0A6"/>
-<text x="620.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#5F6368" text-anchor="middle">42</text>
+<text x="620.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#5F6368" text-anchor="middle">42</text>
 <rect x="778.4" y="257.0" width="23.3" height="20" rx="4.0" fill="#FAFAFA" stroke="#D0D0D0" stroke-width="1"/>
 <rect x="778.4" y="257.0" width="3" height="20" fill="#D0D0D0"/>
-<text x="790.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#8A8A8A" text-anchor="middle">7</text>
-<text x="24" y="313.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">莫兰迪低饱和</text>
-<text x="24" y="330.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Muted</text>
+<text x="790.0" y="271.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#8A8A8A" text-anchor="middle">7</text>
+<text x="24" y="313.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">莫兰迪低饱和</text>
+<text x="24" y="330.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Muted</text>
 <rect x="407.4" y="307.0" width="45.1" height="20" rx="10.0" fill="#9FB3BF" stroke="#7D95A3" stroke-width="1"/>
-<text x="430.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#16232A" text-anchor="middle">2979</text>
+<text x="430.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#16232A" text-anchor="middle">2979</text>
 <rect x="604.7" y="307.0" width="30.6" height="20" rx="10.0" fill="#DCD3C9" stroke="#C0B4A6" stroke-width="1"/>
-<text x="620.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#4A423B" text-anchor="middle">42</text>
+<text x="620.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#4A423B" text-anchor="middle">42</text>
 <rect x="778.4" y="307.0" width="23.3" height="20" rx="10.0" fill="#F1F1EF" stroke="#DFDFDC" stroke-width="1"/>
-<text x="790.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#8A8A88" text-anchor="middle">7</text>
+<text x="790.0" y="321.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#8A8A88" text-anchor="middle">7</text>
 <rect x="0" y="342.0" width="900" height="50" fill="#f6f8fa"/>
-<text x="24" y="363.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">学术严谨</text>
-<text x="24" y="380.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Academic</text>
+<text x="24" y="363.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">学术严谨</text>
+<text x="24" y="380.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Academic</text>
 <rect x="409.4" y="357.0" width="41.1" height="20" rx="3.0" fill="#003366" stroke="none" stroke-width="1"/>
-<text x="430.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#FFFFFF" text-anchor="middle">2979</text>
+<text x="430.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#FFFFFF" text-anchor="middle">2979</text>
 <rect x="606.7" y="357.0" width="26.6" height="20" rx="3.0" fill="#F5F5F5" stroke="#CCCCCC" stroke-width="1"/>
-<text x="620.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#003366" text-anchor="middle">42</text>
+<text x="620.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#003366" text-anchor="middle">42</text>
 <rect x="780.4" y="357.0" width="19.3" height="20" rx="3.0" fill="#FAFAFA" stroke="#DDDDDD" stroke-width="1"/>
-<text x="790.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#777777" text-anchor="middle">7</text>
-<text x="24" y="413.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">淡雅清新</text>
-<text x="24" y="430.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Fresh</text>
+<text x="790.0" y="371.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#777777" text-anchor="middle">7</text>
+<text x="24" y="413.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">淡雅清新</text>
+<text x="24" y="430.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Fresh</text>
 <rect x="407.4" y="407.0" width="45.1" height="20" rx="10.0" fill="#E6F7F0" stroke="none" stroke-width="1"/>
-<text x="430.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#2E8B57" text-anchor="middle">2979</text>
+<text x="430.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#2E8B57" text-anchor="middle">2979</text>
 <rect x="604.7" y="407.0" width="30.6" height="20" rx="10.0" fill="#FFF0F5" stroke="none" stroke-width="1"/>
-<text x="620.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#C71585" text-anchor="middle">42</text>
+<text x="620.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#C71585" text-anchor="middle">42</text>
 <rect x="778.4" y="407.0" width="23.3" height="20" rx="10.0" fill="#F5F5F5" stroke="none" stroke-width="1"/>
-<text x="790.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#999999" text-anchor="middle">7</text>
+<text x="790.0" y="421.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#999999" text-anchor="middle">7</text>
 <rect x="0" y="442.0" width="900" height="50" fill="#f6f8fa"/>
-<text x="24" y="463.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">活泼明快</text>
-<text x="24" y="480.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Playful</text>
+<text x="24" y="463.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">活泼明快</text>
+<text x="24" y="480.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Playful</text>
 <rect x="409.4" y="459.0" width="45.1" height="20" rx="6.0" fill="#000000"/>
 <rect x="407.4" y="457.0" width="45.1" height="20" rx="6.0" fill="#FFD700" stroke="#000000" stroke-width="1"/>
-<text x="430.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#000000" text-anchor="middle">2979</text>
+<text x="430.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#000000" text-anchor="middle">2979</text>
 <rect x="606.7" y="459.0" width="30.6" height="20" rx="6.0" fill="#000000"/>
 <rect x="604.7" y="457.0" width="30.6" height="20" rx="6.0" fill="#FFE9A8" stroke="#000000" stroke-width="1"/>
-<text x="620.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#000000" text-anchor="middle">42</text>
+<text x="620.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#000000" text-anchor="middle">42</text>
 <rect x="778.4" y="457.0" width="23.3" height="20" rx="6.0" fill="#EDEDED" stroke="#BDBDBD" stroke-width="1"/>
-<text x="790.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#666666" text-anchor="middle">7</text>
-<text x="24" y="513.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">细边框描边</text>
-<text x="24" y="530.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Thin outline</text>
+<text x="790.0" y="471.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#666666" text-anchor="middle">7</text>
+<text x="24" y="513.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">细边框描边</text>
+<text x="24" y="530.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Thin outline</text>
 <rect x="407.4" y="507.0" width="45.1" height="20" rx="10.0" fill="none" stroke="#1a7f37" stroke-width="1"/>
-<text x="430.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#1a7f37" text-anchor="middle">2979</text>
+<text x="430.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#1a7f37" text-anchor="middle">2979</text>
 <rect x="604.7" y="507.0" width="30.6" height="20" rx="10.0" fill="none" stroke="#1f2328" stroke-width="1"/>
-<text x="620.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#1f2328" text-anchor="middle">42</text>
+<text x="620.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#1f2328" text-anchor="middle">42</text>
 <rect x="778.4" y="507.0" width="23.3" height="20" rx="10.0" fill="none" stroke="#9aa0a6" stroke-width="1"/>
-<text x="790.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="500" fill="#9aa0a6" text-anchor="middle">7</text>
+<text x="790.0" y="521.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="500" fill="#9aa0a6" text-anchor="middle">7</text>
 <rect x="0" y="542.0" width="900" height="50" fill="#f6f8fa"/>
-<text x="24" y="563.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">双色拼接</text>
-<text x="24" y="580.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Two-tone split</text>
+<text x="24" y="563.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">双色拼接</text>
+<text x="24" y="580.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Two-tone split</text>
 <rect x="397.2" y="557.0" width="65.5" height="20" rx="4 " fill="#F0F0F0"/>
 <path d="M 401.2 557.0 H 419.6 V 577.0 H 401.2 A 4 4 0 0 1 397.2 573.0 V 561.0 A 4 4 0 0 1 401.2 557.0 Z" fill="#333333"/>
-<text x="408.4" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
-<text x="441.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">2979</text>
+<text x="408.4" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
+<text x="441.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">2979</text>
 <rect x="594.5" y="557.0" width="51.0" height="20" rx="4 " fill="#F5F5F5"/>
 <path d="M 598.5 557.0 H 616.9 V 577.0 H 598.5 A 4 4 0 0 1 594.5 573.0 V 561.0 A 4 4 0 0 1 598.5 557.0 Z" fill="#5F6368"/>
-<text x="605.7" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
-<text x="631.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">42</text>
+<text x="605.7" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
+<text x="631.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">42</text>
 <rect x="768.2" y="557.0" width="43.7" height="20" rx="4 " fill="#FAFAFA"/>
 <path d="M 772.2 557.0 H 790.6 V 577.0 H 772.2 A 4 4 0 0 1 768.2 573.0 V 561.0 A 4 4 0 0 1 772.2 557.0 Z" fill="#8A8A8A"/>
-<text x="779.4" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
-<text x="801.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">7</text>
-<text x="24" y="613.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">数字角标</text>
-<text x="24" y="630.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" fill="#8b949e">Number badge</text>
+<text x="779.4" y="570.6" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.4" font-weight="400" fill="#FFFFFF" text-anchor="middle">赞</text>
+<text x="801.2" y="571.5" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="13.0" font-weight="400" fill="#333333" text-anchor="middle">7</text>
+<text x="24" y="613.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="14" font-weight="600" fill="#1f2328">数字角标</text>
+<text x="24" y="630.0" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" fill="#8b949e">Number badge</text>
 <rect x="413.2" y="608.0" width="33.5" height="18.0" rx="9.0" fill="#FF3B30"/>
-<text x="430.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">2979</text>
+<text x="430.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">2979</text>
 <rect x="611.0" y="608.0" width="18.0" height="18.0" rx="9.0" fill="#FF9500"/>
-<text x="620.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">42</text>
+<text x="620.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">42</text>
 <rect x="781.0" y="608.0" width="18.0" height="18.0" rx="9.0" fill="#8E8E93"/>
-<text x="790.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">7</text>
+<text x="790.0" y="620.7" font-family="system-ui, -apple-system, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans SC', sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF" text-anchor="middle">7</text>
 </svg>

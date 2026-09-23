@@ -1,5 +1,5 @@
 /**
- * Small surface exposed on the plugin instance (`Zotero.AlphaLikes.api`).
+ * Small surface exposed on the plugin instance (`Zotero.AlphaPulse.api`).
  *
  * Integrations (and scripts run inside Zotero's console) can use it without
  * importing the bundled module graph.
