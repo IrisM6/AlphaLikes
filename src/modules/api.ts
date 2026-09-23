@@ -8,6 +8,7 @@
 import { extractIDFromLooseText } from "./arxiv-id";
 import { getService } from "./column";
 import type { HttpTransport } from "./http";
+import type { ScholarItemActivity } from "./service";
 import { styleAccents, type BandColors } from "./palette";
 import type { ArxivCandidate, PaperMetadata } from "./resolver";
 
@@ -41,17 +42,21 @@ export interface AlphaLikesAPI {
    */
   setReadTransport(transport: HttpTransport | null): void;
   /**
-   * What this session has asked Google Scholar for, and what it waits for.
+   * What the reading is doing, paper by paper, and what each paper waits for.
    *
-   * The settings pane reads it to show the reading as it happens - "four
-   * searches so far, the next one in about six minutes" - so a reader can tell
-   * a slow rhythm from a stopped plugin.
+   * The settings pane reads it to show the reading as it happens: which paper
+   * is being read, which one is waiting out Google's check and for how long,
+   * and how many searches each of them has cost. The reading is sequential, so
+   * a session-wide count says nothing about the paper the user is looking at -
+   * `items` is the part that answers that.
    */
   scholarActivity(): {
     requests: number;
     nextInMs: number;
     paused: boolean;
     burstLeft: number;
+    autoPaused: boolean;
+    items: ScholarItemActivity[];
   };
   version: string;
 }

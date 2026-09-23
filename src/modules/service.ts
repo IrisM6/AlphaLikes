@@ -49,6 +49,7 @@ import {
   CITATIONS_BLOCKED_MARKER,
   citationProviderOrder,
   GOOGLE_SCHOLAR_HOME,
+  minutesUntil,
   scholarRetryDelayMs,
   type CitationSourceKey,
 } from "./citations";
@@ -234,6 +235,29 @@ export interface RefreshSummary {
   skipped: number;
 }
 
+/**
+ * What the plugin is doing for one paper, as the menu and the settings say it.
+ *
+ * The reading is sequential - one Scholar search at a time, spaced out - so
+ * the only meaningful count is the one for the paper whose turn it was: this
+ * many searches have been spent on *this* paper since it was last read
+ * successfully. A session-wide tally answers a question nobody asks ("how many
+ * requests has Zotero made?") and hides the one that matters ("what is
+ * happening to the paper I am looking at?"), which is what the reported bug
+ * was: one paper stuck behind Google's check, and a line about the session.
+ */
+export interface ScholarItemActivity {
+  itemID: number;
+  /** The item's own title, so a line can say which paper it is about. */
+  title: string;
+  /** Scholar searches spent on this item since it was last read. */
+  attempts: number;
+  /** True while a search for this item is on its way. */
+  reading: boolean;
+  /** Milliseconds until this item's next attempt; 0 when it is due now. */
+  nextInMs: number;
+}
+
 export interface ItemTrend {
   /** Day-over-day change, when two snapshots exist. */
   latest: TrendDelta | null;
@@ -417,8 +441,7 @@ function failureDecorations(
   reason: FailureReason,
   retryAfter: number,
 ): string[] {
-  const minutes = Math.max(1, Math.ceil((retryAfter - Date.now()) / 60_000));
-  return [reason, `retry:${minutes}`];
+  return [reason, `retry:${minutesUntil(retryAfter)}`];
 }
 
 export class AlphaLikesService {
@@ -460,6 +483,28 @@ export class AlphaLikesService {
    * `items` remembers what was being read so the retry can pick it up again
    * without making the user do anything.
    */
+  /**
+   * Per-paper reading state: what this session has asked Scholar about each
+   * item, and when each item is tried again.
+   *
+   * Entries live only while they are worth reading. A count is reset by the
+   * paper's own successful read - the user's rule, and the right one: what is
+   * interesting is how hard *this* paper is being tried, not how long the
+   * plugin has been running. An item that was never attempted has no entry
+   * until a block or a failure gives it a wait worth reporting.
+   */
+  private scholarItems = new Map<
+    number,
+    {
+      attempts: number;
+      reading: boolean;
+      /** Absolute time of the next automatic attempt, or null for "none". */
+      nextAttemptAt: number | null;
+      /** True while that time comes from the block rather than the item. */
+      onBlock: boolean;
+      reason: FailureReason;
+    }
+  >();
   private scholarBlock: {
     attempts: number;
     until: number;
@@ -787,8 +832,52 @@ export class AlphaLikesService {
     nextInMs: number;
     paused: boolean;
     burstLeft: number;
+    /** True once the automatic retries have been given up on this episode. */
+    autoPaused: boolean;
+    /** Per-paper state, the paper whose turn is next first. */
+    items: ScholarItemActivity[];
   } {
-    return this.requester.scholarActivity();
+    const session = this.requester.scholarActivity();
+    const now = Date.now();
+    const items: ScholarItemActivity[] = [];
+
+    for (const [itemID, state] of [...this.scholarItems]) {
+      let item: Zotero.Item | false;
+      try {
+        item = Zotero.Items.get(itemID);
+      } catch {
+        item = false;
+      }
+      // An item that went away takes its reading with it: a line about a
+      // deleted paper is a line about nothing.
+      if (!item) {
+        this.scholarItems.delete(itemID);
+        continue;
+      }
+      items.push({
+        itemID,
+        title: String(safeGetField(item, "title") ?? "").trim(),
+        attempts: state.attempts,
+        reading: state.reading,
+        nextInMs:
+          state.reading || state.nextAttemptAt === null
+            ? 0
+            : Math.max(0, state.nextAttemptAt - now),
+      });
+    }
+
+    // The paper being read now, then whichever is due soonest: the order a
+    // reader looks for an answer in.
+    items.sort((a, b) => {
+      if (a.reading !== b.reading) return a.reading ? -1 : 1;
+      return a.nextInMs - b.nextInMs;
+    });
+
+    return {
+      ...session,
+      autoPaused: this.scholarRetryPaused,
+      items,
+    };
   }
 
   openScholarVerification(item?: Zotero.Item | null): void {
@@ -865,6 +954,65 @@ export class AlphaLikesService {
     return this.scholarBlock !== null && this.scholarBlock.until > Date.now();
   }
 
+  /** The state of one item's reading, created on first use. */
+  private scholarItemState(itemID: number) {
+    let state = this.scholarItems.get(itemID);
+    if (!state) {
+      state = {
+        attempts: 0,
+        reading: false,
+        nextAttemptAt: null,
+        onBlock: false,
+        reason: "no-count",
+      };
+      this.scholarItems.set(itemID, state);
+    }
+    return state;
+  }
+
+  /**
+   * Counts one Scholar search as spent on this paper.
+   *
+   * Called where the request actually leaves, not where a row is painted: a
+   * row that is skipped because Google is still refusing costs nothing, and
+   * counting it would put a number on a paper that was never asked about.
+   */
+  private noteScholarAttempt(itemID: number): void {
+    const state = this.scholarItemState(itemID);
+    state.attempts += 1;
+    state.reading = true;
+  }
+
+  /**
+   * Records what became of this paper's last search.
+   *
+   * A paper that was read successfully is taken out of the map altogether:
+   * its count is back to nothing, the way the user asked for it - the next
+   * time it needs reading, it starts from one.
+   */
+  private noteScholarOutcome(
+    itemID: number,
+    outcome:
+      | { ok: true }
+      | {
+          ok: false;
+          reason: FailureReason;
+          /** When this item is tried again; from the block when one is on. */
+          retryAfter: number;
+          onBlock: boolean;
+        },
+  ): void {
+    if (outcome.ok) {
+      this.scholarItems.delete(itemID);
+      return;
+    }
+    const state = this.scholarItemState(itemID);
+    state.reading = false;
+    state.nextAttemptAt = outcome.retryAfter;
+    state.onBlock = outcome.onBlock;
+    state.reason = outcome.reason;
+  }
+
   /**
    * Records a block and schedules the automatic retry.
    *
@@ -923,7 +1071,7 @@ export class AlphaLikesService {
 
     if (!this.scholarBlockAnnounced && attempts >= SCHOLAR_ANNOUNCE_AFTER) {
       this.scholarBlockAnnounced = true;
-      const minutes = Math.round(delay / 60_000);
+      const minutes = minutesUntil(Date.now() + delay);
       toast(
         t("notify-scholar-title"),
         rateLimited
@@ -993,6 +1141,16 @@ export class AlphaLikesService {
     this.scholarBlockAnnounced = false;
     this.scholarRetryPaused = false;
     this.scholarRound = 0;
+
+    // The wait the block imposed is over for everyone it was imposed on.
+    // Their own count stays - a paper that was refused is still a paper that
+    // was asked, and its number is what the menu is for.
+    const now = Date.now();
+    for (const state of this.scholarItems.values()) {
+      if (!state.onBlock) continue;
+      state.onBlock = false;
+      state.nextAttemptAt = now;
+    }
   }
 
   /**
@@ -1253,29 +1411,53 @@ export class AlphaLikesService {
       if (counts === null) {
         const blocked = this.isScholarBlocked();
         if (blocked) this.scholarBlockedItems.add(item.id);
+        // A paper that is waiting out Google's check is waiting for the same
+        // moment as the notice that announced it, and for the same moment as
+        // every other paper that was refused with it: one deadline, so the
+        // popup, the tooltip and the menu say the same number of minutes.
+        const retryAfter = blocked
+          ? Math.max(this.scholarBlock?.until ?? 0, Date.now() + 1_000)
+          : Date.now() + ERROR_RETRY_DELAY_MS;
+        const reason: FailureReason = blocked
+          ? this.getScholarBlockStatus().rateLimited
+            ? "http-429"
+            : "http-403"
+          : "no-count";
         this.citationStates.set(item.id, {
           kind: "failed",
-          retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+          retryAfter,
           // The block's own reason is carried through: a rate limit (429) and
           // a refusal (403) are not the same failure to report.
-          reason: blocked
-            ? this.getScholarBlockStatus().rateLimited
-              ? "http-429"
-              : "http-403"
-            : "no-count",
+          reason,
+        });
+        this.noteScholarOutcome(item.id, {
+          ok: false,
+          reason,
+          retryAfter,
+          onBlock: blocked,
         });
         return false;
       }
 
       this.citationStates.set(item.id, { kind: "success", counts });
+      // The paper has its number, so its count starts over from nothing.
+      this.noteScholarOutcome(item.id, { ok: true });
       await this.writeExtra(item, (extra) => upsertCitations(extra, counts));
       return true;
     } catch (error) {
       if (!this.disposed) {
+        const reason = failureReasonFrom(error);
+        const retryAfter = Date.now() + ERROR_RETRY_DELAY_MS;
         this.citationStates.set(item.id, {
           kind: "failed",
-          retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
-          reason: failureReasonFrom(error),
+          retryAfter,
+          reason,
+        });
+        this.noteScholarOutcome(item.id, {
+          ok: false,
+          reason,
+          retryAfter,
+          onBlock: false,
         });
         this.debug(`citation lookup failed for item ${item.id}: ${error}`);
       }
@@ -1313,6 +1495,7 @@ export class AlphaLikesService {
     const scholarTitle = readScholarTitle(safeGetField(item, "extra"));
 
     const request = this.collectCitations(
+      item.id,
       paper,
       arxivID,
       scholarTitle,
@@ -1324,6 +1507,7 @@ export class AlphaLikesService {
   }
 
   private async collectCitations(
+    itemID: number,
     paper: PaperMetadata,
     arxivID: string | null,
     scholarTitle: string | null,
@@ -1347,6 +1531,7 @@ export class AlphaLikesService {
         // the merge keeps the typed one.
         if (manual) return null;
         const scholar = await this.collectGoogleScholarCitation(
+          itemID,
           paper,
           scholarTitle,
         );
@@ -1391,6 +1576,7 @@ export class AlphaLikesService {
    * number; the cell says the count is waiting instead.
    */
   private async collectGoogleScholarCitation(
+    itemID: number,
     paper: PaperMetadata,
     pinnedTitle: string | null,
   ): Promise<number | null> {
@@ -1404,6 +1590,10 @@ export class AlphaLikesService {
     // request. Scholar answers a browser and refuses an XMLHttpRequest from the
     // same address with the same cookies, so the attempt that looks like a
     // browser is tried first and the one that works is remembered.
+    // A search is about to leave for this paper: this is the moment its own
+    // count goes up, and the moment a failure will be attributed to it.
+    this.noteScholarAttempt(itemID);
+
     let page: { status: number; body: string; via: ScholarPath | null };
     try {
       page = await this.requester.requestScholarPage(url);
@@ -2704,7 +2894,7 @@ export class AlphaLikesService {
     const state =
       this.itemStates.get(item.id) ?? this.citationStates.get(item.id);
     if (!state || state.kind !== "failed") return null;
-    return Math.max(1, Math.ceil((state.retryAfter - Date.now()) / 60_000));
+    return minutesUntil(state.retryAfter);
   }
 
   private readingLikes(): boolean {
@@ -2733,6 +2923,7 @@ export class AlphaLikesService {
     this.inFlightCitations.clear();
     this.staleRefreshing.clear();
     this.citationStates.clear();
+    this.scholarItems.clear();
     this.observedLikes.clear();
     this.observedCitations.clear();
     this.quantileCache = null;

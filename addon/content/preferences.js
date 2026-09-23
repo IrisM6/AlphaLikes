@@ -874,25 +874,109 @@
   }
 
   /**
-   * "This session has asked Scholar N times; the next one is about X away."
+   * What the reading is doing right now, paper by paper.
    *
-   * The settings say how the reading is *arranged*; this says how far along it
-   * is, which is what tells a user that a quiet column is a read waiting out
-   * its rhythm rather than a plugin that has stopped. Read straight from the
-   * service, so the count is the one the queue actually uses, and refreshed on
-   * a timer while the pane is open.
+   * The settings say how the reading is *arranged*; this says where each paper
+   * it has been asked about has got to. It used to say one thing for the whole
+   * session - a count of requests and the queue's own next slot - which hid
+   * the only thing worth knowing: the reading is sequential, so one paper is
+   * being read, another waits out Google's check, and a third has not been
+   * asked yet. The lines name the paper and carry its own count and its own
+   * next attempt, and the count is counted with the same rounding every other
+   * surface uses, so nothing here disagrees with the popup.
    */
   function wireScholarActivity(doc) {
     var target = doc.getElementById("alphalikes-scholar-activity");
     if (!target) return 0;
 
     var REF = "__addonRef__";
+    // Long enough to hold a sentence about the paper being read and the one
+    // waiting behind it, short enough to stay a status line.
+    var PANE_ITEMS = 2;
+    var TITLE_LIMIT = 36;
+    var EMPTY = "（无标题）";
     var timer = null;
 
-    function describe(ms) {
-      if (ms <= 1_000) return "现在";
-      if (ms < 60_000) return Math.round(ms / 1_000) + " 秒";
-      return Math.max(1, Math.round(ms / 60_000)) + " 分钟";
+    function shortTitle(title) {
+      var text = (title || "").trim();
+      if (!text) return EMPTY;
+      return text.length <= TITLE_LIMIT
+        ? text
+        : text.slice(0, TITLE_LIMIT - 1) + "…";
+    }
+
+    /** Minutes until this paper's next attempt, rounded like everywhere else. */
+    function minutes(ms) {
+      return String(Math.max(1, Math.round(ms / 60_000)));
+    }
+
+    /** One entry per paper, in the order the service reports them. */
+    function entry(item, autoPaused) {
+      if (item.reading) {
+        return (
+          shortTitle(item.title) +
+          " 正在读取（本条已请求 " +
+          item.attempts +
+          " 次）"
+        );
+      }
+      if (autoPaused) {
+        return (
+          shortTitle(item.title) +
+          " 自动重试已暂停（本条已请求 " +
+          item.attempts +
+          " 次）"
+        );
+      }
+      return (
+        shortTitle(item.title) +
+        " 约 " +
+        minutes(item.nextInMs) +
+        " 分钟后重试（本条已请求 " +
+        item.attempts +
+        " 次）"
+      );
+    }
+
+    function listText(items, autoPaused) {
+      var shown = items.slice(0, PANE_ITEMS).map(function (item) {
+        return entry(item, autoPaused);
+      });
+      var rest = items.length - shown.length;
+      if (rest > 0) shown.push("等 " + rest + " 条");
+      return shown.join("、");
+    }
+
+    function plain(activity) {
+      if (!activity.items.length) return "本次会话还没有读取请求。";
+      return (
+        "本会话已请求 " +
+        activity.requests +
+        " 次；" +
+        listText(activity.items, activity.autoPaused) +
+        "。"
+      );
+    }
+
+    /**
+     * Fills one message whose variables the build renamed.
+     *
+     * The build prefixes Fluent variables with the add-on reference, so the
+     * argument names below carry `REF + "-"` the same way `fill` expects; a
+     * text that comes back without them (an older locale file) still reads.
+     */
+    function say(id, args) {
+      if (doc.l10n && doc.l10n.formatValue) {
+        return doc.l10n.formatValue(id).then(
+          function (text) {
+            return text ? fill(text, args) : null;
+          },
+          function () {
+            return null;
+          },
+        );
+      }
+      return Promise.resolve(null);
     }
 
     function render() {
@@ -906,33 +990,22 @@
         return;
       }
 
-      var args = {};
-      args[REF + "-count"] = String(activity.requests);
-      args[REF + "-wait"] = describe(activity.nextInMs);
-
-      var id = target.getAttribute("data-l10n-id");
-      if (id && doc.l10n && doc.l10n.formatValue) {
-        doc.l10n.formatValue(id).then(
-          function (text) {
-            target.textContent = text ? fill(text, args) : fallback(activity);
-          },
-          function () {
-            target.textContent = fallback(activity);
-          },
-        );
+      var items = activity.items || [];
+      if (!items.length) {
+        say("pref-scholar-activity-empty", {}).then(function (text) {
+          target.textContent = text || plain(activity);
+        });
         return;
       }
-      target.textContent = fallback(activity);
-    }
 
-    function fallback(activity) {
-      return (
-        "本次会话已请求 " +
-        activity.requests +
-        " 次；距离下次请求约 " +
-        describe(activity.nextInMs) +
-        "。"
-      );
+      var args = {};
+      args[REF + "-count"] = String(activity.requests);
+      args[REF + "-list"] = listText(items, activity.autoPaused);
+      // Each paper is described by the service's own numbers; the message is
+      // only the frame around them.
+      say("pref-scholar-activity-list", args).then(function (text) {
+        target.textContent = text || plain(activity);
+      });
     }
 
     render();

@@ -331,6 +331,21 @@ export function scholarRetryDelayMs(
 }
 
 /**
+ * Minutes until `deadline`, as every surface of the plugin reports it.
+ *
+ * The same wait is described in four places - the notice when Google refuses,
+ * the tooltip of the cell, the line in the context menu and the line in the
+ * settings - and each of them used to round on its own. A paper that said
+ * "5 minutes" in the tooltip and "10 minutes" in the notice, or "now" in the
+ * menu while the popup asked for five minutes, is one wait described three
+ * ways; the reported bug was exactly that. One function, so one wait is one
+ * number everywhere.
+ */
+export function minutesUntil(deadline: number, now = Date.now()): number {
+  return Math.max(1, Math.round((deadline - now) / 60_000));
+}
+
+/**
  * The providers whose counts may be shown, normalised.
  *
  * A single provider is strict: its number, or an empty cell. Several providers

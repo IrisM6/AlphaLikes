@@ -10,6 +10,7 @@
  */
 
 import { assert } from "chai";
+import { getService } from "../src/modules/column";
 import { getScholarPacing } from "../src/modules/prefs";
 import { config } from "../package.json";
 
@@ -372,12 +373,14 @@ describe("AlphaLikes settings pane", function () {
     );
   });
 
-  it("says how much this session has read, and what it waits for", async function () {
-    // The rhythm settings say how the reading is arranged; the line says where
-    // it has got to. Without it a column that is waiting out a pause looks the
-    // same as a column that has stopped.
+  it("names the paper each reading is waiting on, and its own wait", async function () {
+    // The rhythm settings say how the reading is arranged; this line says what
+    // each paper is doing right now. Reported: one line for the whole session
+    // ("asked 2 times, next in about now") while one paper was stuck behind
+    // Google's check - so the line names the paper, carries that paper's own
+    // count, and counts the wait the way every other surface does.
     const line = doc.getElementById("alphalikes-scholar-activity");
-    assert.isOk(line, "the pane does not say what this session has read");
+    assert.isOk(line, "the pane does not say what the reading is doing");
 
     await Zotero.Promise.delay(200);
     const text = (line?.textContent ?? "").replace(/\s+/g, " ");
@@ -385,14 +388,61 @@ describe("AlphaLikes settings pane", function () {
     // the test asks what it has to say, not which words it says it in.
     assert.match(
       text,
-      /(本次会话已请求|has asked Scholar)\s*\d+/,
-      "the line has to name the count and the wait, not just exist",
+      /(本次会话还没有读取请求|Nothing has been read this session)/,
+      "an idle session says so instead of describing a wait that is not there",
     );
-    assert.match(
-      text,
-      /(距离下次请求约|next request is about)/,
-      "and how long until the next request",
-    );
+
+    // With a paper in flight the line has to name it: that is the difference
+    // between this and a session total.
+    const service = getService();
+    const item = new Zotero.Item("journalArticle");
+    item.libraryID = Zotero.Libraries.userLibraryID;
+    item.setField("title", "AlphaPulse pane activity probe");
+    item.setField("date", "2026-09-23");
+    item.setField("DOI", "10.1234/alphalikes.pane.activity");
+    await item.saveTx();
+    const internals = service as unknown as {
+      scholarItems: Map<
+        number,
+        {
+          attempts: number;
+          reading: boolean;
+          nextAttemptAt: number | null;
+          onBlock: boolean;
+          reason: string;
+        }
+      >;
+    };
+    internals.scholarItems.set(item.id, {
+      attempts: 2,
+      reading: false,
+      nextAttemptAt: Date.now() + 5 * 60_000,
+      onBlock: true,
+      reason: "http-429",
+    });
+
+    try {
+      await Zotero.Promise.delay(2_400);
+      const waiting = (line?.textContent ?? "").replace(/\s+/g, " ");
+      assert.include(
+        waiting,
+        "pane activity probe",
+        "the line has to say which paper it is about",
+      );
+      assert.match(
+        waiting,
+        /(本条已请求|request\(s\) for this item)/,
+        "and how many searches that paper has cost",
+      );
+      assert.match(waiting, /(5|约 5)/, "and when that paper is tried again");
+    } finally {
+      internals.scholarItems.delete(item.id);
+      try {
+        await item.eraseTx();
+      } catch {
+        // The run may have taken the library already.
+      }
+    }
   });
 
   it("offers every reading-rhythm range, with the number it suggests", async function () {

@@ -21,7 +21,7 @@
  */
 
 import pkg from "../../package.json";
-import { readCitations } from "./citations";
+import { minutesUntil, readCitations } from "./citations";
 import { getService } from "./column";
 import { getCitationPrefs, getCitationSourcePreferences } from "./prefs";
 import { t } from "./l10n";
@@ -31,6 +31,15 @@ import type { RefreshSummary } from "./service";
 const MENU_ID = "alphalikes-menu";
 const MENU_POPUP_ID = "alphalikes-menu-popup";
 const ACTIVITY_ID = "alphalikes-activity";
+/**
+ * How many papers the status block names one by one.
+ *
+ * The reading is sequential, so what is worth reading is each paper's own
+ * count and its own next attempt - "the session has asked Scholar 12 times"
+ * answers nothing about the paper in front of the user. Four papers plus one
+ * summary row keeps the menu from growing past the point where a menu is read.
+ */
+const ACTIVITY_ROWS = 4;
 const ACTIVITY_SEPARATOR_ID = "alphalikes-activity-separator";
 const TOOLS_MENU_ID = "alphalikes-tools-menu";
 const TOOLS_POPUP_ID = "alphalikes-tools-popup";
@@ -223,44 +232,111 @@ function readsGoogleScholar(): boolean {
  * that is what a test (and any plain DOM code) checks.
  */
 /**
- * One line about the reading rhythm, for the menu's first entry.
+ * How long until this item's next attempt, as a duration to read.
  *
- * The wording follows what a reader wants to know: how much has happened, and
- * how long until the next one. Minutes once the wait is long, seconds while it
- * is short, and "not read for this row" when nothing is in flight.
+ * Short waits are seconds, everything else is minutes - counted with the one
+ * function every other surface uses, so the menu cannot say a different number
+ * than the notice or the tooltip about the same wait.
  */
-export function describeScholarActivity(activity: {
-  requests: number;
-  nextInMs: number;
-}): string {
-  if (activity.requests === 0 && activity.nextInMs === 0) {
-    return t("menu-activity-idle");
+function describeWait(nextInMs: number): string {
+  if (nextInMs < 60_000) {
+    return t("menu-activity-wait-seconds", {
+      seconds: String(Math.max(1, Math.round(nextInMs / 1_000))),
+    });
   }
-
-  const wait =
-    activity.nextInMs <= 1_000
-      ? t("menu-activity-now")
-      : activity.nextInMs < 60_000
-        ? t("menu-activity-wait-seconds", {
-            seconds: String(Math.round(activity.nextInMs / 1_000)),
-          })
-        : t("menu-activity-wait-minutes", {
-            minutes: String(
-              Math.max(1, Math.round(activity.nextInMs / 60_000)),
-            ),
-          });
-
-  return t("menu-activity", { count: String(activity.requests), wait });
+  return t("menu-activity-wait-minutes", {
+    minutes: String(minutesUntil(Date.now() + nextInMs)),
+  });
 }
 
-/** The label of the status entry, read from the live service. */
-export function activityLabel(): string {
+/** A title short enough for a menu row, with a marker when it was cut. */
+export function shortenTitle(title: string, limit = 28): string {
+  const text = title.trim();
+  if (!text) return t("activity-untitled");
+  return text.length <= limit ? text : `${text.slice(0, limit - 1)}…`;
+}
+
+/**
+ * One line per paper, about that paper alone.
+ *
+ * Reported: a single count for the whole session, sitting above a list of
+ * papers that were each at a different point of being read, and a wait that
+ * said "now" while the notice said five minutes. The reading is sequential -
+ * one search at a time, spaced out, and a refusal stops the ones behind it -
+ * so the honest picture is per paper: how many searches this paper has cost,
+ * and when *this* paper is tried again.
+ */
+export function activityLines(
+  activity: {
+    autoPaused: boolean;
+    items: Array<{
+      itemID: number;
+      title: string;
+      attempts: number;
+      reading: boolean;
+      nextInMs: number;
+    }>;
+  },
+  itemIDs: number[] | null,
+): string[] {
+  const wanted =
+    itemIDs === null
+      ? activity.items
+      : activity.items.filter((item) => itemIDs.includes(item.itemID));
+
+  if (!wanted.length) {
+    return [
+      itemIDs === null
+        ? t("menu-activity-idle")
+        : t("menu-activity-none-selected"),
+    ];
+  }
+
+  const lines = wanted.slice(0, ACTIVITY_ROWS).map((item) => {
+    const title = shortenTitle(item.title);
+    if (item.reading) {
+      return t("menu-activity-item-reading", { title });
+    }
+    const count = String(item.attempts);
+    if (activity.autoPaused) {
+      return t("menu-activity-item-paused", { title, count });
+    }
+    if (item.nextInMs <= 1_000) {
+      return t("menu-activity-item-retry-now", { title, count });
+    }
+    return t("menu-activity-item-retry", {
+      title,
+      count,
+      wait: describeWait(item.nextInMs),
+    });
+  });
+
+  if (wanted.length > ACTIVITY_ROWS) {
+    lines.push(
+      t("menu-activity-overflow", {
+        count: String(wanted.length - ACTIVITY_ROWS),
+      }),
+    );
+  }
+  return lines;
+}
+
+/** The lines of the status block, read from the live service. */
+export function activityLabels(itemIDs: number[] | null): string[] {
   try {
-    return describeScholarActivity(getService().scholarActivity());
+    return activityLines(getService().scholarActivity(), itemIDs);
   } catch (error) {
     Zotero.debug(`[AlphaPulse] could not read the Scholar activity: ${error}`);
-    return t("menu-activity-idle");
+    return [t("menu-activity-idle")];
   }
+}
+
+/**
+ * The id of the nth status row. The first one keeps the plain id, so a reader
+ * of the DOM (and the tests) still finds `alphalikes-activity` where it was.
+ */
+function activityId(index: number): string {
+  return `${ACTIVITY_ID}-${index + 1}`;
 }
 
 function setHidden(element: Element, hidden: boolean): void {
@@ -550,12 +626,24 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
           openScholarVerification(win);
         },
       );
-      // Not an action: what the session has asked Scholar for, and what it is
-      // waiting for. It sits first, where the eye lands, and answers "is it
-      // working?" without the user having to open the settings.
-      const activity = createMenuItem(doc, ACTIVITY_ID, "", () => undefined);
-      activity.setAttribute("disabled", "true");
-      activity.setAttribute("class", "menu-iconic");
+      // Not actions: what each paper the user is looking at is waiting for.
+      // They sit first, where the eye lands, and answer "is it working, and on
+      // which paper?" without the user having to open the settings. A pool of
+      // rows, hidden when unused, because the label of a menu entry can only
+      // be one line.
+      const activityRows: Element[] = [];
+      for (let index = 0; index <= ACTIVITY_ROWS; index += 1) {
+        const row = createMenuItem(
+          doc,
+          index === 0 ? ACTIVITY_ID : activityId(index),
+          "",
+          () => undefined,
+        );
+        row.setAttribute("disabled", "true");
+        row.setAttribute("class", "menu-iconic");
+        setHidden(row, true);
+        activityRows.push(row);
+      }
 
       const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
         void clearSelectedItems(win);
@@ -564,7 +652,7 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       // In the order the actions are usually wanted: read, read, go and look,
       // verify, and - last, behind a separator - take the records back out.
       popup.append(
-        activity,
+        ...activityRows,
         createSeparator(doc, ACTIVITY_SEPARATOR_ID),
         refresh,
         refreshCitations,
@@ -591,8 +679,19 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
           openableAlphaXiv: items.some((item) => hasAlphaXivPage(item)),
         });
 
-        setHidden(activity, !visibility.refresh);
-        (activity as HTMLElement).setAttribute("label", activityLabel());
+        // One line per paper the user has selected - the papers they are
+        // looking at, not a session total - and, in the Tools menu, wherever
+        // the plugin left off.
+        const lines = visibility.refresh
+          ? activityLabels(id === MENU_ID ? items.map((item) => item.id) : null)
+          : [];
+        activityRows.forEach((row, index) => {
+          const line = lines[index];
+          setHidden(row, line === undefined);
+          if (line !== undefined) {
+            (row as HTMLElement).setAttribute("label", line);
+          }
+        });
 
         setHidden(refresh, !visibility.refresh);
         setHidden(refreshCitations, !visibility.refreshCitations);
@@ -618,6 +717,7 @@ export function unregisterItemMenu(win: Window): void {
       MENU_ID,
       MENU_POPUP_ID,
       ACTIVITY_ID,
+      ...Array.from({ length: ACTIVITY_ROWS }, (_, i) => activityId(i + 1)),
       ACTIVITY_SEPARATOR_ID,
       TOOLS_MENU_ID,
       TOOLS_POPUP_ID,

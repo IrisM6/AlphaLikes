@@ -12,9 +12,10 @@
 
 import { assert } from "chai";
 import {
-  describeScholarActivity,
+  activityLines,
   menuVisibility,
   registerItemMenu,
+  shortenTitle,
   unregisterItemMenu,
 } from "../src/modules/menu";
 import { t } from "../src/modules/l10n";
@@ -252,33 +253,164 @@ describe("the plugin menu", function () {
     assert.isTrue(citationsOff.refresh, "the likes column is not affected");
   });
 
-  it("says what the session has read, and what it waits for", function () {
-    // A quiet column and a stopped plugin look the same; this line answers the
-    // question without the user opening the settings. The wording follows what
-    // is true: minutes once the wait is long, seconds while it is short, and a
-    // plain "nothing yet" for a session that has not read anything.
-    assert.equal(
-      describeScholarActivity({ requests: 0, nextInMs: 0 }),
-      t("menu-activity-idle"),
-      "a session that has read nothing says so",
+  it("says what each paper is waiting for, one line per paper", function () {
+    // A quiet column and a stopped plugin look the same; this block answers
+    // the question without the user opening the settings. Reported: one line
+    // for the whole session - "2 requests, next in about now" - over a list of
+    // papers that were each at a different point, and a wait that disagreed
+    // with the notice. What is asserted is the shape the user asked for: one
+    // line per paper, each carrying that paper's own count and its own next
+    // attempt, in the order the reading reaches them.
+    const activity = {
+      autoPaused: false,
+      items: [
+        {
+          itemID: 1,
+          title: "Attention Is All You Need",
+          attempts: 2,
+          reading: false,
+          nextInMs: 5 * 60_000,
+        },
+        {
+          itemID: 2,
+          title: "DeepSeek-R1",
+          attempts: 1,
+          reading: false,
+          nextInMs: 20 * 60_000,
+        },
+      ],
+    };
+
+    const lines = activityLines(activity, [1, 2]);
+    assert.lengthOf(lines, 2, "one paper, one line");
+    assert.include(lines[0], "Attention Is All You Need");
+    assert.include(lines[0], "2", "the paper's own count is in its line");
+    assert.include(lines[0], "5", "and its own wait");
+    assert.include(lines[1], "DeepSeek-R1");
+    assert.include(lines[1], "20");
+    assert.notInclude(
+      lines[1],
+      "Attention",
+      "a line is about one paper, not about the selection",
     );
 
-    const waiting = describeScholarActivity({ requests: 3, nextInMs: 4_000 });
-    assert.include(waiting, "3", "the count is in the line");
-    assert.include(waiting, "4", "and the wait, in seconds while it is short");
-
-    const resting = describeScholarActivity({
-      requests: 12,
-      nextInMs: 6 * 60_000,
-    });
-    assert.include(resting, "12", "the count is still there");
-    assert.include(resting, "6", "and the wait in minutes once it is long");
-
-    assert.equal(
-      describeScholarActivity({ requests: 1, nextInMs: 0 }),
-      t("menu-activity", { count: "1", wait: t("menu-activity-now") }),
-      "a read that is due now says so rather than counting down from zero",
+    // A paper with no attempts of its own states zero rather than borrowing
+    // its neighbours' count: the reading is sequential, and the paper behind
+    // the block has not been asked yet.
+    const behind = activityLines(
+      {
+        autoPaused: false,
+        items: [
+          {
+            ...activity.items[0],
+            itemID: 3,
+            title: "Queued paper",
+            attempts: 0,
+          },
+        ],
+      },
+      [3],
     );
+    assert.include(behind[0], "0");
+
+    // Reading now needs no countdown, and a paused episode says so instead of
+    // promising a time nothing will happen at.
+    const reading = activityLines(
+      {
+        autoPaused: false,
+        items: [{ ...activity.items[0], reading: true }],
+      },
+      [1],
+    );
+    assert.equal(
+      reading[0],
+      t("menu-activity-item-reading", { title: "Attention Is All You Need" }),
+    );
+
+    const paused = activityLines(
+      { autoPaused: true, items: activity.items },
+      [1],
+    );
+    assert.equal(
+      paused[0],
+      t("menu-activity-item-paused", {
+        title: "Attention Is All You Need",
+        count: "2",
+      }),
+    );
+  });
+
+  it("shows only the selected papers, and says so when none is waiting", function () {
+    // The right-click menu is about what is selected; the Tools menu is about
+    // the plugin, which has no selection to speak of.
+    const activity = {
+      autoPaused: false,
+      items: [
+        {
+          itemID: 1,
+          title: "One",
+          attempts: 1,
+          reading: false,
+          nextInMs: 60_000,
+        },
+        {
+          itemID: 2,
+          title: "Two",
+          attempts: 1,
+          reading: false,
+          nextInMs: 60_000,
+        },
+      ],
+    };
+
+    assert.deepEqual(
+      activityLines(activity, [2]).length,
+      1,
+      "only the selected paper is described",
+    );
+    assert.deepEqual(
+      activityLines(activity, []),
+      [t("menu-activity-none-selected")],
+      "a selection with nothing in flight says that, not the session's business",
+    );
+    assert.deepEqual(
+      activityLines({ autoPaused: false, items: [] }, null),
+      [t("menu-activity-idle")],
+      "and an idle plugin says it is idle",
+    );
+  });
+
+  it("keeps the status block to a readable number of rows", function () {
+    // A menu is read, not scrolled: four papers by name, then one line for the
+    // rest, each of which still has its own wait in its own tooltip.
+    const items = Array.from({ length: 7 }, (_, index) => ({
+      itemID: index + 1,
+      title: `Paper ${index + 1}`,
+      attempts: index + 1,
+      reading: false,
+      nextInMs: (index + 1) * 60_000,
+    }));
+    const lines = activityLines({ autoPaused: false, items }, null);
+    assert.lengthOf(lines, 5, "four papers plus the overflow line");
+    assert.include(
+      lines[4],
+      "3",
+      "the overflow counts the papers it stands for",
+    );
+  });
+
+  it("shortens a title rather than cutting a menu row off", function () {
+    assert.equal(shortenTitle("  DeepSeek-R1  "), "DeepSeek-R1");
+    assert.equal(
+      shortenTitle(""),
+      t("activity-untitled"),
+      "a paper with no title still gets a line",
+    );
+    const long = shortenTitle(
+      "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via Reinforcement Learning",
+    );
+    assert.isBelow(long.length, 30);
+    assert.match(long, /…$/, "a cut title says it was cut");
   });
 
   it("takes every entry back out on shutdown", function () {

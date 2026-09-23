@@ -89,11 +89,20 @@ export const MESSAGES = {
   // --- Clearing this plugin's own records ----------------------------------
   "menu-clear": "Remove the Extra records this plugin wrote",
   "menu-open-alphaxiv": "Open the alphaXiv page",
-  "menu-activity": "{count} request(s) this session · next in about {wait}",
+  "activity-untitled": "(untitled)",
   "menu-activity-wait-seconds": "{seconds} seconds",
   "menu-activity-wait-minutes": "{minutes} minutes",
-  "menu-activity-now": "now",
-  "menu-activity-idle": "Nothing has been read this session yet",
+  "menu-activity-idle": "Nothing is being read or waiting to be retried",
+  "menu-activity-none-selected":
+    "None of the selected items is being read or waiting to be retried",
+  "menu-activity-item-reading": "{title}: reading",
+  "menu-activity-item-retry":
+    "{title}: {count} request(s) for this item · retrying automatically in about {wait}",
+  "menu-activity-item-retry-now":
+    "{title}: {count} request(s) for this item · retrying right away",
+  "menu-activity-item-paused":
+    "{title}: {count} request(s) for this item · automatic retries are paused",
+  "menu-activity-overflow": "and {count} more, each with its own wait",
   "notify-alphaxiv-title": "AlphaPulse · alphaXiv",
   "notify-open-alphaxiv": "The paper's alphaXiv page is open in your browser.",
   "error-no-arxiv-id":
