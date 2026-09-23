@@ -1,7 +1,7 @@
 {
   "name": "zotero-alphapulse",
   "type": "module",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Zotero columns for alphaXiv likes and citation counts: 11 editable styles, Google Scholar / OpenAlex / Semantic Scholar citation sources, automatic arXiv matching, Zotero 7-11",
   "config": {
     "addonName": "AlphaPulse",
@@ -12,13 +12,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/IrisM6/AlphaLikes.git"
+    "url": "git+https://github.com/IrisM6/AlphaPulse.git"
   },
   "author": "IrisM6 <331546448+IrisM6@users.noreply.github.com>",
   "bugs": {
-    "url": "https://github.com/IrisM6/AlphaLikes/issues"
+    "url": "https://github.com/IrisM6/AlphaPulse/issues"
   },
-  "homepage": "https://github.com/IrisM6/AlphaLikes#readme",
+  "homepage": "https://github.com/IrisM6/AlphaPulse#readme",
   "keywords": [
     "zotero",
     "zotero-plugin",

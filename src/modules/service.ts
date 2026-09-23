@@ -2070,8 +2070,8 @@ export class AlphaLikesService {
       const address = readExitIP(exitIP);
       if (address) {
         notes.push(
-          `Zotero 的出口 IP：${address}。请在浏览器里打开 ${EXIT_IP_URL} ` +
-            `对比一下：如果两边不一样，说明你的浏览器走了代理或 VPN 扩展、` +
+          `Zotero 的出口 IP：${address}。在浏览器里打开 ${EXIT_IP_URL} ` +
+            `对比一下：如果两边不一样，说明日常浏览器走了代理或 VPN 扩展、` +
             `而 Zotero 没有——这正是"浏览器能打开、插件被限流"的直接原因，` +
             `把 Zotero 也指到同一条线路即可（设置 → 高级 → 网络 → 代理）。`,
         );

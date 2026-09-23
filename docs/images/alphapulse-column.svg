@@ -65,8 +65,8 @@
     <text x="304" y="224" class="meta">1706.03762 · NeurIPS</text>
     <text x="700" y="215" class="meta">Vaswani et al.</text>
     <text x="884" y="215" class="meta">2017</text>
-    <text x="1050" y="215" class="num high" text-anchor="end">1126</text>
-    <text x="1216" y="215" class="num mid" text-anchor="end">112,340</text>
+    <text x="1050" y="215" class="num high" text-anchor="end">1130</text>
+    <text x="1216" y="215" class="num mid" text-anchor="end">271,057</text>
 
     <rect x="284" y="232" width="940" height="46" fill="#fff"/>
     <text x="304" y="252" class="title">Deep Residual Learning for Image Recognition</text>
@@ -77,21 +77,21 @@
     <text x="1216" y="261" class="num high" text-anchor="end">96,210</text>
 
     <rect x="284" y="278" width="940" height="46" fill="#f5f8ff"/>
-    <text x="304" y="298" class="title">Nanometre-scale thermometry in a living cell</text>
-    <text x="304" y="316" class="meta">1304.1068 · Nature</text>
-    <text x="700" y="307" class="meta">Kucsko et al.</text>
-    <text x="884" y="307" class="meta">2013</text>
-    <text x="1050" y="307" class="num high" text-anchor="end">2979</text>
-    <text x="1096" y="307" class="trend">↑12</text>
-    <text x="1216" y="307" class="num low" text-anchor="end">1,024</text>
+    <text x="304" y="298" class="title">Gemma 3 technical report</text>
+    <text x="304" y="316" class="meta">2503.19786 · arXiv</text>
+    <text x="700" y="307" class="meta">Gemma Team</text>
+    <text x="884" y="307" class="meta">2025</text>
+    <text x="1050" y="307" class="num mid" text-anchor="end">1186</text>
+    <text x="1216" y="307" class="num mid" text-anchor="end">2,894</text>
 
     <rect x="284" y="324" width="940" height="46" fill="#fff"/>
-    <text x="304" y="344" class="title">Gravitational Waves from a Binary Black Hole Merger</text>
-    <text x="304" y="362" class="meta">1602.03837 · PRL</text>
-    <text x="700" y="353" class="meta">Abbott et al.</text>
-    <text x="884" y="353" class="meta">2016</text>
-    <text x="1050" y="353" class="num low" text-anchor="end">6</text>
-    <text x="1216" y="353" class="num mid" text-anchor="end">38,902</text>
+    <text x="304" y="344" class="title">DeepSeek-R1: Incentivizing Reasoning…</text>
+    <text x="304" y="362" class="meta">2501.12948 · arXiv</text>
+    <text x="700" y="353" class="meta">DeepSeek-AI</text>
+    <text x="884" y="353" class="meta">2025</text>
+    <text x="1050" y="353" class="num high" text-anchor="end">2277</text>
+    <text x="1096" y="353" class="trend">↑12</text>
+    <text x="1216" y="353" class="num mid" text-anchor="end">13,457</text>
 
     <rect x="284" y="370" width="940" height="46" fill="#f5f8ff"/>
     <text x="304" y="390" class="title">Survey of Techniques for Approximate Computing</text>
@@ -115,7 +115,7 @@
     <line x1="284" y1="470" x2="1224" y2="470" stroke="#e2e8f0"/>
     <text x="308" y="504" font-size="14" font-weight="700" fill="#1e293b">列里出现的几种情况</text>
 
-    <text x="308" y="536" class="num high">1126</text>
+    <text x="308" y="536" class="num high">1130</text>
     <text x="364" y="536" class="meta">达到高赞阈值（默认绿色）</text>
 
     <text x="308" y="562" class="num low">6</text>
@@ -129,6 +129,6 @@
 
     <text x="764" y="536" class="meta">颜色、阈值与范围筛选都在设置里；引用数可与点赞数共用外观，</text>
     <text x="764" y="556" class="meta">也可以单独设置。数字缓存在条目的 Extra 字段，可随文献库同步。</text>
-    <text x="764" y="588" class="meta">2979 ↑12 是每日快照带来的趋势。</text>
+    <text x="764" y="588" class="meta">2277 ↑12 是每日快照带来的趋势。</text>
   </g>
 </svg>

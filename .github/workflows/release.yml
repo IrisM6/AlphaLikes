@@ -71,10 +71,10 @@ jobs:
           set -euo pipefail
           version=$(node -p "require('./package.json').version")
           mkdir -p /tmp/asset
-          gh release download "${GITHUB_REF_NAME}" --pattern 'alphalikes.xpi' --dir /tmp/asset
-          cp /tmp/asset/alphalikes.xpi "/tmp/asset/alphalikes-v${version}.xpi"
-          gh release upload "${GITHUB_REF_NAME}" "/tmp/asset/alphalikes-v${version}.xpi" --clobber
-          gh release delete-asset "${GITHUB_REF_NAME}" alphalikes.xpi --yes
+          gh release download "${GITHUB_REF_NAME}" --pattern 'alphapulse.xpi' --dir /tmp/asset
+          cp /tmp/asset/alphapulse.xpi "/tmp/asset/alphapulse-v${version}.xpi"
+          gh release upload "${GITHUB_REF_NAME}" "/tmp/asset/alphapulse-v${version}.xpi" --clobber
+          gh release delete-asset "${GITHUB_REF_NAME}" alphapulse.xpi --yes
 
   # The release job writes the body from the conventional commits since the
   # previous tag and gives up with "_No significant changes._" when that range

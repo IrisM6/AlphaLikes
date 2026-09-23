@@ -150,7 +150,7 @@ export function formatDiagnosis(input: DiagnosisInput): string {
     }
     lines.push(
       "  这两条都来自 Zotero 自己的 Gecko 引擎（和 Firefox 同源，同一套 NSS 加密栈），" +
-        "并不是 Python 或 curl 那种客户端；想对比的话，用你平时上网的火狐打开 " +
+        "并不是 Python 或 curl 那种客户端；想对比的话，用平时上网的 Firefox 打开 " +
         FINGERPRINT_URL +
         " ，把里面的 JA3 哈希和 JA4 发回来，两边一致就说明 Google 的拒绝与 TLS 指纹无关。",
     );
