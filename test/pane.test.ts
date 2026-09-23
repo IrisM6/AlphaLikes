@@ -525,6 +525,16 @@ describe("AlphaLikes settings pane", function () {
       "the summary leaves the shortest stay out",
     );
 
+    // And it has to be a sentence: the build renames the message's variables,
+    // so a name the pane forgets to fill in comes out as `{ alphalikes-... }`
+    // in the middle of the line. That is not a number, whatever the numbers
+    // around it happen to match.
+    assert.notInclude(
+      text,
+      "{",
+      "the summary still carries an unfilled placeholder",
+    );
+
     const field = doc.querySelector(
       '[preference="extensions.zotero.alphalikes.scholarIntervalMaxSeconds"]',
     ) as HTMLInputElement | null;
