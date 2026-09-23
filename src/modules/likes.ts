@@ -25,14 +25,17 @@ export const CELL_CLEARED = "cleared";
 const SORT_WIDTH = 16;
 const SORTABLE_RE = new RegExp(`^\\d{${SORT_WIDTH},}$`);
 
+/** The like control, whether or not it currently carries a number. */
+export const LIKE_BUTTON_SELECTOR = 'button[aria-label="Like this paper"]';
+
 /**
  * Selector chain for the like counter. The first entry is the current alphaXiv
  * markup; the others are older variants kept as a cheap fallback.
  */
 export const LIKE_COUNT_SELECTORS = [
-  'button[aria-label="Like this paper"] span.inline-block',
-  'button[aria-label="Like this paper"] span',
-  'button[aria-label="Like this paper"]',
+  `${LIKE_BUTTON_SELECTOR} span.inline-block`,
+  `${LIKE_BUTTON_SELECTOR} span`,
+  LIKE_BUTTON_SELECTOR,
 ] as const;
 
 export function parseLikesText(text: string | null | undefined): number | null {
@@ -63,6 +66,19 @@ export function parseLikesFromDocument(doc: Document): number | null {
     const likes = parseLikesText(element?.textContent);
     if (likes !== null) return likes;
   }
+
+  // alphaXiv leaves the number out entirely when a paper has no likes yet: the
+  // button is there with its thumb and nothing else - on 2312.00001 and
+  // 2312.00002 there is no `span.inline-block` anywhere on the page, while
+  // every paper with a like carries one. A control that loaded and is blank is
+  // a count of zero, not a failed read; reporting it as a failure told the
+  // user to wait five minutes for a number the page had already given.
+  //
+  // The distinction is deliberate: no button at all still means "could not
+  // read" (the page is not a paper view, or its markup moved), while a button
+  // whose number is absent is the site's way of writing zero.
+  if (doc.querySelector(LIKE_BUTTON_SELECTOR)) return 0;
+
   return null;
 }
 

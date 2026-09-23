@@ -388,8 +388,16 @@ describe("AlphaLikes settings pane", function () {
     // the test asks what it has to say, not which words it says it in.
     assert.match(
       text,
-      /(本次会话还没有读取请求|Nothing has been read this session)/,
+      /(没有正在读取或等待重试的条目|Nothing is being read or waiting to be retried)/,
       "an idle session says so instead of describing a wait that is not there",
+    );
+    // Reported: the line led with 「本会话已请求 N 次」, a count for the whole
+    // run of Zotero. The reading is sequential, so that number describes no
+    // paper in particular; the pane shows per-paper progress and nothing else.
+    assert.notMatch(
+      text,
+      /(本次会话已请求|本会话已请求|has asked Scholar\s*\d)/,
+      "the session's own request count does not belong in the pane",
     );
 
     // With a paper in flight the line has to name it: that is the difference
@@ -435,6 +443,11 @@ describe("AlphaLikes settings pane", function () {
         "and how many searches that paper has cost",
       );
       assert.match(waiting, /(5|约 5)/, "and when that paper is tried again");
+      assert.notMatch(
+        waiting,
+        /(本次会话已请求|本会话已请求|has asked Scholar\s*\d)/,
+        "still no session total, now that there is something to report",
+      );
     } finally {
       internals.scholarItems.delete(item.id);
       try {

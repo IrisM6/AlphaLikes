@@ -4,6 +4,7 @@ import {
   extractArxivID,
   fromSortableValue,
   normalizeArxivID,
+  parseLikesFromDocument,
   parseLikesText,
   readCachedLikes,
   toSortableValue,
@@ -72,6 +73,66 @@ describe("AlphaLikes core logic", function () {
       assert.equal(parseLikesText("1.2K"), 1200);
       assert.equal(parseLikesText("Likes: 87"), 87);
       assert.isNull(parseLikesText("N/A"));
+    });
+
+    /**
+     * The page alphaXiv serves for a paper nobody has liked yet.
+     *
+     * Verified against the live site: `2312.00001` and `2312.00002` come back
+     * with the like button and its thumb icon and no number anywhere on the
+     * page, while every paper with a like has a `span.inline-block` holding it.
+     * The count is zero; it is not a page that failed to load.
+     */
+    function alphaXivDocument(inner: string): Document {
+      const win = Zotero.getMainWindow() as unknown as Window;
+      const html = `<html><body>${inner}</body></html>`;
+      return new win.DOMParser().parseFromString(html, "text/html");
+    }
+
+    const THUMB = '<svg aria-hidden="true"></svg>';
+
+    it("reads a paper with no likes as zero, not as a failed read", function () {
+      // Reported: a paper with 0 likes came back as 「未能读取（保留原值，约 5
+      // 分钟后自动重试）」. The page had loaded and said zero - the site simply
+      // omits the number - so reporting a failure sent the user off to wait
+      // five minutes for a number that was already on the page.
+      assert.equal(
+        parseLikesFromDocument(
+          alphaXivDocument(
+            `<button aria-label="Like this paper">${THUMB}</button>`,
+          ),
+        ),
+        0,
+        "a button with no number is alphaXiv writing zero",
+      );
+
+      // A number that really is zero is read as zero as well, whichever markup
+      // the site uses for it.
+      assert.equal(
+        parseLikesFromDocument(
+          alphaXivDocument(
+            `<button aria-label="Like this paper">${THUMB}` +
+              `<span class="inline-block">0</span></button>`,
+          ),
+        ),
+        0,
+      );
+    });
+
+    it("still fails when the page is not a paper view at all", function () {
+      // The other half of the rule: no like control means the read failed -
+      // the markup moved, or this is not a paper page - and a wrong zero would
+      // be worse than an honest failure.
+      assert.isNull(
+        parseLikesFromDocument(
+          alphaXivDocument("<main>This paper could not be found</main>"),
+        ),
+      );
+      assert.isNull(
+        parseLikesFromDocument(
+          alphaXivDocument(`<button aria-label="Share">${THUMB}</button>`),
+        ),
+      );
     });
 
     it("sorts through a padded value but renders a plain number", function () {

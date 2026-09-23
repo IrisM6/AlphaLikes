@@ -30,6 +30,20 @@ function alphaXivPage(likes: number): Document {
   return new win.DOMParser().parseFromString(html, "text/html");
 }
 
+/**
+ * The page alphaXiv serves for a paper with no likes yet.
+ *
+ * Same as `alphaXivPage` minus the number: the live site renders the like
+ * button with its icon and nothing else, which is how it writes zero.
+ */
+function alphaXivPageWithoutCount(): Document {
+  const win = Zotero.getMainWindow() as unknown as Window;
+  const html =
+    `<html><body><button aria-label="Like this paper">` +
+    `<svg aria-hidden="true"></svg></button></body></html>`;
+  return new win.DOMParser().parseFromString(html, "text/html");
+}
+
 /** A Scholar results page whose first hit is the item itself. */
 function scholarPage(count: number, title: string): string {
   return `
@@ -46,6 +60,8 @@ interface Stub {
   /** Title of the single Scholar hit the stub serves. */
   scholarTitle: string;
   failLikes: boolean;
+  /** Serve the page alphaXiv serves for a paper with no likes yet. */
+  pageWithoutCount: boolean;
   failScholar: boolean;
   /** HTTP status the Scholar request answers with. */
   scholarStatus: number;
@@ -67,6 +83,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     scholar,
     scholarTitle: "AlphaLikes refresh probe paper",
     failLikes: false,
+    pageWithoutCount: false,
     failScholar: false,
     scholarStatus: 200,
     hold: false,
@@ -95,7 +112,9 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
       state.served.push(url);
       await gate();
       if (state.failLikes) throw new Error("service unavailable");
-      return alphaXivPage(state.likes);
+      return state.pageWithoutCount
+        ? alphaXivPageWithoutCount()
+        : alphaXivPage(state.likes);
     },
     requestText: async (url: string) => {
       state.served.push(url);
@@ -192,6 +211,36 @@ describe("AlphaLikes refresh", function () {
       assert.equal(summary.total, 1);
       assert.equal(summary.updated, 1);
       assert.equal(summary.failed, 0);
+    });
+
+    it("stores zero for a paper nobody has liked, and says it read it", async function () {
+      // Reported: a paper with 0 likes came back as a failed refresh -
+      // 「未能读取（保留原值，约 5 分钟后自动重试）」 - although the page had
+      // loaded and said zero. alphaXiv leaves the number out when it is zero,
+      // and the plugin read the missing number as a missing read.
+      stub = stubRequester(service, 0);
+      stub.pageWithoutCount = true;
+
+      const summary = await service.refreshItems([Zotero.Items.get(item.id)]);
+
+      assert.equal(
+        fromSortableValue(service.getCellData(item)),
+        "0",
+        "zero likes is a count, and the column shows it",
+      );
+      assert.equal(summary.updated, 1);
+      assert.equal(
+        summary.failed,
+        0,
+        "nothing failed: there was nothing to fail",
+      );
+
+      const extra = String(item.getField("extra"));
+      assert.include(
+        extra,
+        "alphaxiv_likes: 0",
+        "and the zero is cached like any other count",
+      );
     });
 
     it("shows the loading state while the re-read is in flight", async function () {

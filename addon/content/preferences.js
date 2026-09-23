@@ -884,6 +884,10 @@
    * asked yet. The lines name the paper and carry its own count and its own
    * next attempt, and the count is counted with the same rounding every other
    * surface uses, so nothing here disagrees with the popup.
+   *
+   * The session's own request count is deliberately not shown anywhere: it is
+   * the queue's number, not any paper's, and a reader who is told "36 requests
+   * this session" learns nothing about the row in front of them.
    */
   function wireScholarActivity(doc) {
     var target = doc.getElementById("alphalikes-scholar-activity");
@@ -948,13 +952,12 @@
     }
 
     function plain(activity) {
-      if (!activity.items.length) return "本次会话还没有读取请求。";
+      // No session total here on purpose: the reading is sequential, so a
+      // count for the whole session says nothing about any one paper, and the
+      // papers are what the line is about.
+      if (!activity.items.length) return "没有正在读取或等待重试的条目。";
       return (
-        "本会话已请求 " +
-        activity.requests +
-        " 次；" +
-        listText(activity.items, activity.autoPaused) +
-        "。"
+        "各条目的读取进度：" + listText(activity.items, activity.autoPaused)
       );
     }
 
@@ -999,7 +1002,6 @@
       }
 
       var args = {};
-      args[REF + "-count"] = String(activity.requests);
       args[REF + "-list"] = listText(items, activity.autoPaused);
       // Each paper is described by the service's own numbers; the message is
       // only the frame around them.
