@@ -41,6 +41,7 @@ import {
   readCitationsUpdatedAt,
   semanticScholarCitationURL,
   upsertCitations,
+  writeManualCitations,
   type CitationCounts,
 } from "./citations";
 import {
@@ -775,6 +776,21 @@ export class AlphaLikesService {
   }
 
   /** Opens that page in the default browser. */
+  /**
+   * What this session has asked Google Scholar for, and what it waits for.
+   *
+   * The settings pane and the menu both read this, so the two cannot drift:
+   * one count, one wait, computed where the queue actually lives.
+   */
+  scholarActivity(): {
+    requests: number;
+    nextInMs: number;
+    paused: boolean;
+    burstLeft: number;
+  } {
+    return this.requester.scholarActivity();
+  }
+
   openScholarVerification(item?: Zotero.Item | null): void {
     openExternal(this.scholarVerificationURL(item));
   }
@@ -863,7 +879,29 @@ export class AlphaLikesService {
     // flight, and when Google refuses them all, twenty failures arrive for what
     // is one episode of being blocked - counting those as twenty attempts made
     // the report say "attempt 20" and jumped the cap in the first second.
-    if (this.scholarBlock === null) this.scholarRound += 1;
+    const freshRound = this.scholarBlock === null;
+    if (freshRound) this.scholarRound += 1;
+
+    // The jar is cleared by the plugin itself, and never mentioned in the UI:
+    // a block is the one moment where the cookies collected so far are worth
+    // dropping, and the next attempt should look like a browser that has just
+    // arrived rather than one that kept knocking with the same session. Done
+    // once per round, so a repaint's worth of refusals clears it once.
+    if (freshRound) {
+      // Wrapped, because this is housekeeping and not the read: a session
+      // that cannot answer for its cookies must still leave the block
+      // recorded, or the wait the user is owed would be lost with it.
+      try {
+        const cleared = clearGoogleCookies();
+        this.requester.restartGoogleSession();
+        this.debug(
+          `[AlphaPulse] 被拦后自动清掉 ${cleared} 个 Google Cookie，` +
+            `下次重试会重新打开 Scholar 首页`,
+        );
+      } catch (error) {
+        this.debug(`could not clear the Google cookies: ${error}`);
+      }
+    }
     const attempts = Math.max(1, this.scholarRound);
     const delay = scholarRetryDelayMs(attempts);
     // The most recent answer decides how the wait is described, so a block
@@ -967,6 +1005,13 @@ export class AlphaLikesService {
    * jar is the closest thing to arriving as a browser that was never here.
    * It is the user's decision to make, hence a menu entry, and it is reported
    * back so the notice can say what happened.
+   */
+  /**
+   * Clears Google's cookies from Zotero's jar and re-reads the selected rows.
+   *
+   * There is no menu entry for this any more: the plugin does it by itself
+   * when a read comes back blocked, which is the only time it helps. It stays
+   * callable so the automatic path and the tests have one implementation.
    */
   async resetGoogleSession(): Promise<{ cookies: number; items: number }> {
     const cookies = clearGoogleCookies();
@@ -1152,7 +1197,10 @@ export class AlphaLikesService {
       };
     }
 
-    const primary = primaryCitationSource(counts, order);
+    // A typed number is the user's own, and the tooltip says so rather than
+    // naming whichever provider happens to hold the same count.
+    const manual = counts.manual === true && counts.googleScholar !== undefined;
+    const primary = manual ? null : primaryCitationSource(counts, order);
     const highImpact = isHighImpact(counts);
 
     return {
@@ -1160,12 +1208,12 @@ export class AlphaLikesService {
       // follows becomes the tooltip's "source" line.
       value: withValueDecorations(toSortableValue(count), [
         ...(highImpact ? [1] : []),
-        ...(primary ? [primary] : []),
+        ...(manual ? ["manual"] : primary ? [primary] : []),
       ]),
       text: String(count),
       count,
       highImpact,
-      source: primary ? CITATION_SOURCE_LABELS[primary] : null,
+      source: manual ? null : primary ? CITATION_SOURCE_LABELS[primary] : null,
     };
   }
 
@@ -1193,9 +1241,13 @@ export class AlphaLikesService {
 
   private async populateCitations(item: Zotero.Item): Promise<boolean> {
     const arxivID = this.getItemArxivID(item);
+    // The user typed this item's score by hand, which they did because the
+    // plugin could not get it. Asking Google Scholar anyway would spend a
+    // request on a number that is going to be thrown away.
+    const manual = readCitations(safeGetField(item, "extra"))?.manual === true;
 
     try {
-      const counts = await this.fetchCitations(item, arxivID);
+      const counts = await this.fetchCitations(item, arxivID, manual);
       if (this.disposed) return false;
 
       if (counts === null) {
@@ -1248,6 +1300,7 @@ export class AlphaLikesService {
   private fetchCitations(
     item: Zotero.Item,
     arxivID: string | null,
+    manual = false,
   ): Promise<CitationCounts | null> {
     const paper = this.readPaperMetadata(item);
     const key = `${paper.doi || ""}|${arxivID || ""}|${normalizeText(paper.title)}`;
@@ -1259,9 +1312,12 @@ export class AlphaLikesService {
     // cache key stays the item's own metadata so the pin survives a rename.
     const scholarTitle = readScholarTitle(safeGetField(item, "extra"));
 
-    const request = this.collectCitations(paper, arxivID, scholarTitle).finally(
-      () => this.inFlightCitations.delete(key),
-    );
+    const request = this.collectCitations(
+      paper,
+      arxivID,
+      scholarTitle,
+      manual,
+    ).finally(() => this.inFlightCitations.delete(key));
 
     this.inFlightCitations.set(key, request);
     return request;
@@ -1271,6 +1327,7 @@ export class AlphaLikesService {
     paper: PaperMetadata,
     arxivID: string | null,
     scholarTitle: string | null,
+    manual = false,
   ): Promise<CitationCounts | null> {
     const prefs = getResolverPrefs();
 
@@ -1286,6 +1343,9 @@ export class AlphaLikesService {
     // behind it for no reason at all.
     const tasks = citationOrder().map(async (source) => {
       if (source === "googleScholar") {
+        // The item carries a number the user typed; Scholar is not asked, and
+        // the merge keeps the typed one.
+        if (manual) return null;
         const scholar = await this.collectGoogleScholarCitation(
           paper,
           scholarTitle,
@@ -2483,6 +2543,40 @@ export class AlphaLikesService {
     this.citationQuantileCache = null;
     repaintRows(targets.map((item) => item.id));
     return summary;
+  }
+
+  /**
+   * Writes the citation count the user typed, or clears their entry.
+   *
+   * `null` hands the item back to the automatic read. The number goes into the
+   * same record the reads write, marked as typed, so the column, the tooltip,
+   * the sort and "clear data" all work on it unchanged.
+   */
+  async setManualCitations(
+    items: Zotero.Item[],
+    count: number | null,
+  ): Promise<{ items: number }> {
+    let written = 0;
+
+    for (const item of items) {
+      try {
+        await this.writeExtra(item, (extra) =>
+          writeManualCitations(extra, count),
+        );
+        const counts = readCitations(safeGetField(item, "extra"));
+        if (counts)
+          this.citationStates.set(item.id, { kind: "success", counts });
+        else this.citationStates.delete(item.id);
+        written += 1;
+      } catch (error) {
+        this.debug(`could not write the manual citation for item ${item.id}`);
+        throw error;
+      }
+    }
+
+    this.citationQuantileCache = null;
+    repaintRows(items.map((item) => item.id));
+    return { items: written };
   }
 
   private async writeExtra(

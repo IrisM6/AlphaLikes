@@ -21,6 +21,7 @@
  */
 
 import pkg from "../../package.json";
+import { readCitations } from "./citations";
 import { getService } from "./column";
 import { getCitationPrefs, getCitationSourcePreferences } from "./prefs";
 import { t } from "./l10n";
@@ -29,14 +30,16 @@ import type { RefreshSummary } from "./service";
 
 const MENU_ID = "alphalikes-menu";
 const MENU_POPUP_ID = "alphalikes-menu-popup";
+const ACTIVITY_ID = "alphalikes-activity";
+const ACTIVITY_SEPARATOR_ID = "alphalikes-activity-separator";
 const TOOLS_MENU_ID = "alphalikes-tools-menu";
 const TOOLS_POPUP_ID = "alphalikes-tools-popup";
 const SEPARATOR_ID = "alphalikes-itemmenu-separator";
 const REFRESH_ID = "alphalikes-refresh-likes";
 const REFRESH_CITATIONS_ID = "alphalikes-refresh-citations";
+const MANUAL_CITATIONS_ID = "alphalikes-manual-citations";
 const OPEN_ALPHAXIV_ID = "alphalikes-open-alphaxiv";
 const OPEN_SCHOLAR_ID = "alphalikes-open-scholar";
-const RESET_GOOGLE_ID = "alphalikes-reset-google";
 const CLEAR_ID = "alphalikes-clear-data";
 
 /**
@@ -170,22 +173,23 @@ export interface MenuVisibility {
   refreshCitations: boolean;
   openAlphaXiv: boolean;
   openScholar: boolean;
-  resetGoogle: boolean;
+  /** One row, so the number typed into the box belongs to it. */
+  manualCitations: boolean;
   clear: boolean;
 }
 
 export function menuVisibility(state: MenuState): MenuVisibility {
   return {
     // With nothing selected the entry leaves the item menu; the Tools menu
-    // keeps it, because resetting the Google session is about the session and
-    // not about a row, and the caller ignores this field for that host.
+    // keeps it, because opening the Scholar search page is about the session
+    // and not about a row, and the caller ignores this field for that host.
     entry: state.count > 0,
     refresh: state.count > 0,
     // Nothing to refresh or verify while the Citations column is off.
     refreshCitations: state.count > 0 && state.citationsEnabled,
     openAlphaXiv: state.count > 0 && state.openableAlphaXiv,
     openScholar: state.citationsEnabled && state.findsScholar,
-    resetGoogle: state.citationsEnabled && state.findsScholar,
+    manualCitations: state.count === 1 && state.citationsEnabled,
     clear: state.count > 0,
   };
 }
@@ -218,6 +222,47 @@ function readsGoogleScholar(): boolean {
  * `hidden` is the attribute XUL reads; the property is set as well because
  * that is what a test (and any plain DOM code) checks.
  */
+/**
+ * One line about the reading rhythm, for the menu's first entry.
+ *
+ * The wording follows what a reader wants to know: how much has happened, and
+ * how long until the next one. Minutes once the wait is long, seconds while it
+ * is short, and "not read for this row" when nothing is in flight.
+ */
+export function describeScholarActivity(activity: {
+  requests: number;
+  nextInMs: number;
+}): string {
+  if (activity.requests === 0 && activity.nextInMs === 0) {
+    return t("menu-activity-idle");
+  }
+
+  const wait =
+    activity.nextInMs <= 1_000
+      ? t("menu-activity-now")
+      : activity.nextInMs < 60_000
+        ? t("menu-activity-wait-seconds", {
+            seconds: String(Math.round(activity.nextInMs / 1_000)),
+          })
+        : t("menu-activity-wait-minutes", {
+            minutes: String(
+              Math.max(1, Math.round(activity.nextInMs / 60_000)),
+            ),
+          });
+
+  return t("menu-activity", { count: String(activity.requests), wait });
+}
+
+/** The label of the status entry, read from the live service. */
+export function activityLabel(): string {
+  try {
+    return describeScholarActivity(getService().scholarActivity());
+  } catch (error) {
+    Zotero.debug(`[AlphaPulse] could not read the Scholar activity: ${error}`);
+    return t("menu-activity-idle");
+  }
+}
+
 function setHidden(element: Element, hidden: boolean): void {
   const target = element as HTMLElement;
   target.hidden = hidden;
@@ -307,6 +352,60 @@ async function refreshSelectedCitations(win: Window): Promise<void> {
 }
 
 /**
+ * Asks for the citation count and writes it into the item.
+ *
+ * The number is shown in the Citations column, so when Google Scholar cannot
+ * be read - a block, a captcha, a paper it does not index under that title -
+ * the user can put in what they know and get on with their work. The entry
+ * carries the mark that keeps the automatic read from overwriting it; an empty
+ * box means "read it for me again", which is the only way back.
+ */
+async function setManualCitations(win: Window): Promise<void> {
+  const items = selectedItems(win);
+  if (!items.length) {
+    notify(win, t("error-no-selection"));
+    return;
+  }
+
+  const item = items[0];
+  let current: number | undefined;
+  try {
+    current = readCitations(item.getField("extra") ?? "")?.googleScholar;
+  } catch {
+    // A row whose fields throw is still a row the user can type for.
+  }
+
+  const input = { value: current === undefined ? "" : String(current) };
+  const accepted = Services.prompt.prompt(
+    win as unknown as mozIDOMWindowProxy,
+    t("manual-citations-title"),
+    t("manual-citations-message"),
+    input,
+    "",
+    { value: false },
+  );
+  if (!accepted) return;
+
+  const text = (input.value ?? "").trim();
+  if (text === "") {
+    await getService().setManualCitations([item], null);
+    toast(t("notify-manual-title"), t("manual-citations-cleared"));
+    return;
+  }
+
+  if (!/^\d{1,9}$/.test(text)) {
+    notify(win, t("manual-citations-invalid"));
+    return;
+  }
+
+  await getService().setManualCitations([item], Number.parseInt(text, 10));
+  toast(
+    t("notify-manual-title"),
+    t("manual-citations-done", { count: String(Number.parseInt(text, 10)) }),
+  );
+}
+
+/**
  * Takes this plugin's records back out of the selected items' `Extra`.
  *
  * Deliberately narrow: only the lines AlphaPulse wrote are removed, and the
@@ -346,18 +445,6 @@ async function clearSelectedItems(win: Window): Promise<void> {
  * the jar is the closest thing to it, and it is offered rather than done
  * silently, because it signs the application out of Google.
  */
-async function resetGoogleSession(win: Window): Promise<void> {
-  try {
-    const summary = await getService().resetGoogleSession();
-    toast(
-      t("notify-scholar-title"),
-      t("reset-google-done", { cookies: summary.cookies }),
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    notify(win, `${t("progress-error")} ${message}`);
-  }
-}
 
 /**
  * Opens the paper's alphaXiv page in the user's browser.
@@ -437,6 +524,14 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
           void refreshSelectedCitations(win);
         },
       );
+      const manualCitations = createMenuItem(
+        doc,
+        MANUAL_CITATIONS_ID,
+        t("menu-manual-citations"),
+        () => {
+          void setManualCitations(win);
+        },
+      );
       const openAlphaXiv = createMenuItem(
         doc,
         OPEN_ALPHAXIV_ID,
@@ -455,14 +550,13 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
           openScholarVerification(win);
         },
       );
-      const resetGoogle = createMenuItem(
-        doc,
-        RESET_GOOGLE_ID,
-        t("menu-reset-google"),
-        () => {
-          void resetGoogleSession(win);
-        },
-      );
+      // Not an action: what the session has asked Scholar for, and what it is
+      // waiting for. It sits first, where the eye lands, and answers "is it
+      // working?" without the user having to open the settings.
+      const activity = createMenuItem(doc, ACTIVITY_ID, "", () => undefined);
+      activity.setAttribute("disabled", "true");
+      activity.setAttribute("class", "menu-iconic");
+
       const clear = createMenuItem(doc, CLEAR_ID, t("menu-clear"), () => {
         void clearSelectedItems(win);
       });
@@ -470,11 +564,13 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
       // In the order the actions are usually wanted: read, read, go and look,
       // verify, and - last, behind a separator - take the records back out.
       popup.append(
+        activity,
+        createSeparator(doc, ACTIVITY_SEPARATOR_ID),
         refresh,
         refreshCitations,
         openAlphaXiv,
         openScholar,
-        resetGoogle,
+        manualCitations,
         createSeparator(doc, SEPARATOR_ID),
         clear,
       );
@@ -495,11 +591,14 @@ export function registerItemMenu(win: _ZoteroTypes.MainWindow): void {
           openableAlphaXiv: items.some((item) => hasAlphaXivPage(item)),
         });
 
+        setHidden(activity, !visibility.refresh);
+        (activity as HTMLElement).setAttribute("label", activityLabel());
+
         setHidden(refresh, !visibility.refresh);
         setHidden(refreshCitations, !visibility.refreshCitations);
         setHidden(openAlphaXiv, !visibility.openAlphaXiv);
         setHidden(openScholar, !visibility.openScholar);
-        setHidden(resetGoogle, !visibility.resetGoogle);
+        setHidden(manualCitations, !visibility.manualCitations);
         setHidden(clear, !visibility.clear);
         // Only the item menu hides its whole entry; see `menuVisibility`.
         if (id === MENU_ID) setHidden(menu, !visibility.entry);
@@ -518,14 +617,16 @@ export function unregisterItemMenu(win: Window): void {
       // popup was left behind is a menu that comes back empty.
       MENU_ID,
       MENU_POPUP_ID,
+      ACTIVITY_ID,
+      ACTIVITY_SEPARATOR_ID,
       TOOLS_MENU_ID,
       TOOLS_POPUP_ID,
       SEPARATOR_ID,
       REFRESH_ID,
       REFRESH_CITATIONS_ID,
+      MANUAL_CITATIONS_ID,
       OPEN_ALPHAXIV_ID,
       OPEN_SCHOLAR_ID,
-      RESET_GOOGLE_ID,
       CLEAR_ID,
     ]) {
       doc.getElementById(id)?.remove();

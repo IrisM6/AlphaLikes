@@ -56,6 +56,15 @@ export interface CitationCounts {
   top10Percent?: boolean;
   /** OpenAlex `citation_normalized_percentile.is_in_top_1_percent`. */
   top1Percent?: boolean;
+  /**
+   * The Scholar number was typed by the user, not read from the site.
+   *
+   * Marks the value so the automatic read leaves it alone - a number someone
+   * entered by hand is there because the plugin could not get it, and quietly
+   * replacing it with a different one at the next refresh would undo their
+   * work. Clearing the entry takes the mark off again.
+   */
+  manual?: boolean;
 }
 
 function readCount(
@@ -104,6 +113,9 @@ export function parseCitationsLine(raw: string): CitationCounts | null {
     top10Percent: readFlag(fields, "top10"),
     top1Percent: readFlag(fields, "top1"),
   };
+  // Only records that carry the mark get the field, so a line written before
+  // the mark existed reads back exactly as it did.
+  if (readFlag(fields, "manual")) counts.manual = true;
 
   return hasAnyCount(counts) || counts.top10Percent || counts.top1Percent
     ? counts
@@ -147,6 +159,8 @@ export function serializeCitations(counts: CitationCounts): string {
   if (counts.top1Percent !== undefined) {
     parts.push(`top1=${counts.top1Percent ? 1 : 0}`);
   }
+  // Only the yes is written: a record with no mark is the ordinary one.
+  if (counts.manual) parts.push("manual=1");
   return parts.join(",");
 }
 
@@ -167,9 +181,28 @@ export function upsertCitations(
     influential: counts.influential ?? previous.influential,
     top10Percent: counts.top10Percent ?? previous.top10Percent,
     top1Percent: counts.top1Percent ?? previous.top1Percent,
+    // An automatic read never carries the mark, and must not take it off a
+    // value the user typed either.
+    manual: counts.manual ?? previous.manual,
   };
 
-  const line = `${CITATIONS_KEY}: ${serializeCitations(merged)}`;
+  return replaceCitationsLine(extra, merged, updatedAt);
+}
+
+/**
+ * Writes the counts line and its timestamp, replacing whatever was there.
+ *
+ * Two callers, one line format: the automatic read merges what the providers
+ * answered, and the manual entry writes what the user typed. Both write the
+ * same record, so the column, the tooltip and "clear data" need no second
+ * notion of where a number came from.
+ */
+function replaceCitationsLine(
+  extra: string,
+  counts: CitationCounts,
+  updatedAt: Date,
+): string {
+  const line = `${CITATIONS_KEY}: ${serializeCitations(counts)}`;
   let next = (extra || "").replace(/[\r\n]+$/, "");
   if (CITATIONS_ANY_LINE_RE.test(next)) {
     next = next.replace(CITATIONS_ANY_LINE_RE, line);
@@ -185,6 +218,36 @@ export function upsertCitations(
   }
 
   return next;
+}
+
+/**
+ * Writes the citation number the user typed, or takes the entry back off.
+ *
+ * `null` means the user emptied the box: the typed number goes away and the
+ * item is handed back to the automatic read. The mark is what the read looks at
+ * before it decides to ask Google Scholar at all, so clearing it is the whole
+ * of "use the automatic number again"; nothing else has to be undone.
+ */
+export function writeManualCitations(
+  extra: string,
+  count: number | null,
+  updatedAt: Date = new Date(),
+): string {
+  const previous = parseCitationsLine(extra) ?? {};
+
+  if (count === null) {
+    return replaceCitationsLine(
+      extra,
+      { ...previous, googleScholar: undefined, manual: false },
+      updatedAt,
+    );
+  }
+
+  return replaceCitationsLine(
+    extra,
+    { ...previous, googleScholar: count, manual: true },
+    updatedAt,
+  );
 }
 
 /**

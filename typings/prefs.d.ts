@@ -22,7 +22,8 @@ declare namespace _ZoteroTypes {
       "cacheTtlDays": number;
       "scholarIntervalMinSeconds": number;
       "scholarIntervalMaxSeconds": number;
-      "scholarDwellSeconds": number;
+      "scholarDwellMinSeconds": number;
+      "scholarDwellMaxSeconds": number;
       "scholarBatchMin": number;
       "scholarBatchMax": number;
       "scholarPauseMinMinutes": number;

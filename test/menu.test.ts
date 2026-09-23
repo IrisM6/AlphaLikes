@@ -12,10 +12,12 @@
 
 import { assert } from "chai";
 import {
+  describeScholarActivity,
   menuVisibility,
   registerItemMenu,
   unregisterItemMenu,
 } from "../src/modules/menu";
+import { t } from "../src/modules/l10n";
 import { getService } from "../src/modules/column";
 
 const MENU_ID = "alphalikes-menu";
@@ -88,11 +90,20 @@ describe("the plugin menu", function () {
       "alphalikes-refresh-citations",
       "alphalikes-open-alphaxiv",
       "alphalikes-open-scholar",
-      "alphalikes-reset-google",
+      "alphalikes-manual-citations",
       "alphalikes-clear-data",
     ]) {
       assert.include(ids, id, `${id} is missing from the plugin menu`);
     }
+
+    // The line about this session's reading is an entry of its own, and it is
+    // not an action: it answers "is it working?" and cannot be clicked.
+    assert.include(ids, "alphalikes-activity", "the reading status is missing");
+    const activity = doc().getElementById("alphalikes-activity");
+    assert.isTrue(
+      activity?.hasAttribute("disabled"),
+      "the status line must not look like something to click",
+    );
 
     // The old shape: the five entries sitting directly in the context menu.
     const itemMenu = doc().getElementById("zotero-itemmenu");
@@ -103,7 +114,7 @@ describe("the plugin menu", function () {
           "alphalikes-refresh-citations",
           "alphalikes-open-alphaxiv",
           "alphalikes-open-scholar",
-          "alphalikes-reset-google",
+          "alphalikes-manual-citations",
           "alphalikes-clear-data",
         ],
         item.id,
@@ -175,7 +186,7 @@ describe("the plugin menu", function () {
       refreshCitations: true,
       openAlphaXiv: true,
       openScholar: true,
-      resetGoogle: true,
+      manualCitations: true,
       clear: true,
     });
 
@@ -188,12 +199,33 @@ describe("the plugin menu", function () {
       openableAlphaXiv: false,
     });
     assert.isFalse(otherSource.openScholar);
-    assert.isFalse(otherSource.resetGoogle);
     assert.isFalse(
       otherSource.openAlphaXiv,
       "a paper with no arXiv ID has no alphaXiv page to open",
     );
     assert.isTrue(otherSource.refresh, "the likes column still reads");
+
+    // One number belongs to one row: with two rows selected there is no single
+    // item the typed count would be writing to.
+    const twoRows = menuVisibility({
+      count: 2,
+      citationsEnabled: true,
+      findsScholar: true,
+      openableAlphaXiv: true,
+    });
+    assert.isFalse(
+      twoRows.manualCitations,
+      "a typed citation count is offered for one row at a time",
+    );
+
+    // And it is a citation entry, so it leaves with the Citations column.
+    const noCitations = menuVisibility({
+      count: 1,
+      citationsEnabled: false,
+      findsScholar: true,
+      openableAlphaXiv: true,
+    });
+    assert.isFalse(noCitations.manualCitations);
 
     // Nothing selected: the whole entry goes, because a read action with no
     // rows has nothing to act on.
@@ -205,8 +237,8 @@ describe("the plugin menu", function () {
     });
     assert.isFalse(nothingSelected.entry);
     assert.isFalse(nothingSelected.clear);
-    // The Scholar entries stay: resetting the session is not about a row.
-    assert.isTrue(nothingSelected.resetGoogle);
+    // Opening the Scholar page stays: it is about the session, not about a row.
+    assert.isTrue(nothingSelected.openScholar);
 
     // Citations column off: the citation entries leave with it.
     const citationsOff = menuVisibility({
@@ -220,6 +252,35 @@ describe("the plugin menu", function () {
     assert.isTrue(citationsOff.refresh, "the likes column is not affected");
   });
 
+  it("says what the session has read, and what it waits for", function () {
+    // A quiet column and a stopped plugin look the same; this line answers the
+    // question without the user opening the settings. The wording follows what
+    // is true: minutes once the wait is long, seconds while it is short, and a
+    // plain "nothing yet" for a session that has not read anything.
+    assert.equal(
+      describeScholarActivity({ requests: 0, nextInMs: 0 }),
+      t("menu-activity-idle"),
+      "a session that has read nothing says so",
+    );
+
+    const waiting = describeScholarActivity({ requests: 3, nextInMs: 4_000 });
+    assert.include(waiting, "3", "the count is in the line");
+    assert.include(waiting, "4", "and the wait, in seconds while it is short");
+
+    const resting = describeScholarActivity({
+      requests: 12,
+      nextInMs: 6 * 60_000,
+    });
+    assert.include(resting, "12", "the count is still there");
+    assert.include(resting, "6", "and the wait in minutes once it is long");
+
+    assert.equal(
+      describeScholarActivity({ requests: 1, nextInMs: 0 }),
+      t("menu-activity", { count: "1", wait: t("menu-activity-now") }),
+      "a read that is due now says so rather than counting down from zero",
+    );
+  });
+
   it("takes every entry back out on shutdown", function () {
     unregisterItemMenu(host());
     for (const id of [
@@ -228,6 +289,8 @@ describe("the plugin menu", function () {
       TOOLS_MENU_ID,
       "alphalikes-tools-popup",
       "alphalikes-refresh-likes",
+      "alphalikes-activity",
+      "alphalikes-manual-citations",
     ]) {
       assert.isNull(doc().getElementById(id), `${id} survived the teardown`);
     }

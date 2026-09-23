@@ -36,7 +36,8 @@ function pacing(overrides: Partial<ScholarPacing>): ScholarPacing {
   return {
     intervalMinMs: 0,
     intervalMaxMs: 0,
-    dwellMs: 0,
+    dwellMinMs: 0,
+    dwellMaxMs: 0,
     batchMin: 99,
     batchMax: 99,
     pauseMinMs: 0,
@@ -96,7 +97,8 @@ describe("the Scholar reading rhythm", function () {
         {
           scholarIntervalMinSeconds: 20,
           scholarIntervalMaxSeconds: 45,
-          scholarDwellSeconds: 5,
+          scholarDwellMinSeconds: 4,
+          scholarDwellMaxSeconds: 8,
         },
         () => {
           const result = getScholarPacing();
@@ -106,7 +108,17 @@ describe("the Scholar reading rhythm", function () {
             "the pane says seconds, so 20 is twenty seconds",
           );
           assert.equal(result.intervalMaxMs, 45_000);
-          assert.equal(result.dwellMs, 5_000);
+          assert.equal(
+            result.dwellMinMs,
+            4_000,
+            "the stay on a page is a range too: 4 to 8 seconds",
+          );
+          assert.equal(result.dwellMaxMs, 8_000);
+          assert.isAtMost(
+            result.dwellMinMs,
+            result.dwellMaxMs,
+            "a range has a smaller end first",
+          );
         },
       );
     });
@@ -140,7 +152,8 @@ describe("the Scholar reading rhythm", function () {
         {
           scholarIntervalMinSeconds: 0,
           scholarIntervalMaxSeconds: 99_999,
-          scholarDwellSeconds: 0,
+          scholarDwellMinSeconds: 0,
+          scholarDwellMaxSeconds: 0,
           scholarPauseMinMinutes: 0,
         },
         () => {
@@ -152,7 +165,7 @@ describe("the Scholar reading rhythm", function () {
             "a ceiling of ten minutes",
           );
           assert.equal(
-            result.dwellMs,
+            result.dwellMaxMs,
             0,
             "zero is a choice the user is allowed to make",
           );
@@ -367,7 +380,7 @@ describe("the Scholar reading rhythm", function () {
       const requester = new PacedRequester({
         timeoutMs: 8_000,
         intervalMs: 0,
-        scholarPacing: pacing({ dwellMs: 400 }),
+        scholarPacing: pacing({ dwellMinMs: 400, dwellMaxMs: 400 }),
       });
 
       const startedAt = Date.now();

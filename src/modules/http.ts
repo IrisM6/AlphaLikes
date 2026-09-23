@@ -127,13 +127,13 @@ export interface ScholarPage {
 const DEFAULT_SCHOLAR_PACING: ScholarPacing = {
   intervalMinMs: 16_000,
   intervalMaxMs: 30_000,
-  dwellMs: 3_000,
-  batchMin: 2,
-  batchMax: 5,
-  pauseMinMs: 10 * 60_000,
-  pauseMaxMs: 20 * 60_000,
+  dwellMinMs: 4_000,
+  dwellMaxMs: 8_000,
+  batchMin: 8,
+  batchMax: 15,
+  pauseMinMs: 15 * 60_000,
+  pauseMaxMs: 40 * 60_000,
 };
-
 /** A number inside a range, endpoints included. */
 function randomBetween(min: number, max: number): number {
   const low = Math.min(min, max);
@@ -617,6 +617,8 @@ export class PacedRequester {
     limit: 0,
     pausedUntil: 0,
   };
+  /** Searches this run of Zotero has sent to Scholar. */
+  private scholarRequests = 0;
   private warmed = false;
   private warmup: WarmupResult | null = null;
   private disposed = false;
@@ -835,8 +837,45 @@ export class PacedRequester {
   }
 
   /** How long a loaded page is left to settle before it is read. */
+  /** How long this page is left alone: drawn fresh, like every other wait. */
   private dwellMs(): number {
-    return Math.max(0, this.scholarPacing().dwellMs);
+    const pacing = this.scholarPacing();
+    return Math.max(0, randomBetween(pacing.dwellMinMs, pacing.dwellMaxMs));
+  }
+
+  /**
+   * What this session has asked Google Scholar for, and what it waits for now.
+   *
+   * A rhythm the user cannot see is hard to tell from a plugin that has
+   * stopped: "eight searches so far, next one in about four minutes" is the
+   * difference between waiting and believing it is broken. The count is per run
+   * of Zotero, which is the unit the pauses are arranged in; the wait is what
+   * the queue would serve right now, pause included.
+   */
+  scholarActivity(): {
+    requests: number;
+    nextInMs: number;
+    paused: boolean;
+    burstLeft: number;
+  } {
+    const now = Date.now();
+    const state = this.scholarBurst;
+    const last = this.pacing.get("scholar.google.com")?.lastStartedAt ?? 0;
+
+    // The queue makes the next read wait for whichever comes later: the rest
+    // between two searches, or the pause that follows a burst.
+    const intervalWait = Math.max(
+      0,
+      this.intervalFor("scholar.google.com") - (now - last),
+    );
+    const pauseWait = Math.max(0, state.pausedUntil - now);
+
+    return {
+      requests: this.scholarRequests,
+      nextInMs: Math.max(intervalWait, pauseWait),
+      paused: state.pausedUntil > now,
+      burstLeft: state.count === 0 ? state.limit : state.limit - state.count,
+    };
   }
 
   /**
@@ -868,6 +907,7 @@ export class PacedRequester {
    * site's front page rather than a search, and it does not eat into a burst.
    */
   private noteScholarSearch(): void {
+    this.scholarRequests += 1;
     const state = this.scholarBurst;
     if (state.limit <= 0) state.limit = this.nextBurstSize();
     state.count += 1;

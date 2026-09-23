@@ -40,6 +40,19 @@ export interface AlphaLikesAPI {
    * (`(method, url, options) => { status, response }`).
    */
   setReadTransport(transport: HttpTransport | null): void;
+  /**
+   * What this session has asked Google Scholar for, and what it waits for.
+   *
+   * The settings pane reads it to show the reading as it happens - "four
+   * searches so far, the next one in about six minutes" - so a reader can tell
+   * a slow rhythm from a stopped plugin.
+   */
+  scholarActivity(): {
+    requests: number;
+    nextInMs: number;
+    paused: boolean;
+    burstLeft: number;
+  };
   version: string;
 }
 
@@ -51,6 +64,7 @@ export function createPluginAPI(version: string): AlphaLikesAPI {
     parseArxivID: (value: string) => extractIDFromLooseText(value),
     styleColors: (style: string) => styleAccents(style),
     diagnose: () => getService().diagnose(),
+    scholarActivity: () => getService().scholarActivity(),
     version,
   };
 }

@@ -47,6 +47,24 @@
 
   var XHTML_NS = "http://www.w3.org/1999/xhtml";
 
+  /**
+   * Fills a Fluent message's placeholders by hand.
+   *
+   * The build renames a message's variables along with its id (`{ min }`
+   * becomes `{ alphalikes-min }`, without the `$`), which is no longer a
+   * variable reference Fluent can fill in - it reads as a message reference
+   * and comes out literally. The plugin's own `t()` splits on the placeholder
+   * and joins the value in, and the pane does the same.
+   */
+  function fill(text, args) {
+    var filled = text.split("{ ").join("{").split(" }").join("}");
+    for (var key in args) {
+      if (!Object.prototype.hasOwnProperty.call(args, key)) continue;
+      filled = filled.split("{" + key + "}").join(args[key]);
+    }
+    return filled;
+  }
+
   function html(doc, name) {
     return doc.createElementNS(XHTML_NS, name);
   }
@@ -772,7 +790,8 @@
     var fields = [
       ["scholarIntervalMinSeconds", "min"],
       ["scholarIntervalMaxSeconds", "max"],
-      ["scholarDwellSeconds", "dwell"],
+      ["scholarDwellMinSeconds", "dwellMin"],
+      ["scholarDwellMaxSeconds", "dwellMax"],
       ["scholarBatchMin", "batchMin"],
       ["scholarBatchMax", "batchMax"],
       ["scholarPauseMinMinutes", "pauseMin"],
@@ -797,15 +816,6 @@
     // references Fluent can fill in - they read as message references and come
     // out literally. The plugin's own `t()` works around this the same way, by
     // splitting on the placeholder and joining the value in.
-    function fill(text, args) {
-      var filled = text.split("{ ").join("{").split(" }").join("}");
-      for (var key in args) {
-        if (!Object.prototype.hasOwnProperty.call(args, key)) continue;
-        filled = filled.split("{" + key + "}").join(args[key]);
-      }
-      return filled;
-    }
-
     function plain(args) {
       var at = function (name) {
         return args[REF + "-" + name];
@@ -816,7 +826,9 @@
         "–" +
         at("max") +
         " 秒，页面停留 " +
-        at("dwell") +
+        at("dwellMin") +
+        "–" +
+        at("dwellMax") +
         " 秒，每 " +
         at("batchMin") +
         "–" +
@@ -861,6 +873,86 @@
     return wired;
   }
 
+  /**
+   * "This session has asked Scholar N times; the next one is about X away."
+   *
+   * The settings say how the reading is *arranged*; this says how far along it
+   * is, which is what tells a user that a quiet column is a read waiting out
+   * its rhythm rather than a plugin that has stopped. Read straight from the
+   * service, so the count is the one the queue actually uses, and refreshed on
+   * a timer while the pane is open.
+   */
+  function wireScholarActivity(doc) {
+    var target = doc.getElementById("alphalikes-scholar-activity");
+    if (!target) return 0;
+
+    var REF = "__addonRef__";
+    var timer = null;
+
+    function describe(ms) {
+      if (ms <= 1_000) return "现在";
+      if (ms < 60_000) return Math.round(ms / 1_000) + " 秒";
+      return Math.max(1, Math.round(ms / 60_000)) + " 分钟";
+    }
+
+    function render() {
+      var activity = null;
+      try {
+        activity = Zotero.__addonInstance__.api.scholarActivity();
+      } catch (error) {
+        Zotero.debug(
+          "[AlphaPulse] could not read the Scholar activity: " + error,
+        );
+        return;
+      }
+
+      var args = {};
+      args[REF + "-count"] = String(activity.requests);
+      args[REF + "-wait"] = describe(activity.nextInMs);
+
+      var id = target.getAttribute("data-l10n-id");
+      if (id && doc.l10n && doc.l10n.formatValue) {
+        doc.l10n.formatValue(id).then(
+          function (text) {
+            target.textContent = text ? fill(text, args) : fallback(activity);
+          },
+          function () {
+            target.textContent = fallback(activity);
+          },
+        );
+        return;
+      }
+      target.textContent = fallback(activity);
+    }
+
+    function fallback(activity) {
+      return (
+        "本次会话已请求 " +
+        activity.requests +
+        " 次；距离下次请求约 " +
+        describe(activity.nextInMs) +
+        "。"
+      );
+    }
+
+    render();
+    try {
+      timer = (global.window || global).setInterval(render, 2_000);
+    } catch {
+      timer = null;
+    }
+    // A pane that is closed must not keep a timer alive in the window.
+    try {
+      (global.window || global).addEventListener("unload", function () {
+        if (timer !== null) (global.window || global).clearInterval(timer);
+        timer = null;
+      });
+    } catch {
+      // Older windows may not offer it; the timer is harmless there.
+    }
+    return 1;
+  }
+
   // -------------------------------------------------------------------------
 
   function wire() {
@@ -880,6 +972,7 @@
       wireSources(doc);
       wireAppearanceLink(doc);
       wireScholarPaceSummary(doc);
+      wireScholarActivity(doc);
     } catch (error) {
       Zotero.logError(
         new Error("[AlphaPulse] settings pane setup failed: " + error),

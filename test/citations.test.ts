@@ -27,6 +27,7 @@ import {
   semanticScholarCitationURL,
   stripCitations,
   upsertCitations,
+  writeManualCitations,
 } from "../src/modules/citations";
 import { stripAlphaLikesData } from "../src/modules/arxiv-id";
 
@@ -124,6 +125,76 @@ describe("AlphaLikes citations", function () {
       assert.notInclude(stripped, CITATIONS_UPDATED_KEY);
       assert.include(stripped, "arXiv: 2301.12345");
       assert.include(stripped, "Publisher: ACM");
+    });
+  });
+
+  describe("the count the user types in", function () {
+    it("writes it, and marks it so the automatic read leaves it alone", function () {
+      const extra = writeManualCitations(OTHER_EXTRA, 4321);
+      const counts = readCitations(extra);
+
+      assert.equal(counts?.googleScholar, 4321);
+      assert.isTrue(
+        counts?.manual,
+        "without the mark the next refresh would overwrite what the user typed",
+      );
+      assert.include(
+        extra,
+        "manual=1",
+        "the mark is what survives a restart, so it lives in Extra",
+      );
+      assert.include(extra, CITATIONS_UPDATED_KEY);
+    });
+
+    it("keeps the provider numbers that were already there", function () {
+      const before = upsertCitations("", {
+        googleScholar: 10,
+        openAlex: 1300,
+        semanticScholar: 1234,
+      });
+      const counts = readCitations(writeManualCitations(before, 20));
+
+      assert.equal(counts?.googleScholar, 20, "the typed number wins");
+      assert.equal(counts?.openAlex, 1300, "the other providers are untouched");
+      assert.equal(counts?.semanticScholar, 1234);
+    });
+
+    it("hands the item back when the box is emptied", function () {
+      const typed = writeManualCitations(
+        upsertCitations("", { googleScholar: 10, openAlex: 1300 }),
+        20,
+      );
+      const cleared = readCitations(writeManualCitations(typed, null));
+
+      assert.isUndefined(
+        cleared?.googleScholar,
+        "the typed number is gone, so the next read can fill it in",
+      );
+      assert.isFalse(cleared?.manual ?? false, "and so is the mark");
+      assert.equal(
+        cleared?.openAlex,
+        1300,
+        "clearing the manual entry is not a reason to forget OpenAlex",
+      );
+    });
+
+    it("an automatic read never takes the mark off", function () {
+      const typed = writeManualCitations("", 20);
+      const after = upsertCitations(typed, { openAlex: 1300 });
+
+      assert.isTrue(
+        readCitations(after)?.manual,
+        "a refresh that only read OpenAlex must not arm the Scholar read again",
+      );
+      assert.equal(readCitations(after)?.googleScholar, 20);
+    });
+
+    it("is stripped by the clear action like any other record", function () {
+      const typed = writeManualCitations(OTHER_EXTRA, 20);
+      const stripped = stripCitations(typed);
+
+      assert.notInclude(stripped, CITATIONS_KEY);
+      assert.notInclude(stripped, "manual=1");
     });
   });
 

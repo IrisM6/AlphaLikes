@@ -139,12 +139,13 @@ export const PREF_DEFAULTS = {
   scholarIntervalMinSeconds: 16,
   scholarIntervalMaxSeconds: 30,
   /** How long a loaded page is left to settle (and scrolled) before reading. */
-  scholarDwellSeconds: 3,
+  scholarDwellMinSeconds: 4,
+  scholarDwellMaxSeconds: 8,
   /** Searches per burst, and the pause that follows each burst. */
-  scholarBatchMin: 2,
-  scholarBatchMax: 5,
-  scholarPauseMinMinutes: 10,
-  scholarPauseMaxMinutes: 20,
+  scholarBatchMin: 8,
+  scholarBatchMax: 15,
+  scholarPauseMinMinutes: 15,
+  scholarPauseMaxMinutes: 40,
   requestTimeoutMs: 15_000,
   /** `0` disables automatic re-fetching of cached like counts. */
   cacheTtlDays: 0,
@@ -701,7 +702,8 @@ export function getRequestPrefs() {
 export interface ScholarPacing {
   intervalMinMs: number;
   intervalMaxMs: number;
-  dwellMs: number;
+  dwellMinMs: number;
+  dwellMaxMs: number;
   batchMin: number;
   batchMax: number;
   pauseMinMs: number;
@@ -714,6 +716,8 @@ export function getScholarPacing(): ScholarPacing {
     clamp(getPref("scholarIntervalMinSeconds"), 1, 600) * 1_000;
   const intervalMaxMs =
     clamp(getPref("scholarIntervalMaxSeconds"), 1, 600) * 1_000;
+  const dwellMinMs = clamp(getPref("scholarDwellMinSeconds"), 0, 60) * 1_000;
+  const dwellMaxMs = clamp(getPref("scholarDwellMaxSeconds"), 0, 60) * 1_000;
   const batchMin = clamp(getPref("scholarBatchMin"), 1, 100);
   const batchMax = clamp(getPref("scholarBatchMax"), 1, 100);
   const pauseMinMs = clamp(getPref("scholarPauseMinMinutes"), 0, 600) * 60_000;
@@ -722,7 +726,10 @@ export function getScholarPacing(): ScholarPacing {
   return {
     intervalMinMs: Math.min(intervalMinMs, intervalMaxMs),
     intervalMaxMs: Math.max(intervalMinMs, intervalMaxMs),
-    dwellMs: clamp(getPref("scholarDwellSeconds"), 0, 60) * 1_000,
+    // How long a loaded page is left alone is a range like the others: a fixed
+    // dwell is one more number that is always the same.
+    dwellMinMs: Math.min(dwellMinMs, dwellMaxMs),
+    dwellMaxMs: Math.max(dwellMinMs, dwellMaxMs),
     batchMin: Math.min(batchMin, batchMax),
     batchMax: Math.max(batchMin, batchMax),
     pauseMinMs: Math.min(pauseMinMs, pauseMaxMs),

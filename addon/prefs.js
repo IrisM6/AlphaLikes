@@ -40,11 +40,12 @@ pref("cacheTtlDays", 0);
 
 pref("scholarIntervalMinSeconds", 16);
 pref("scholarIntervalMaxSeconds", 30);
-pref("scholarDwellSeconds", 3);
-pref("scholarBatchMin", 2);
-pref("scholarBatchMax", 5);
-pref("scholarPauseMinMinutes", 10);
-pref("scholarPauseMaxMinutes", 20);
+pref("scholarDwellMinSeconds", 4);
+pref("scholarDwellMaxSeconds", 8);
+pref("scholarBatchMin", 8);
+pref("scholarBatchMax", 15);
+pref("scholarPauseMinMinutes", 15);
+pref("scholarPauseMaxMinutes", 40);
 
 // --- Appearance -----------------------------------------------------------
 //

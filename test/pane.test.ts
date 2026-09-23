@@ -372,6 +372,29 @@ describe("AlphaLikes settings pane", function () {
     );
   });
 
+  it("says how much this session has read, and what it waits for", async function () {
+    // The rhythm settings say how the reading is arranged; the line says where
+    // it has got to. Without it a column that is waiting out a pause looks the
+    // same as a column that has stopped.
+    const line = doc.getElementById("alphalikes-scholar-activity");
+    assert.isOk(line, "the pane does not say what this session has read");
+
+    await Zotero.Promise.delay(200);
+    const text = (line?.textContent ?? "").replace(/\s+/g, " ");
+    // The sentence is the interface's, so it follows the window's language:
+    // the test asks what it has to say, not which words it says it in.
+    assert.match(
+      text,
+      /(本次会话已请求|has asked Scholar)\s*\d+/,
+      "the line has to name the count and the wait, not just exist",
+    );
+    assert.match(
+      text,
+      /(距离下次请求约|next request is about)/,
+      "and how long until the next request",
+    );
+  });
+
   it("offers every reading-rhythm range, with the number it suggests", async function () {
     // The pacing is a set of ranges, and a range field without a suggested
     // value is a question the user has to answer from nothing. The pane has to
@@ -381,11 +404,12 @@ describe("AlphaLikes settings pane", function () {
     const fields: Array<[string, string, string]> = [
       ["scholarIntervalMinSeconds", "pref-scholar-interval-min-hint", "16"],
       ["scholarIntervalMaxSeconds", "pref-scholar-interval-max-hint", "30"],
-      ["scholarDwellSeconds", "pref-scholar-dwell-hint", "3"],
-      ["scholarBatchMin", "pref-scholar-batch-min-hint", "2"],
-      ["scholarBatchMax", "pref-scholar-batch-max-hint", "5"],
-      ["scholarPauseMinMinutes", "pref-scholar-pause-min-hint", "10"],
-      ["scholarPauseMaxMinutes", "pref-scholar-pause-max-hint", "20"],
+      ["scholarDwellMinSeconds", "pref-scholar-dwell-min-hint", "4"],
+      ["scholarDwellMaxSeconds", "pref-scholar-dwell-max-hint", "8"],
+      ["scholarBatchMin", "pref-scholar-batch-min-hint", "8"],
+      ["scholarBatchMax", "pref-scholar-batch-max-hint", "15"],
+      ["scholarPauseMinMinutes", "pref-scholar-pause-min-hint", "15"],
+      ["scholarPauseMaxMinutes", "pref-scholar-pause-max-hint", "40"],
     ];
 
     for (const [preference, hintId, suggested] of fields) {
@@ -479,7 +503,8 @@ describe("AlphaLikes settings pane", function () {
     for (const name of [
       "scholarIntervalMinSeconds",
       "scholarIntervalMaxSeconds",
-      "scholarDwellSeconds",
+      "scholarDwellMinSeconds",
+      "scholarDwellMaxSeconds",
       "scholarBatchMin",
       "scholarBatchMax",
       "scholarPauseMinMinutes",
@@ -491,6 +516,14 @@ describe("AlphaLikes settings pane", function () {
         `the summary does not name the current ${name}`,
       );
     }
+
+    // The stay on a page became a range, so the sentence has to carry both of
+    // its ends - either one alone would be a sentence about the wrong rhythm.
+    assert.include(
+      text,
+      String(pref("scholarDwellMinSeconds")),
+      "the summary leaves the shortest stay out",
+    );
 
     const field = doc.querySelector(
       '[preference="extensions.zotero.alphalikes.scholarIntervalMaxSeconds"]',

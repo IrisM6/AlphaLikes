@@ -98,7 +98,8 @@ describe("AlphaLikes Scholar guardrails", function () {
             scholarPacing?: {
               intervalMinMs: number;
               intervalMaxMs: number;
-              dwellMs: number;
+              dwellMinMs: number;
+              dwellMaxMs: number;
               batchMin: number;
               batchMax: number;
               pauseMinMs: number;
@@ -112,7 +113,8 @@ describe("AlphaLikes Scholar guardrails", function () {
     options.scholarPacing = {
       intervalMinMs: 0,
       intervalMaxMs: 0,
-      dwellMs: 0,
+      dwellMinMs: 0,
+      dwellMaxMs: 0,
       batchMin: 1,
       batchMax: 1,
       pauseMinMs: 0,
@@ -286,6 +288,36 @@ describe("AlphaLikes Scholar guardrails", function () {
       assert.isTrue(
         captured.some((call) => call.url.includes("scholar.google.com")),
         "the refresh action is the user asking for these entries",
+      );
+    });
+  });
+
+  describe("what happens to the cookies when a read is refused", function () {
+    it("clears them by itself, and never shows the user a thing", async function () {
+      // The jar is emptied by the plugin on its own: a block is the one moment
+      // where the cookies collected so far are worth dropping, and the next
+      // attempt should look like a browser that has just arrived. There is no
+      // entry for it in the menu and nothing is said about it - the user only
+      // ever sees the retry, never the housekeeping.
+      useTransport();
+      const internals = service as unknown as { requester: PacedRequester };
+      const requester = internals.requester;
+
+      // A session that has been to Google and holds its cookies.
+      await requester.requestPage("https://scholar.google.com/?hl=en");
+      assert.isTrue(googleConsentStored(), "the session has its cookies");
+
+      const target = Zotero.Items.get(item.id);
+      internals.scholarBlockedItems.clear();
+      await service.refreshCitations([target]);
+
+      assert.isFalse(
+        googleConsentStored(),
+        "a refused read drops the Google cookies without being asked to",
+      );
+      assert.isNull(
+        requester.sessionWarmup(),
+        "and the session starts over, so the retry arrives with a fresh visit",
       );
     });
   });

@@ -560,6 +560,11 @@ function failureTooltip(decorations: string[], fallback: MessageId): string {
 
 /** Maps the provider key carried in the cell data to its display name. */
 function citationSourceFrom(decorations: string[]): string | null {
+  // A number the user typed is not a provider's answer, and the tooltip must
+  // not credit a site with it. It has its own name, translated like the rest of
+  // the interface.
+  if (decorations.includes("manual")) return t("cell-source-manual");
+
   for (const key of Object.keys(CITATION_SOURCE_LABELS)) {
     if (decorations.includes(key)) {
       return CITATION_SOURCE_LABELS[key as CitationSourceKey];

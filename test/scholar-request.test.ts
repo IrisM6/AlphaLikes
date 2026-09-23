@@ -45,7 +45,8 @@ interface Captured {
 const NO_PACING = {
   intervalMinMs: 0,
   intervalMaxMs: 0,
-  dwellMs: 0,
+  dwellMinMs: 0,
+  dwellMaxMs: 0,
   batchMin: 1,
   batchMax: 1,
   pauseMinMs: 0,

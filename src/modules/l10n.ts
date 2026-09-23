@@ -16,9 +16,20 @@ export const MESSAGES = {
   "menu-refresh": "Refresh alphaXiv Likes",
   "menu-refresh-citations": "Refresh citation counts",
   "menu-open-scholar": "Open the search page in Google Scholar in your browser",
+  "menu-manual-citations": "Fill in the citation count by hand…",
+  "manual-citations-title": "AlphaPulse · citation count",
+  "manual-citations-message":
+    "Type the number the Citations column should show for this item. An empty box hands the item back to the automatic read.",
+  "manual-citations-done":
+    "The Citations column now shows {count}, and the automatic read leaves this item alone.",
+  "manual-citations-cleared":
+    "The typed number is gone; the automatic read takes this item over again.",
+  "manual-citations-invalid":
+    "That is not a citation count. Type digits only, or leave the box empty to clear it.",
+  "notify-manual-title": "AlphaPulse · citation count",
+  "cell-source-manual": "manual entry",
   "notify-open-scholar":
     "Opened the search page in your browser. That is the browser's own session and does not affect what the plugin reads.",
-  "menu-reset-google": "Reset the Google session (clear cookies and retry)",
 
   "cell-loading": "Reading…",
   "cell-citations-loading": "Reading the citation count…",
@@ -78,6 +89,11 @@ export const MESSAGES = {
   // --- Clearing this plugin's own records ----------------------------------
   "menu-clear": "Remove the Extra records this plugin wrote",
   "menu-open-alphaxiv": "Open the alphaXiv page",
+  "menu-activity": "{count} request(s) this session · next in about {wait}",
+  "menu-activity-wait-seconds": "{seconds} seconds",
+  "menu-activity-wait-minutes": "{minutes} minutes",
+  "menu-activity-now": "now",
+  "menu-activity-idle": "Nothing has been read this session yet",
   "notify-alphaxiv-title": "AlphaPulse · alphaXiv",
   "notify-open-alphaxiv": "The paper's alphaXiv page is open in your browser.",
   "error-no-arxiv-id":
@@ -94,9 +110,7 @@ export const MESSAGES = {
   "notify-scholar-blocked":
     "Google Scholar is asking for a human check; retrying automatically in about {minutes} minutes.",
   "notify-scholar-paused":
-    "Google Scholar has refused several rounds; automatic retrying has stopped. Refresh by hand when the network is quiet, or reset the Google session.",
-  "reset-google-done":
-    "Cleared {cookies} Google cookie(s); re-reading the citation counts now.",
+    "Google Scholar has refused several rounds; automatic retrying has stopped. Refresh by hand later and the automatic retrying picks up again.",
 
   "error-no-selection": "Select at least one item first.",
   "error-single-selection": "This action works on a single item only.",

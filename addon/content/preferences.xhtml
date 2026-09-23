@@ -840,19 +840,40 @@
     </hbox>
 
     <hbox align="center">
-      <label data-l10n-id="pref-scholar-dwell">打开页面后停留（秒）</label>
+      <label data-l10n-id="pref-scholar-dwell-min"
+        >打开页面后停留下限（秒）</label
+      >
       <html:input
         type="number"
-        preference="scholarDwellSeconds"
+        preference="scholarDwellMinSeconds"
         min="0"
-        max="60"
+        max="120"
         step="1"
         style="width: 6em"
       />
       <label
-        data-l10n-id="pref-scholar-dwell-hint"
+        data-l10n-id="pref-scholar-dwell-min-hint"
         style="opacity: 0.6; font-size: 0.9em"
-        >建议 3</label
+        >建议 4</label
+      >
+    </hbox>
+
+    <hbox align="center">
+      <label data-l10n-id="pref-scholar-dwell-max"
+        >打开页面后停留上限（秒）</label
+      >
+      <html:input
+        type="number"
+        preference="scholarDwellMaxSeconds"
+        min="0"
+        max="120"
+        step="1"
+        style="width: 6em"
+      />
+      <label
+        data-l10n-id="pref-scholar-dwell-max-hint"
+        style="opacity: 0.6; font-size: 0.9em"
+        >建议 8（会先向下滚一小段再读）</label
       >
     </hbox>
 
@@ -869,7 +890,7 @@
       <label
         data-l10n-id="pref-scholar-batch-min-hint"
         style="opacity: 0.6; font-size: 0.9em"
-        >建议 2</label
+        >建议 8</label
       >
     </hbox>
 
@@ -886,7 +907,7 @@
       <label
         data-l10n-id="pref-scholar-batch-max-hint"
         style="opacity: 0.6; font-size: 0.9em"
-        >建议 5</label
+        >建议 15</label
       >
     </hbox>
 
@@ -905,7 +926,7 @@
       <label
         data-l10n-id="pref-scholar-pause-min-hint"
         style="opacity: 0.6; font-size: 0.9em"
-        >建议 10</label
+        >建议 15</label
       >
     </hbox>
 
@@ -924,9 +945,17 @@
       <label
         data-l10n-id="pref-scholar-pause-max-hint"
         style="opacity: 0.6; font-size: 0.9em"
-        >建议 20</label
+        >建议 40</label
       >
     </hbox>
+
+    <description
+      id="alphalikes-scholar-activity"
+      data-l10n-id="pref-scholar-activity"
+      style="opacity: 0.8"
+    >
+      本次会话已请求 0 次；距离下次请求约 0 秒。
+    </description>
 
     <description
       id="alphalikes-scholar-pace-current"
