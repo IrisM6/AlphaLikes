@@ -388,6 +388,7 @@ function hasAlphaXivPage(item: Zotero.Item): boolean {
 export function refreshSummaryText(
   summary: RefreshSummary,
   updated: string,
+  column: "likes" | "citations" = "citations",
 ): string {
   if (!summary.total) return t("refresh-nothing");
 
@@ -404,13 +405,30 @@ export function refreshSummaryText(
           }),
     );
   }
+  if (summary.queued) {
+    // These papers did not fail - they are waiting their turn, and the queue
+    // comes back for them on its own. Reporting them as failures with a retry
+    // invented a wait that belonged to no one.
+    parts.push(t("refresh-queued", { queued: summary.queued }));
+  }
   if (summary.missing) {
-    // Google Scholar answered about these, and has no paper for them. That is
-    // a thing to be told, not a thing to wait for: no retry time follows it.
-    parts.push(t("refresh-missing", { missing: summary.missing }));
+    // The read happened and the answer was "not there": Google Scholar has no
+    // paper by this name, or alphaXiv has no record of the paper. That is a
+    // thing to be told, not a thing to wait for - no retry time follows it,
+    // and the words are the ones the column uses, because the same paper is
+    // being described.
+    parts.push(
+      column === "likes"
+        ? t("refresh-missing-likes", { missing: summary.missing })
+        : t("refresh-missing", { missing: summary.missing }),
+    );
   }
   if (summary.skipped) {
-    parts.push(t("refresh-skipped", { skipped: summary.skipped }));
+    parts.push(
+      column === "likes"
+        ? t("refresh-skipped-likes", { skipped: summary.skipped })
+        : t("refresh-skipped", { skipped: summary.skipped }),
+    );
   }
   return parts.join(t("refresh-joining"));
 }
@@ -429,6 +447,7 @@ async function refreshSelectedItems(win: Window): Promise<void> {
       refreshSummaryText(
         summary,
         t("refresh-likes-updated", { updated: summary.updated }),
+        "likes",
       ),
     );
   } catch (error) {

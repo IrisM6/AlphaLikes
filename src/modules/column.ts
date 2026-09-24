@@ -6,6 +6,7 @@ import { config } from "../../package.json";
 import {
   CITATIONS_BLOCKED_MARKER,
   CITATION_SOURCE_LABELS,
+  SCHOLAR_CANCELLED_MARKER,
   type CitationSourceKey,
 } from "./citations";
 import {
@@ -14,6 +15,7 @@ import {
   CELL_UNAVAILABLE,
   failureReasonIn,
   fromSortableValue,
+  NO_ALPHAXIV_MARKER,
   splitValueDecorations,
   type FailureReason,
 } from "./likes";
@@ -299,7 +301,12 @@ export function renderLikeCell(
   // belongs anyway.
   if (text === CELL_UNAVAILABLE) {
     visual.textContent = "";
-    cell.title = failureTooltip(decorations, "cell-unavailable");
+    // A paper alphaXiv has no record of is an answer, not a failure: the
+    // tooltip says so instead of promising a retry that would find the same
+    // nothing.
+    cell.title = decorations.includes(NO_ALPHAXIV_MARKER)
+      ? t("cell-no-alphaxiv")
+      : failureTooltip(decorations, "cell-unavailable");
   }
 
   // A cleared item renders as an empty cell on purpose: the plugin's records
@@ -512,6 +519,10 @@ export function renderCitationCell(
       ? t("cell-scholar-rate-limited", { minutes })
       : t("cell-scholar-blocked", { minutes });
     cell.classList.add("alphalikes-citation-blocked");
+  } else if (decorations.includes(SCHOLAR_CANCELLED_MARKER)) {
+    // The user emptied the waiting list: the cell is empty because the read
+    // was taken back, not because it failed, and there is no retry coming.
+    cell.title = t("cell-citations-waiting-cancelled");
   } else if (decorations.includes("no-match")) {
     // Not a failure and not a wait: Google Scholar answered, and has no paper
     // with this title. Saying "read failed, retrying in 5 minutes" would send

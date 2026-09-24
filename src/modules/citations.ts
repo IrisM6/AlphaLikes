@@ -310,6 +310,14 @@ export const CITATION_AUTHORITY_ORDER: readonly CitationSourceKey[] = [
  */
 export const CITATIONS_BLOCKED_MARKER = "scholarBlocked";
 
+/**
+ * The mark a citation cell carries when the user cancelled the waiting list.
+ *
+ * Same shape as the other markers: the cell is empty and the tooltip says why,
+ * so an empty cell is never mistaken for a paper that has no citations.
+ */
+export const SCHOLAR_CANCELLED_MARKER = "scholarCancelled";
+
 /** The site whose human check blocks the count. */
 export { GOOGLE_SCHOLAR_HOME } from "./constants";
 
@@ -564,6 +572,20 @@ export function isGoogleInterstitial(page: string): boolean {
  * a "sorry" block). The caller treats those two cases differently: no match is
  * normal, a block should be logged.
  */
+/**
+ * Whether the page carries a "Cited by" line or a citation link.
+ *
+ * This is the evidence that decides a read: Scholar puts "Cited by N" (and the
+ * `scholar?cites=` link behind it) on a result, so a page that has one came
+ * from a search that worked. A refusal, a captcha and a consent page carry
+ * none of it.
+ */
+export function googleScholarCitedByEvidence(page: string): boolean {
+  return /Cited by|被引用次数|scholar\?cites=|gs_res_ccl_mid|class="gs_r\b/i.test(
+    page || "",
+  );
+}
+
 export function googleScholarCitationCount(html: string): number | null {
   const page = html || "";
 
@@ -632,7 +654,14 @@ export interface ScholarResult {
   url: string;
 }
 
-/** Reads the "Cited by N" count of a single result block. */
+/**
+ * Reads the "Cited by N" count of a single result block.
+ *
+ * Per block, not per page: the first count on a results page belongs to the
+ * first result, and the first result is not always the paper that was asked
+ * about. A result with no count at all is a paper nobody has cited yet, which
+ * the citation read takes as zero.
+ */
 export function googleScholarResultCount(block: string): number | null {
   const match = (block || "").match(
     /(?:Cited by\s*|被引用次数[:：]\s*)([\d,]+)/i,

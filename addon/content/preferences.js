@@ -889,85 +889,103 @@
    * the queue's number, not any paper's, and a reader who is told "36 requests
    * this session" learns nothing about the row in front of them.
    */
+  // Long enough to hold a sentence about the paper being read and the one
+  // waiting behind it, short enough to stay a status line. Shared, because the
+  // line is drawn in two places: the pane's own timer, and the moment the
+  // cancel button empties the queue.
+  var PANE_ITEMS = 2;
+  var TITLE_LIMIT = 36;
+  var EMPTY = "（无标题）";
+
+  function shortTitle(title) {
+    var text = (title || "").trim();
+    if (!text) return EMPTY;
+    return text.length <= TITLE_LIMIT
+      ? text
+      : text.slice(0, TITLE_LIMIT - 1) + "…";
+  }
+
+  /** Minutes until this paper's next attempt, rounded like everywhere else. */
+  function minutes(ms) {
+    return String(Math.max(1, Math.round(ms / 60_000)));
+  }
+
+  /** One entry per paper, in the order the service reports them. */
+  function entry(item, autoPaused) {
+    var title = shortTitle(item.title);
+    // A paper with another one ahead of it has no moment to name: the queue
+    // decides when its turn comes, and borrowing the deadline of the paper
+    // it is waiting behind is what made two different papers show the same
+    // five minutes.
+    if (!item.reading && item.ahead > 0) {
+      return title + " 排队等待读取（前面还有 " + item.ahead + " 条）";
+    }
+    if (item.reading) {
+      return title + " 正在读取（本条已请求 " + item.attempts + " 次）";
+    }
+    if (autoPaused) {
+      return title + " 自动重试已暂停（本条已请求 " + item.attempts + " 次）";
+    }
+    // Nothing has been asked about this paper yet: it is at the head of the
+    // queue, waiting for the reading rhythm, not for a retry.
+    if (!item.attempts) {
+      return item.nextInMs <= 1_000
+        ? title + " 排在下一个，马上开始读取"
+        : title +
+            " 排在下一个，约 " +
+            minutes(item.nextInMs) +
+            " 分钟后开始读取";
+    }
+    return (
+      title +
+      " 约 " +
+      minutes(item.nextInMs) +
+      " 分钟后重试（本条已请求 " +
+      item.attempts +
+      " 次）"
+    );
+  }
+
+  function listText(items, autoPaused) {
+    var shown = items.slice(0, PANE_ITEMS).map(function (item) {
+      return entry(item, autoPaused);
+    });
+    var rest = items.length - shown.length;
+    if (rest > 0) shown.push("等 " + rest + " 条");
+    return shown.join("、");
+  }
+
+  function plain(activity) {
+    // No session total here on purpose: the reading is sequential, so a
+    // count for the whole session says nothing about any one paper, and the
+    // papers are what the line is about.
+    if (!activity.items.length) return "没有正在读取或等待重试的条目。";
+    return "各条目的读取进度：" + listText(activity.items, activity.autoPaused);
+  }
+
+  /** Redraws the activity line, if the pane has one. */
+  function renderScholarActivity(doc) {
+    var target = doc.getElementById("alphalikes-scholar-activity");
+    if (!target) return;
+    try {
+      var activity = Zotero.__addonInstance__.api.scholarActivity();
+      var items = activity.items || [];
+      target.textContent = items.length
+        ? "各条目的读取进度：" + listText(items, activity.autoPaused)
+        : "没有正在读取或等待重试的条目。";
+    } catch (error) {
+      Zotero.debug(
+        "[AlphaPulse] could not read the Scholar activity: " + error,
+      );
+    }
+  }
+
   function wireScholarActivity(doc) {
     var target = doc.getElementById("alphalikes-scholar-activity");
     if (!target) return 0;
 
     var REF = "__addonRef__";
-    // Long enough to hold a sentence about the paper being read and the one
-    // waiting behind it, short enough to stay a status line.
-    var PANE_ITEMS = 2;
-    var TITLE_LIMIT = 36;
-    var EMPTY = "（无标题）";
     var timer = null;
-
-    function shortTitle(title) {
-      var text = (title || "").trim();
-      if (!text) return EMPTY;
-      return text.length <= TITLE_LIMIT
-        ? text
-        : text.slice(0, TITLE_LIMIT - 1) + "…";
-    }
-
-    /** Minutes until this paper's next attempt, rounded like everywhere else. */
-    function minutes(ms) {
-      return String(Math.max(1, Math.round(ms / 60_000)));
-    }
-
-    /** One entry per paper, in the order the service reports them. */
-    function entry(item, autoPaused) {
-      var title = shortTitle(item.title);
-      // A paper with another one ahead of it has no moment to name: the queue
-      // decides when its turn comes, and borrowing the deadline of the paper
-      // it is waiting behind is what made two different papers show the same
-      // five minutes.
-      if (!item.reading && item.ahead > 0) {
-        return title + " 排队等待读取（前面还有 " + item.ahead + " 条）";
-      }
-      if (item.reading) {
-        return title + " 正在读取（本条已请求 " + item.attempts + " 次）";
-      }
-      if (autoPaused) {
-        return title + " 自动重试已暂停（本条已请求 " + item.attempts + " 次）";
-      }
-      // Nothing has been asked about this paper yet: it is at the head of the
-      // queue, waiting for the reading rhythm, not for a retry.
-      if (!item.attempts) {
-        return item.nextInMs <= 1_000
-          ? title + " 排在下一个，马上开始读取"
-          : title +
-              " 排在下一个，约 " +
-              minutes(item.nextInMs) +
-              " 分钟后开始读取";
-      }
-      return (
-        title +
-        " 约 " +
-        minutes(item.nextInMs) +
-        " 分钟后重试（本条已请求 " +
-        item.attempts +
-        " 次）"
-      );
-    }
-
-    function listText(items, autoPaused) {
-      var shown = items.slice(0, PANE_ITEMS).map(function (item) {
-        return entry(item, autoPaused);
-      });
-      var rest = items.length - shown.length;
-      if (rest > 0) shown.push("等 " + rest + " 条");
-      return shown.join("、");
-    }
-
-    function plain(activity) {
-      // No session total here on purpose: the reading is sequential, so a
-      // count for the whole session says nothing about any one paper, and the
-      // papers are what the line is about.
-      if (!activity.items.length) return "没有正在读取或等待重试的条目。";
-      return (
-        "各条目的读取进度：" + listText(activity.items, activity.autoPaused)
-      );
-    }
 
     /**
      * Fills one message whose variables the build renamed.
@@ -1036,6 +1054,75 @@
     return 1;
   }
 
+  /**
+   * The button that empties the waiting list.
+   *
+   * Reported as a wish: a queue of papers each with ten minutes in front of it
+   * should be something the reader can stop. Pressing it cancels every waiting
+   * read - the countdowns go, nothing is retried automatically, and the
+   * counts already read are left exactly as they are. The answer is written
+   * next to the button and includes how many waits were dropped, because
+   * "nothing happened" is not something a button may say.
+   */
+  function wireScholarCancel(doc) {
+    var button = doc.getElementById("alphalikes-scholar-cancel");
+    if (!button) return 0;
+
+    var REF = "__addonRef__";
+    var note = doc.getElementById("alphalikes-scholar-cancel-note");
+
+    function say(id, args, fallback) {
+      if (doc.l10n && doc.l10n.formatValue) {
+        return doc.l10n.formatValue(id).then(
+          function (text) {
+            return text ? fill(text, args) : fallback;
+          },
+          function () {
+            return fallback;
+          },
+        );
+      }
+      return Promise.resolve(fallback);
+    }
+
+    button.addEventListener("command", function () {
+      var result = null;
+      try {
+        result = Zotero.__addonInstance__.api.cancelScholarWaits();
+      } catch (error) {
+        Zotero.debug("[AlphaPulse] could not cancel the waits: " + error);
+      }
+      var count =
+        result && typeof result.cancelled === "number" ? result.cancelled : 0;
+      if (!note) {
+        // No room for the answer: a message box would be the only other place,
+        // and that is not worth interrupting the reader for.
+        renderScholarActivity(doc);
+        return;
+      }
+      var args = {};
+      args[REF + "-count"] = String(count);
+      if (!count) {
+        say("pref-scholar-cancel-none", args, "没有在等待的条目。").then(
+          function (text) {
+            note.textContent = text;
+          },
+        );
+        renderScholarActivity(doc);
+        return;
+      }
+      say(
+        "pref-scholar-cancel-done",
+        args,
+        "已取消 " + count + " 条等待，不会再自动重试。",
+      ).then(function (text) {
+        note.textContent = text;
+      });
+      renderScholarActivity(doc);
+    });
+    return 1;
+  }
+
   // -------------------------------------------------------------------------
 
   function wire() {
@@ -1056,6 +1143,7 @@
       wireAppearanceLink(doc);
       wireScholarPaceSummary(doc);
       wireScholarActivity(doc);
+      wireScholarCancel(doc);
     } catch (error) {
       Zotero.logError(
         new Error("[AlphaPulse] settings pane setup failed: " + error),

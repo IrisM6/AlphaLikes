@@ -18,6 +18,7 @@ import {
   CELL_LOADING,
   CELL_UNAVAILABLE,
 } from "../src/modules/likes";
+import { renderLikeCell } from "../src/modules/column";
 import { CITATIONS_BLOCKED_MARKER } from "../src/modules/citations";
 import { getPref, setPref } from "../src/modules/prefs";
 
@@ -60,6 +61,8 @@ interface Stub {
   /** Title of the single Scholar hit the stub serves. */
   scholarTitle: string;
   failLikes: boolean;
+  /** HTTP status the alphaXiv request answers with, or null for a page. */
+  likesStatus: number | null;
   /** Serve the page alphaXiv serves for a paper with no likes yet. */
   pageWithoutCount: boolean;
   failScholar: boolean;
@@ -83,6 +86,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     scholar,
     scholarTitle: "AlphaLikes refresh probe paper",
     failLikes: false,
+    likesStatus: null,
     pageWithoutCount: false,
     failScholar: false,
     scholarStatus: 200,
@@ -120,6 +124,16 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     requestHTML: async (url: string) => {
       state.served.push(url);
       await gate();
+      // alphaXiv answers a paper it has no page for with a 404; the requester
+      // turns that status into this message, and the service reads it as "this
+      // paper is not on alphaXiv" rather than as a failed read.
+      if (state.likesStatus !== null) {
+        throw new Error(
+          // The message `requestHTML` builds from a status; the host is not
+          // what the service reads, the status is.
+          `HTTP ${state.likesStatus} from www.alphaxiv.org`,
+        );
+      }
       if (state.failLikes) throw new Error("service unavailable");
       return state.pageWithoutCount
         ? alphaXivPageWithoutCount()
@@ -250,6 +264,110 @@ describe("AlphaLikes refresh", function () {
         "alphaxiv_likes: 0",
         "and the zero is cached like any other count",
       );
+    });
+
+    it("says nothing is readable for an item with nothing to match on", async function () {
+      // Reported: an item with no arXiv ID and no way to look one up was
+      // reported as 「标题太短，无法自动检索」. There is no like count to read
+      // for such a row, and what the column says is that alphaXiv has nothing
+      // - not that the user's metadata is too short.
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", "Short");
+      // No date and no DOI: nothing to look a paper up with, and a title too
+      // short to search for on its own.
+      await target.saveTx();
+
+      try {
+        stub = stubRequester(service, 0);
+        const plan = service.planCell(target);
+        const cell = renderLikeCell(
+          String(plan.value),
+          { className: "col-alphaxiv_likes" },
+          (Zotero.getMainWindow() as unknown as Window).document,
+        ) as HTMLElement;
+
+        assert.equal(
+          (cell.firstElementChild as HTMLElement).textContent,
+          "",
+          "nothing to show, so nothing is shown",
+        );
+        assert.match(
+          cell.title,
+          /alphaXiv/i,
+          "and the tooltip says which nothing it is",
+        );
+        assert.deepEqual(
+          stub.served,
+          [],
+          "and no request is spent on a row that cannot be looked up",
+        );
+      } finally {
+        try {
+          await target.eraseTx();
+        } catch {
+          // The library may already be gone when the run tears down.
+        }
+      }
+    });
+
+    it("says a paper is not on alphaXiv instead of failing it", async function () {
+      // Reported: a paper alphaXiv has no page for was reported as a failed
+      // read with a retry every ten minutes, and the retries never produced
+      // anything because there is nothing to produce. The answer is an answer:
+      // the cell stays empty, and the tooltip says which nothing it is.
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", "AlphaLikes alphaXiv absence probe");
+      target.setField("date", "2026-09-22");
+      target.setField("extra", "alphaxiv_arxiv_id: 2509.00077");
+      await target.saveTx();
+
+      try {
+        stub = stubRequester(service, 0);
+        // alphaXiv answers a paper it has no record of with a 404.
+        stub.likesStatus = 404;
+
+        const summary = await service.refreshItems([
+          Zotero.Items.get(target.id),
+        ]);
+
+        assert.equal(summary.updated, 0, "there is no count to store");
+        assert.equal(
+          summary.missing,
+          1,
+          "it is a paper alphaXiv does not have, not a failed read",
+        );
+        assert.equal(summary.failed, 0, "and nothing failed");
+
+        const plan = service.planCell(target);
+        const cell = renderLikeCell(
+          String(plan.value),
+          { className: "col-alphaxiv_likes" },
+          (Zotero.getMainWindow() as unknown as Window).document,
+        ) as HTMLElement;
+        assert.equal(
+          (cell.firstElementChild as HTMLElement).textContent,
+          "",
+          "the cell has nothing to show, so it shows nothing",
+        );
+        assert.match(
+          cell.title,
+          /alphaXiv/i,
+          "and the tooltip names what is missing",
+        );
+        assert.notMatch(
+          cell.title,
+          /\d+\s*(分钟|minutes)/,
+          "no retry is promised for a paper that is simply not there",
+        );
+      } finally {
+        try {
+          await target.eraseTx();
+        } catch {
+          // The library may already be gone when the run tears down.
+        }
+      }
     });
 
     it("shows the loading state while the re-read is in flight", async function () {
@@ -660,6 +778,74 @@ describe("AlphaLikes refresh", function () {
         }
       }
     }
+  });
+
+  describe("what the batch is told about itself", function () {
+    /** An item with nothing in `Extra`: a read of it has to go and ask. */
+    async function scholarItem(title: string, id: string) {
+      const target = new Zotero.Item("journalArticle");
+      target.libraryID = Zotero.Libraries.userLibraryID;
+      target.setField("title", title);
+      target.setField("date", "2026-09-22");
+      target.setField("DOI", `10.1234/alphalikes.${id}`);
+      await target.saveTx();
+      return target;
+    }
+
+    async function discard(target: Zotero.Item) {
+      try {
+        await target.eraseTx();
+      } catch {
+        // The library may already be gone when the run tears down.
+      }
+    }
+
+    it("calls a waiting paper waiting, not failed", async function () {
+      // Reported: 「已重新读取 0 条引用数；11 条未能读取（保留原值，约 10
+      // 分钟后自动重试）」 while the list was stuck. One paper was refused and
+      // the rest were queued behind it, and calling those failures invented a
+      // retry that belonged to none of them.
+      const refused = await scholarItem(
+        "AlphaLikes refresh probe paper",
+        "queued.1",
+      );
+      const behind = await scholarItem(
+        "AlphaLikes refresh probe paper",
+        "queued.2",
+      );
+
+      try {
+        stub = stubRequester(service, 0, 5);
+        // Google answers with a refusal page: no results, no Cited by, nothing
+        // that says a search came back.
+        stub.scholarStatus = 429;
+
+        const summary = await service.refreshCitations([refused, behind]);
+
+        assert.equal(
+          summary.failed,
+          1,
+          "one paper was asked about, and the answer was a refusal",
+        );
+        assert.equal(
+          summary.queued,
+          1,
+          "the paper behind it has not been asked about at all: it is waiting",
+        );
+        assert.isNumber(
+          summary.retryMinutes,
+          "the retry time comes from the refusal that stopped the batch",
+        );
+        assert.isAbove(
+          summary.retryMinutes ?? 0,
+          0,
+          "and it is a wait, not a zero",
+        );
+      } finally {
+        await discard(refused);
+        await discard(behind);
+      }
+    });
   });
 
   describe("keeping the two actions apart", function () {

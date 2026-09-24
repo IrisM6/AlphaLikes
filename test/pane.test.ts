@@ -481,6 +481,48 @@ describe("AlphaLikes settings pane", function () {
     }
   });
 
+  it("empties the waiting list from the settings button", async function () {
+    // Reported as a wish rather than a bug: a queue of papers each with ten
+    // minutes in front of it should be something the reader can stop. The
+    // button lives next to the reading line, so it is checked where the reader
+    // sees it - and it has to answer with how many waits it dropped, because a
+    // button that says nothing is indistinguishable from one that is broken.
+    const button = doc.getElementById("alphalikes-scholar-cancel") as
+      (HTMLElement & { label?: string }) | null;
+    assert.isOk(button, "the pane offers no way to stop the waiting");
+
+    const note = doc.getElementById("alphalikes-scholar-cancel-note");
+    assert.isOk(note, "and nowhere to say what the button did");
+
+    const instance = (
+      Zotero as unknown as {
+        AlphaPulse?: { api: { cancelScholarWaits?: () => unknown } };
+      }
+    ).AlphaPulse;
+    assert.isOk(instance, "the pane's window carries the add-on instance");
+    const api = instance.api;
+    const original = api.cancelScholarWaits;
+    let asked = 0;
+    api.cancelScholarWaits = () => {
+      asked += 1;
+      return { cancelled: 7 };
+    };
+
+    try {
+      button?.dispatchEvent(new Event("command", { bubbles: true }));
+      await Zotero.Promise.delay(300);
+
+      assert.equal(asked, 1, "pressing the button has to cancel the waits");
+      assert.include(
+        note?.textContent ?? "",
+        "7",
+        "and the pane says how many waits were dropped",
+      );
+    } finally {
+      api.cancelScholarWaits = original;
+    }
+  });
+
   it("offers every reading-rhythm range, with the number it suggests", async function () {
     // The pacing is a set of ranges, and a range field without a suggested
     // value is a question the user has to answer from nothing. The pane has to

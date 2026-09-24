@@ -43,6 +43,10 @@ export const MESSAGES = {
   "cell-citations-unavailable-reason": "Read failed: {reason} · {retry}",
   "cell-citations-not-found":
     "No high-confidence match in Google Scholar (the title was searched)",
+  "cell-citations-waiting-cancelled":
+    "This wait was cancelled and will not be retried; use the item menu → Refresh citation counts to queue it again",
+  "cell-no-alphaxiv":
+    "alphaXiv has no record of this paper, so there is no like count to read (it will not be retried)",
   "failure-http-403": "the site refused the request (HTTP 403)",
   "failure-http-429": "the request was rate limited (HTTP 429)",
   "failure-http-4xx": "the request was refused (HTTP 4xx)",
@@ -81,6 +85,12 @@ export const MESSAGES = {
     "{failed} could not be read (the old value is kept; retrying automatically in about {minutes} minutes)",
   "refresh-missing":
     "{missing} have no high-confidence match in Google Scholar",
+  "refresh-queued":
+    "{queued} joined the waiting list (reads are sequential; each is read when its turn comes, nothing to do)",
+  "refresh-missing-likes":
+    "{missing} are not on alphaXiv, so there is no like count to read",
+  "refresh-skipped-likes":
+    "{skipped} have no arXiv ID to read a like count with",
   "refresh-skipped": "{skipped} have a title too short to search for",
   "refresh-nothing": "Nothing to refresh.",
   "refresh-joining": "; ",

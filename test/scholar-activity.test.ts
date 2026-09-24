@@ -714,6 +714,151 @@ describe("AlphaPulse per-paper Scholar reading", function () {
     }
   });
 
+  it("reads a page that carries a Cited by line, whatever the status said", async function () {
+    // Reported: a search page with a "Cited by" link on it came back as
+    // 「未能读取（保留原值，约 10 分钟后自动重试）」 and stopped every paper
+    // behind it, because the transport reported a status the read took for a
+    // robot check. A page with a result on it is proof that the search came
+    // back: the count is read, and no wait is booked for anyone.
+    await reset();
+    const captured: Captured[] = [];
+    const page = scholarPage("AlphaPulse activity probe titled", 16342);
+    useTransport(
+      (url) =>
+        url.includes("scholar.google.com") ? { status: 429, body: page } : null,
+      captured,
+    );
+
+    const paper = makeItem("cited-by", "AlphaPulse activity probe titled");
+    await paper.saveTx();
+
+    try {
+      const summary = await withSelection([paper], async () =>
+        service.refreshCitations([Zotero.Items.get(paper.id)]),
+      );
+
+      assert.equal(summary.updated, 1, "the count on the page was read");
+      assert.equal(summary.failed, 0, "and nothing failed");
+      assert.isFalse(
+        service.getScholarBlockStatus().blocked,
+        "a page with a result on it is not a robot check",
+      );
+      assert.equal(
+        String(service.planCitationCell(paper).text),
+        "16342",
+        "the number the page carried is the number in the column",
+      );
+    } finally {
+      try {
+        await paper.eraseTx();
+      } catch {
+        // The run may have taken the library already.
+      }
+    }
+  });
+
+  it("takes the count from the result that matches, not the first one", async function () {
+    // Scholar's first result is not always the paper that was asked about,
+    // and the first "Cited by" on the page belongs to that first result.
+    await reset();
+    const captured: Captured[] = [];
+    const other = scholarPage("A different paper entirely", 999);
+    const mine = scholarPage("AlphaPulse result order probe", 7);
+    useTransport(
+      (url) =>
+        url.includes("scholar.google.com")
+          ? { status: 200, body: other + mine }
+          : null,
+      captured,
+    );
+
+    const paper = makeItem("order", "AlphaPulse result order probe");
+    await paper.saveTx();
+
+    try {
+      await withSelection([paper], async () =>
+        service.refreshCitations([Zotero.Items.get(paper.id)]),
+      );
+
+      assert.equal(
+        String(service.planCitationCell(paper).text),
+        "7",
+        "the count that belongs to this paper's own result",
+      );
+    } finally {
+      try {
+        await paper.eraseTx();
+      } catch {
+        // The run may have taken the library already.
+      }
+    }
+  });
+
+  it("cancels the waiting list when the user asks it to", async function () {
+    // The settings button: a queue of papers each with ten minutes in front of
+    // it has to be something the reader can stop.
+    await reset();
+    const captured: Captured[] = [];
+    useTransport(
+      (url) => (url.includes("scholar.google.com") ? refused() : null),
+      captured,
+    );
+
+    const first = makeItem("cancel-one");
+    const second = makeItem("cancel-two");
+    await first.saveTx();
+    await second.saveTx();
+
+    try {
+      await withSelection([first], async () => {
+        await service.refreshCitations([Zotero.Items.get(first.id)]);
+      });
+      // A second paper waiting behind the first one.
+      await withSelection([second], async () => {
+        await service.refreshCitations([Zotero.Items.get(second.id)]);
+      });
+      assert.isAbove(
+        activity().items.length,
+        0,
+        "both papers are on the list to begin with",
+      );
+
+      const result = service.cancelScholarWaits();
+
+      assert.isAtLeast(result.cancelled, 1, "the waits were cancelled");
+      assert.deepEqual(activity().items, [], "and the list is empty");
+      assert.isFalse(
+        service.getScholarBlockStatus().blocked,
+        "cancelling a wait also gives up the refusal it was waiting out",
+      );
+
+      const plan = service.planCitationCell(second);
+      const cell = renderCitationCell(
+        String(plan.value),
+        CITATION_COLUMN,
+        testDocument(),
+      ) as HTMLElement;
+      assert.equal(
+        (cell.firstElementChild as HTMLElement).textContent,
+        "",
+        "the cell carries no countdown any more",
+      );
+      assert.match(
+        cell.title,
+        /取消|cancel/i,
+        "and the tooltip says the wait was cancelled",
+      );
+    } finally {
+      for (const item of [first, second]) {
+        try {
+          await item.eraseTx();
+        } catch {
+          // The run may have taken the library already.
+        }
+      }
+    }
+  });
+
   it("drops a paper from the reading when the item is gone", async function () {
     await reset();
     const captured: Captured[] = [];

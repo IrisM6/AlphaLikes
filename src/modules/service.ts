@@ -24,7 +24,9 @@ import {
   CITATION_REJECTED_STATUSES,
   isRateLimitStatus,
   googleScholarCitationCount,
+  googleScholarCitedByEvidence,
   googleScholarCitationSearchURL,
+  googleScholarResultCount,
   googleScholarResultBlocks,
   googleScholarResultTitle,
   isHighImpact,
@@ -48,6 +50,7 @@ import {
   CITATION_SOURCE_LABELS,
   CITATION_TITLE_MIN_LENGTH,
   CITATIONS_BLOCKED_MARKER,
+  SCHOLAR_CANCELLED_MARKER,
   citationProviderOrder,
   GOOGLE_SCHOLAR_HOME,
   isGoogleScholarResultsPage,
@@ -55,7 +58,7 @@ import {
   scholarRetryDelayMs,
   type CitationSourceKey,
 } from "./citations";
-import { ERROR_RETRY_DELAY_MS, RESOLUTION_RETRY_DELAY_MS } from "./constants";
+import { ERROR_RETRY_DELAY_MS } from "./constants";
 import {
   latestTrend,
   readLikesHistory,
@@ -96,6 +99,8 @@ import {
   CELL_UNAVAILABLE,
   failureReasonFrom,
   fromSortableValue,
+  isNotFoundError,
+  NO_ALPHAXIV_MARKER,
   parseLikesFromDocument,
   toSortableValue,
   withValueDecorations,
@@ -147,7 +152,16 @@ const RESOLUTION_CACHE_TTL_MISS_MS = 10 * 60_000;
 type ItemState =
   | { kind: "loading" }
   | { kind: "success"; arxivID: string; likes: number }
-  | { kind: "failed"; retryAfter: number; reason: FailureReason };
+  | { kind: "failed"; retryAfter: number; reason: FailureReason }
+  /**
+   * alphaXiv has no record of this paper.
+   *
+   * Not a failure and not a zero: the paper was looked for and is not there,
+   * so the cell stays empty with the reason in its tooltip and nothing is
+   * retried - asking again would find the same nothing. A manual refresh asks
+   * again, which is the only way it can change.
+   */
+  | { kind: "absent" };
 
 type CitationState =
   | { kind: "loading" }
@@ -159,7 +173,17 @@ type CitationState =
    * An answer, not a failure: there is no wait to keep and nothing to retry,
    * so the cell says so and stays that way until the user asks again.
    */
-  | { kind: "absent" };
+  | { kind: "absent" }
+
+  /**
+   * The user cancelled the waiting list.
+   *
+   * The read was asked for and then taken back: the cell stops carrying a
+   * countdown it would never honour, and nothing is queued again on the next
+   * repaint. A manual refresh asks for it afresh, which is the only way out -
+   * cancelling is not a permanent "never read this one".
+   */
+  | { kind: "cancelled" };
 
 interface ResolutionCacheEntry {
   candidates: ArxivCandidate[];
@@ -240,6 +264,17 @@ export interface RefreshSummary {
   /** Items whose count could not be read; their old value is kept. */
   failed: number;
   /**
+   * Items that went onto the waiting list and had not been read by the time
+   * the summary was written.
+   *
+   * Reported: eleven papers waiting their turn were reported as 「11 条未能
+   * 读取（保留原值，约 10 分钟后自动重试）」, which says they failed and
+   * invents a retry for them. They had not failed - they were queued, and the
+   * queue comes back for them on its own. A paper still waiting is counted
+   * here instead, and the message says so.
+   */
+  queued?: number;
+  /**
    * Items Google Scholar answered about, and has no paper for.
    *
    * A number of its own because it is neither a success nor a failure: the
@@ -314,7 +349,17 @@ export interface ScholarItemActivity {
 type ScholarReadKind = "auto" | "stale" | "user";
 
 /** What became of a paper's turn in the waiting list. */
-type ScholarQueueResult = "read" | "failed" | "skipped" | "missing";
+type ScholarQueueResult =
+  | "read"
+  | "failed"
+  | "skipped"
+  | "missing"
+  /**
+   * The batch was asked for while this paper was already on the list: it keeps
+   * its place and its turn, and the summary says it is waiting rather than
+   * calling it a failure.
+   */
+  | "queued";
 
 /**
  * What one Google Scholar read answered.
@@ -1021,6 +1066,56 @@ export class AlphaLikesService {
     };
   }
 
+  /**
+   * Empties the waiting list: no more waiting, no more automatic retries.
+   *
+   * Reported as a wish rather than a bug - a long list of papers each with ten
+   * minutes in front of it should be something the user can stop. Cancelling
+   * drops every paper that is waiting, together with the wait each of them
+   * was keeping and the automatic retries that went with it; whatever is
+   * already in `Extra` is untouched, and nothing is un-read. A manual refresh
+   * after this starts again from nothing, because asking for a paper is the
+   * user's own decision and this button is not a veto on it.
+   *
+   * The paper whose search is in the air is left alone: the request has
+   * already left, and its answer is worth keeping. It is not retried after
+   * that, and it does not put the ones behind it back on the list.
+   */
+  cancelScholarWaits(): { cancelled: number } {
+    let cancelled = 0;
+    for (const entry of [...this.scholarQueue]) {
+      // Someone the search is already out for is not "waiting" any more.
+      if (this.scholarReading === entry.itemID) continue;
+      cancelled += 1;
+      // A paper with a number in `Extra` keeps showing it: the count is not
+      // being un-read. One without a number stops carrying the countdown it
+      // was given, because that countdown has just been cancelled.
+      const state = this.citationStates.get(entry.itemID);
+      if (!state || state.kind === "failed" || state.kind === "loading") {
+        this.citationStates.set(entry.itemID, { kind: "cancelled" });
+      }
+      this.dropScholarEntry(entry, "skipped");
+    }
+
+    // A refusal the papers were waiting out is over as well: cancelling is the
+    // user saying they are not waiting for it.
+    this.clearScholarBlock();
+    this.scholarBlockedItems.clear();
+    if (this.scholarQueueTimer !== null) {
+      clearTimeout(this.scholarQueueTimer);
+      this.scholarQueueTimer = null;
+    }
+
+    // The per-paper lines go with the waits: a paper that was cancelled is not
+    // being retried, and a line saying "in about 5 minutes" about it would be
+    // the same broken promise this round was about.
+    this.scholarItems.clear();
+    if (!this.disposed)
+      repaintRows([...this.scholarQueue].map((e) => e.itemID));
+    this.debug(`[AlphaPulse] 已取消 ${cancelled} 条等待中的引用量读取`);
+    return { cancelled };
+  }
+
   openScholarVerification(item?: Zotero.Item | null): void {
     openExternal(this.scholarVerificationURL(item));
   }
@@ -1492,6 +1587,11 @@ export class AlphaLikesService {
           this.scholarReading = null;
         }
 
+        if (result === "failed" && this.isScholarBlocked()) {
+          // The refusal is one episode, and this paper is the one it was
+          // answered to: the rest of the user's batch is waiting, not failed.
+          this.settleScholarBatchForBlock(entry);
+        }
         this.finishScholarEntry(entry, result);
       }
     } finally {
@@ -1614,7 +1714,7 @@ export class AlphaLikesService {
    * asked of Google for these papers, and the wait the notice names is the one
    * the list will keep.
    */
-  private settleScholarBatchForBlock(): void {
+  private settleScholarBatchForBlock(failed?: ScholarQueueEntry): void {
     const block = this.scholarBlock;
     if (!block) return;
 
@@ -1625,17 +1725,25 @@ export class AlphaLikesService {
     const reason: FailureReason = block.rateLimited ? "http-429" : "http-403";
 
     for (const entry of this.scholarQueue) {
-      if (entry.kind !== "user" || !entry.done) continue;
+      // The paper whose search was refused is answered by its own read, and
+      // says it failed. The papers behind it have not been asked about at all:
+      // they are waiting out the same refusal, and the list comes back for
+      // them when it ends. Reported: eleven waiting papers were announced as
+      // 「11 条未能读取（保留原值，约 10 分钟后自动重试）」, which called them
+      // failures and gave them a retry none of them had earned.
+      if (entry === failed) continue;
+      entry.onBlock = true;
+      entry.notBefore = Math.max(entry.notBefore ?? 0, retryAfter);
+      if (!entry.done) continue;
+
       this.citationStates.set(entry.itemID, {
         kind: "failed",
         retryAfter,
         reason,
       });
-      entry.onBlock = true;
-      entry.notBefore = Math.max(entry.notBefore ?? 0, retryAfter);
       const done = entry.done;
       entry.done = null;
-      done("failed");
+      done("queued");
     }
   }
 
@@ -1832,6 +1940,20 @@ export class AlphaLikesService {
         return {
           value: CELL_LOADING,
           text: CELL_LOADING,
+          count: null,
+          highImpact: false,
+          source: null,
+        };
+      }
+      if (state.kind === "cancelled") {
+        // The user emptied the waiting list. Re-queueing here would put the
+        // paper straight back on it the next time the row is painted, which is
+        // the opposite of what the button did.
+        return {
+          value: withValueDecorations(CELL_UNAVAILABLE, [
+            SCHOLAR_CANCELLED_MARKER,
+          ]),
+          text: CELL_UNAVAILABLE,
           count: null,
           highImpact: false,
           source: null,
@@ -2211,63 +2333,84 @@ export class AlphaLikesService {
       this.debug(`Google Scholar citations read by ${page.via}`);
     }
 
-    // A refusal is not an error to hand back: it is the human check. Google
-    // answers with 403 (or 429/503) and a "sorry" page when it wants one, and
-    // throwing here would have left the count permanently empty with the
-    // popup only saying that one request had failed.
-    if (CITATION_REJECTED_STATUSES.has(page.status)) {
+    // The page decides, not the status.
+    //
+    // Reported: a paper whose search page carried a "Cited by" link was
+    // answered with 「未能读取（保留原值，约 10 分钟后自动重试）」, and every
+    // paper behind it stopped too, because a refusal is a wait for the whole
+    // list. A page that carries a result set, or the "Cited by" line of one,
+    // is proof the search came back: whatever the transport reported about the
+    // status, this was a read and not a robot check. A block is booked only
+    // when there is no such evidence.
+    const evidence =
+      isGoogleScholarResultsPage(page.body) ||
+      googleScholarCitedByEvidence(page.body);
+
+    if (CITATION_REJECTED_STATUSES.has(page.status) && !evidence) {
       this.noteScholarBlock(url, isRateLimitStatus(page.status));
       return null;
     }
-    if (page.status < 200 || page.status >= 300) return null;
+    if (!evidence && (page.status < 200 || page.status >= 300)) return null;
 
     // A 200 can still be an interstitial - the consent page in particular
     // arrives with a perfectly ordinary status.
     if (!page.body) return null;
 
-    const verdict = googleScholarCitationCount(page.body);
-    if (verdict === -1) {
-      this.noteScholarBlock(url);
+    if (!evidence) {
+      // Nothing on the page says a search happened, so it is judged the old
+      // way: a consent or captcha page books the wait, anything else is a read
+      // that came back empty and is simply tried again.
+      if (
+        googleScholarCitationCount(page.body) === -1 ||
+        isGoogleInterstitial(page.body)
+      ) {
+        this.noteScholarBlock(url);
+      }
       return null;
     }
 
-    // The page is not a results page at all: an interstitial that slipped past
-    // the check above, a captcha, or something Google felt like sending. That
-    // is a read to try again, not an answer about the paper.
-    if (verdict === null && !isGoogleScholarResultsPage(page.body)) {
-      if (isGoogleInterstitial(page.body)) this.noteScholarBlock(url);
-      return null;
-    }
-
+    // The search came back, so whatever Google thought of the last one is over.
     this.clearScholarBlock();
 
-    // The count belongs to the result whose title agrees with the item's, so
-    // the titles are read before the number is attributed to anything. A
-    // results page with nothing on it, or with papers that are not this one,
-    // is Scholar saying it has no paper like this - which the user is told
-    // rather than being left waiting for a retry that would find the same
-    // nothing.
-    const titles = googleScholarResultBlocks(page.body)
-      .map((block) => googleScholarResultTitle(block))
-      .filter(Boolean);
-    if (!titles.length) {
-      return verdict === null
-        ? { kind: "no-match" }
-        : { kind: "count", count: verdict };
+    // The count belongs to the result whose title agrees with the item's, and
+    // it is read from that result's own block: the first count on the page
+    // belongs to the first result, and the first result is not always the
+    // paper that was asked about.
+    const blocks = googleScholarResultBlocks(page.body);
+    const ranked = blocks
+      .map((block) => ({
+        block,
+        title: googleScholarResultTitle(block),
+      }))
+      .filter((entry) => entry.title)
+      .map((entry) => ({
+        ...entry,
+        similarity: titleSimilarity(expected, entry.title),
+      }))
+      .filter((entry) => entry.similarity >= CITATION_TITLE_MATCH_MIN)
+      .sort((a, b) => b.similarity - a.similarity);
+
+    if (!ranked.length) {
+      // Results, and none of them is this paper - or a result set with nothing
+      // in it. Either way Scholar has no paper by this name, which the user is
+      // told rather than being left waiting for a retry that would find the
+      // same nothing.
+      if (blocks.length || isGoogleScholarResultsPage(page.body)) {
+        return { kind: "no-match" };
+      }
+      // A count without a result set around it: no way to tell whose it is, so
+      // it is not adopted and the read is tried again later.
+      return null;
     }
 
-    const similarity = Math.max(
-      ...titles.map((title) => titleSimilarity(expected, title)),
-    );
-    if (similarity < CITATION_TITLE_MATCH_MIN) {
-      return { kind: "no-match" };
-    }
-
-    // A result with no "Cited by" link is a paper nobody has cited yet. Zero
+    // A result with no "Cited by" line is a paper nobody has cited yet. Zero
     // is a count like any other - the same rule the like count follows, and
     // the reported case was a paper found by its title alone whose count of
     // zero came back as "no number on the page".
-    return { kind: "count", count: verdict ?? 0 };
+    const count = ranked
+      .map((entry) => googleScholarResultCount(entry.block))
+      .find((value) => value !== null);
+    return { kind: "count", count: count ?? 0 };
   }
 
   private async collectOpenAlexCitations(
@@ -2414,7 +2557,11 @@ export class AlphaLikesService {
         else if (result === "missing") {
           summary.missing = (summary.missing ?? 0) + 1;
         } else if (result === "skipped") summary.skipped += 1;
-        else {
+        else if (result === "queued") {
+          // Waiting its turn, not failed: 「已加入等待列表」 rather than
+          // 「未能读取」, which would promise a retry that belongs to nobody.
+          summary.queued = (summary.queued ?? 0) + 1;
+        } else {
           summary.failed += 1;
           const retry = this.retryMinutesFor(item);
           if (retry !== null) {
@@ -2445,7 +2592,17 @@ export class AlphaLikesService {
     if (arxivID) return this.cellForKnownID(item, arxivID);
 
     if (!getPref("autoResolveNonArxiv")) return "";
-    if (!this.canResolve(item)) return "";
+    if (!this.isReadableItem(item)) return "";
+
+    if (!this.canResolve(item)) {
+      // Nothing to match a paper on: no arXiv ID anywhere, no title long
+      // enough to search with, and no DOI or date to corroborate one. Asking
+      // is not possible, so there is no like count to be had - and the cell
+      // says which nothing this is instead of going on about a missing
+      // identifier, which is what the user reported seeing.
+      this.itemStates.set(item.id, { kind: "absent" });
+      return withValueDecorations(CELL_UNAVAILABLE, [NO_ALPHAXIV_MARKER]);
+    }
 
     return this.cellForUnknownID(item);
   }
@@ -2472,6 +2629,11 @@ export class AlphaLikesService {
         return toSortableValue(state.likes);
       }
       if (state.kind === "loading") return CELL_LOADING;
+      // Nothing to show and nothing to wait for: the paper is not on alphaXiv,
+      // and the tooltip is where that is said.
+      if (state.kind === "absent") {
+        return withValueDecorations(CELL_UNAVAILABLE, [NO_ALPHAXIV_MARKER]);
+      }
       if (state.kind === "failed" && state.retryAfter > Date.now()) {
         // The reason rides along with the value: it is the only channel the
         // renderer has, and a blank cell on its own says nothing about what to
@@ -2501,6 +2663,10 @@ export class AlphaLikesService {
     if (state) {
       if (state.kind === "success") return toSortableValue(state.likes);
       if (state.kind === "loading") return CELL_LOADING;
+      // Looked for and not there: an answer, not a read to keep trying.
+      if (state.kind === "absent") {
+        return withValueDecorations(CELL_UNAVAILABLE, [NO_ALPHAXIV_MARKER]);
+      }
       if (state.retryAfter > Date.now()) {
         return withValueDecorations(
           CELL_UNAVAILABLE,
@@ -2516,7 +2682,13 @@ export class AlphaLikesService {
     return CELL_LOADING;
   }
 
-  private canResolve(item: Zotero.Item): boolean {
+  /**
+   * Whether this row is a paper at all.
+   *
+   * A note, an attachment or a row of any other kind is not something alphaXiv
+   * could hold, so nothing is read for it and nothing is claimed about it.
+   */
+  private isReadableItem(item: Zotero.Item): boolean {
     try {
       if (typeof item.isRegularItem === "function" && !item.isRegularItem()) {
         return false;
@@ -2525,7 +2697,11 @@ export class AlphaLikesService {
       return false;
     }
 
-    if (!RESOLVABLE_ITEM_TYPES.has(item.itemType)) return false;
+    return RESOLVABLE_ITEM_TYPES.has(item.itemType);
+  }
+
+  private canResolve(item: Zotero.Item): boolean {
+    if (!this.isReadableItem(item)) return false;
     if (safeGetField(item, "title").trim().length < MIN_TITLE_LENGTH) {
       return false;
     }
@@ -2540,6 +2716,11 @@ export class AlphaLikesService {
   // -------------------------------------------------------------------------
   // Metadata
   // -------------------------------------------------------------------------
+
+  /** Whether the last read found nothing to read: no paper, no record. */
+  private isAbsent(item: Zotero.Item): boolean {
+    return this.itemStates.get(item.id)?.kind === "absent";
+  }
 
   getItemArxivID(item: Zotero.Item): string | null {
     return extractArxivID(
@@ -2642,12 +2823,21 @@ export class AlphaLikesService {
       return true;
     } catch (error) {
       if (!this.disposed) {
-        this.itemStates.set(item.id, {
-          kind: "failed",
-          retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
-          reason: failureReasonFrom(error),
-        });
-        this.debug(`failed to fetch likes for ${arxivID}: ${error}`);
+        // A 404 is alphaXiv saying it has no page for this paper - an answer,
+        // like the resolver finding no match. Everything else (a 5xx, a dead
+        // network, a page whose markup moved) is a failed read and keeps the
+        // old value with a retry.
+        if (isNotFoundError(error)) {
+          this.itemStates.set(item.id, { kind: "absent" });
+          this.debug(`alphaXiv has no record of ${arxivID}`);
+        } else {
+          this.itemStates.set(item.id, {
+            kind: "failed",
+            retryAfter: Date.now() + ERROR_RETRY_DELAY_MS,
+            reason: failureReasonFrom(error),
+          });
+          this.debug(`failed to fetch likes for ${arxivID}: ${error}`);
+        }
       }
       return false;
     } finally {
@@ -2792,11 +2982,11 @@ export class AlphaLikesService {
         return;
       }
 
-      this.itemStates.set(item.id, {
-        kind: "failed",
-        retryAfter: Date.now() + RESOLUTION_RETRY_DELAY_MS,
-        reason: "no-count",
-      });
+      // No paper in the index matches this item closely enough, which is an
+      // answer about the item rather than a failure of the read: there is
+      // nothing to retry, and the column says so in the tooltip instead of
+      // promising a wait that would end in the same nothing.
+      this.itemStates.set(item.id, { kind: "absent" });
     } catch (error) {
       this.debug(`arXiv lookup failed for item ${item.id}: ${error}`);
       this.itemStates.set(item.id, {
@@ -3279,7 +3469,11 @@ export class AlphaLikesService {
           const updated = await this.populateLikes(item, arxivID, {
             force: true,
           });
-          if (updated) summary.updated += 1;
+          // alphaXiv answering "no page for this paper" is a result, not a
+          // failure: it is counted as a miss, and the popup says the paper is
+          // not there rather than promising a retry.
+          if (this.isAbsent(item)) summary.missing = (summary.missing ?? 0) + 1;
+          else if (updated) summary.updated += 1;
           else {
             summary.failed += 1;
             const retry = this.retryMinutesFor(item);
@@ -3294,6 +3488,8 @@ export class AlphaLikesService {
           await this.resolveItem(item, { force: true });
           // A newly resolved ID already fetched its count on the way in.
           if (this.getItemArxivID(item)) summary.updated += 1;
+          else if (this.isAbsent(item))
+            summary.missing = (summary.missing ?? 0) + 1;
           else summary.skipped += 1;
         }
         if (!this.disposed) repaintRows([item.id]);

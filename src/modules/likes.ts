@@ -204,6 +204,27 @@ export function failureReasonFrom(error: unknown): FailureReason {
   return "network";
 }
 
+/**
+ * The mark a cell carries when alphaXiv has no record of the paper.
+ *
+ * The cell stays empty - there is no number to show - and the tooltip says
+ * why, which is the only place the difference between "nobody has liked this"
+ * and "this paper is not on alphaXiv" can be read.
+ */
+export const NO_ALPHAXIV_MARKER = "no-alphaxiv";
+
+/**
+ * Whether a request failed because the page is not there.
+ *
+ * `requestHTML` throws `HTTP 404 from <host>`; alphaXiv answers exactly that
+ * for a paper it does not have (9999.99999 gives 404, with the words "not
+ * found" in the body, while a malformed id gives 500).
+ */
+export function isNotFoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP\s+404\b/.test(message);
+}
+
 /** The reason a cell value carries, when it carries one. */
 export function failureReasonIn(
   decorations: readonly string[],

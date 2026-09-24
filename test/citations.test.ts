@@ -8,6 +8,8 @@ import {
   CITATIONS_UPDATED_KEY,
   citationCountsFromSemanticScholar,
   googleScholarCitationCount,
+  googleScholarCitedByEvidence,
+  googleScholarResultCount,
   googleScholarCitationSearchURL,
   googleScholarResultBlocks,
   googleScholarResultTitle,
@@ -592,6 +594,57 @@ describe("AlphaLikes citations", function () {
       assert.lengthOf(blocks, 2);
       assert.equal(googleScholarResultTitle(blocks[0]), "First & Foremost");
       assert.equal(googleScholarResultTitle(blocks[1]), "Second Paper");
+    });
+
+    it("reads the count of one result, not the first on the page", function () {
+      // The first count on a results page belongs to the first result, and the
+      // first result is not always the paper that was asked about.
+      const first = `<div class="gs_r"><div class="gs_ri">
+          <h3 class="gs_rt"><a href="#">Some other paper</a></h3>
+          <div class="gs_fl"><a href="/scholar?cites=1">Cited by 999</a></div>
+        </div></div>`;
+      const second = `<div class="gs_r"><div class="gs_ri">
+          <h3 class="gs_rt"><a href="#">The paper asked about</a></h3>
+          <div class="gs_fl"><a href="/scholar?cites=2">Cited by 7</a></div>
+        </div></div>`;
+
+      const blocks = googleScholarResultBlocks(first + second);
+      assert.lengthOf(blocks, 2);
+      assert.equal(googleScholarResultCount(blocks[0]), 999);
+      assert.equal(googleScholarResultCount(blocks[1]), 7);
+    });
+
+    it("reports a result with no count as having none", function () {
+      const block = `<div class="gs_r"><div class="gs_ri">
+          <h3 class="gs_rt"><a href="#">Nobody cited this yet</a></h3>
+        </div></div>`;
+      assert.isNull(googleScholarResultCount(block));
+    });
+
+    it("recognises the evidence that a search came back", function () {
+      // A page that carries the result set, or the "Cited by" line of one, is
+      // a page a search produced - whatever the transport says about its
+      // status. Reported: a page with a Cited by link was treated as a robot
+      // check, and every paper behind it stopped with it.
+      const withCount = `<div class="gs_r"><div class="gs_ri">
+          <h3 class="gs_rt"><a href="#">A paper</a></h3>
+          <div class="gs_fl"><a href="/scholar?cites=1146404231466788893">Cited by 0</a></div>
+        </div></div>`;
+      assert.isTrue(googleScholarCitedByEvidence(withCount));
+      assert.isTrue(
+        googleScholarCitedByEvidence('<div id="gs_res_ccl_mid"></div>'),
+      );
+      assert.isTrue(
+        googleScholarCitedByEvidence(
+          '<div id="gs_res_ccl_mid">被引用次数：1234</div>',
+        ),
+      );
+      assert.isFalse(
+        googleScholarCitedByEvidence(
+          "<html><title>Sorry...</title><body>unusual traffic</body></html>",
+        ),
+      );
+      assert.isFalse(googleScholarCitedByEvidence(""));
     });
 
     it("handles the Chinese interface labels too", function () {

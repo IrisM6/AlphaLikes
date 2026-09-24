@@ -58,6 +58,13 @@ export interface AlphaLikesAPI {
     autoPaused: boolean;
     items: ScholarItemActivity[];
   };
+  /**
+   * Empties the waiting list: no more waiting, no automatic retries.
+   *
+   * The settings pane's button. Counts already read are untouched; a manual
+   * refresh after this queues the papers again.
+   */
+  cancelScholarWaits(): { cancelled: number };
   version: string;
 }
 
@@ -70,6 +77,7 @@ export function createPluginAPI(version: string): AlphaLikesAPI {
     styleColors: (style: string) => styleAccents(style),
     diagnose: () => getService().diagnose(),
     scholarActivity: () => getService().scholarActivity(),
+    cancelScholarWaits: () => getService().cancelScholarWaits(),
     version,
   };
 }
