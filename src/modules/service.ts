@@ -693,6 +693,18 @@ export class AlphaLikesService {
   /** How many rounds of Google Scholar refusals this episode has had. */
   private scholarRound = 0;
   /**
+   * The items the running refresh was asked about.
+   *
+   * The refresh actions are per selection, and the rule the user asked for is
+   * about that selection: pressing "refresh citations" must not start a like
+   * read for the rows it was asked about. A row that is not part of the batch
+   * has nothing to do with it - and reported, that is exactly what went wrong
+   * for a paper added while the citation reads were running: its like count
+   * was held back for as long as the batch took, which for a queue that is
+   * *meant* to space its searches 16-30 seconds apart is minutes.
+   */
+  private scopeItems: Set<number> | null = null;
+  /**
    * Which column is being refreshed right now, if either.
    *
    * An explicit refresh means "read this, and only this": while the citation
@@ -1910,7 +1922,7 @@ export class AlphaLikesService {
     const extra = safeGetField(item, "extra");
     const cached = readCitations(extra);
 
-    if (this.readingLikes()) {
+    if (this.readingLikes(item.id)) {
       // The likes column is being refreshed; this column is not part of that.
       // The stored number still shows - it is what the row had - but nothing
       // starts a read from here: not the cell, and not the background refresh
@@ -2515,10 +2527,12 @@ export class AlphaLikesService {
 
   private async readCitations(items: Zotero.Item[]): Promise<RefreshSummary> {
     this.readScope = "citations";
+    this.scopeItems = new Set(items.filter(Boolean).map((item) => item.id));
     try {
       return await this.readCitationsScoped(items);
     } finally {
       this.readScope = null;
+      this.scopeItems = null;
     }
   }
 
@@ -2616,7 +2630,7 @@ export class AlphaLikesService {
     const cached = readCachedLikes(extra);
 
     if (cached !== null) {
-      if (this.isCacheStale(extra) && !this.readingCitations()) {
+      if (this.isCacheStale(extra) && !this.readingCitations(item.id)) {
         this.scheduleStaleRefresh(item, arxivID);
       }
       this.itemStates.delete(item.id);
@@ -2646,7 +2660,7 @@ export class AlphaLikesService {
       // A failed lookup whose cooldown elapsed falls through and is retried.
     }
 
-    if (!this.disposed && !this.readingCitations()) {
+    if (!this.disposed && !this.readingCitations(item.id)) {
       this.itemStates.set(item.id, { kind: "loading" });
       void this.populateLikes(item, arxivID);
     }
@@ -2655,8 +2669,10 @@ export class AlphaLikesService {
 
   private cellForUnknownID(item: Zotero.Item): string {
     // Resolving an item ends in a like read, so it belongs to the likes column
-    // and not to a citation refresh.
-    if (this.readingCitations()) return "";
+    // and not to a citation refresh - of this item. A paper the batch never
+    // named is read as soon as its row is painted, which is what adding a
+    // paper is supposed to do.
+    if (this.readingCitations(item.id)) return "";
 
     const state = this.itemStates.get(item.id);
 
@@ -3423,10 +3439,12 @@ export class AlphaLikesService {
    */
   async refreshItems(items: Zotero.Item[]): Promise<RefreshSummary> {
     this.readScope = "likes";
+    this.scopeItems = new Set(items.filter(Boolean).map((item) => item.id));
     try {
       return await this.refreshLikesScoped(items);
     } finally {
       this.readScope = null;
+      this.scopeItems = null;
     }
   }
 
@@ -3725,12 +3743,24 @@ export class AlphaLikesService {
     return minutesUntil(state.retryAfter);
   }
 
-  private readingLikes(): boolean {
-    return this.readScope === "likes";
+  /** Whether this item's like count is being read by a running refresh. */
+  private readingLikes(itemID: number): boolean {
+    return this.readScope === "likes" && this.isInScope(itemID);
   }
 
-  private readingCitations(): boolean {
-    return this.readScope === "citations";
+  /** Whether this item's citation count is being read by a running refresh. */
+  private readingCitations(itemID: number): boolean {
+    return this.readScope === "citations" && this.isInScope(itemID);
+  }
+
+  /**
+   * Whether the running refresh covers this item.
+   *
+   * A refresh that did not name its items covers everything, which is the
+   * cautious reading - it is only ever a refresh that exists.
+   */
+  private isInScope(itemID: number): boolean {
+    return this.scopeItems === null || this.scopeItems.has(itemID);
   }
 
   private usesGoogleScholar(): boolean {

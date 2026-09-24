@@ -63,6 +63,8 @@ interface Stub {
   failLikes: boolean;
   /** HTTP status the alphaXiv request answers with, or null for a page. */
   likesStatus: number | null;
+  /** The citation count an OpenAlex answer carries. */
+  openAlex: number;
   /** Serve the page alphaXiv serves for a paper with no likes yet. */
   pageWithoutCount: boolean;
   failScholar: boolean;
@@ -70,6 +72,14 @@ interface Stub {
   scholarStatus: number;
   /** Set to hold the next request open until `release` is called. */
   hold: boolean;
+  /** Hold the Scholar read alone, without touching the other hosts. */
+  holdScholar: boolean;
+  /** Releases the held Scholar read. */
+  releaseScholar: (() => void) | null;
+  /** Every gate currently held open, so a test can let a whole batch finish. */
+  pendingGates: Array<() => void>;
+  /** Releases all of them. */
+  releaseAll: () => void;
   /**
    * With `hold`, the number of requests that still answer immediately: the
    * first ones land, the ones after that wait. Used to watch a batch fill in
@@ -87,12 +97,17 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     scholarTitle: "AlphaLikes refresh probe paper",
     failLikes: false,
     likesStatus: null,
+    openAlex: 5,
     pageWithoutCount: false,
     failScholar: false,
     scholarStatus: 200,
     hold: false,
     holdAfter: null,
     release: null,
+    holdScholar: false,
+    releaseScholar: null,
+    pendingGates: [],
+    releaseAll: () => undefined,
   };
   const target = service as { requester: Record<string, unknown> };
   const previous = target.requester;
@@ -103,6 +118,7 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
       return Promise.resolve();
     }
     return new Promise<void>((resolve) => {
+      state.pendingGates.push(resolve);
       state.release = resolve;
     });
   }
@@ -139,6 +155,17 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
         ? alphaXivPageWithoutCount()
         : alphaXivPage(state.likes);
     },
+    requestJSON: async (url: string) => {
+      state.served.push(url);
+      await gate();
+      // OpenAlex's own answer shape, which is all a cheap-source read needs.
+      return {
+        cited_by_count: state.openAlex,
+        title: state.scholarTitle,
+        doi: "https://doi.org/10.1234/alphalikes.probe",
+        publication_year: 2026,
+      };
+    },
     requestText: async (url: string) => {
       state.served.push(url);
       await gate();
@@ -149,6 +176,11 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     // request path, which is also what the plugin falls back to.
     requestScholarPage: async (url: string) => {
       state.served.push(url);
+      if (state.holdScholar) {
+        await new Promise<void>((resolve) => {
+          state.releaseScholar = resolve;
+        });
+      }
       await gate();
       if (state.failScholar) throw new Error("service unavailable");
       const body =
@@ -184,6 +216,12 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
             : "<html><title>Sorry...</title><body>unusual traffic</body></html>",
       };
     },
+  };
+
+  // A test that holds several requests at once - a likes batch and a citation
+  // read - has to be able to let all of them go, not only the newest.
+  state.releaseAll = () => {
+    for (const resolve of state.pendingGates.splice(0)) resolve();
   };
 
   return state;
@@ -902,6 +940,112 @@ describe("AlphaLikes refresh", function () {
         await running;
       } finally {
         await discard(target);
+      }
+    });
+
+    it("reads the likes of a paper added while a citation batch is running", async function () {
+      // Reported: adding a paper while the citation reads were running left
+      // its like count unread for minutes, as if the like column were waiting
+      // for the citation queue. The two columns are independent: the rule the
+      // user asked for is that *the rows being refreshed for citations* are
+      // left alone by the like column, not that the whole column stops while
+      // the citation queue - which is meant to take minutes - is busy.
+      const asked = await blankLikesItem(
+        "AlphaLikes independence probe (asked)",
+        "2401.00101",
+      );
+      const added = await blankLikesItem(
+        "AlphaLikes independence probe (added)",
+        "2401.00102",
+      );
+
+      try {
+        stub = stubRequester(service, 321, 5);
+        // Only the Scholar read is held: the citation batch is in flight, the
+        // way it is for minutes at a time.
+        stub.holdScholar = true;
+
+        const running = service.refreshCitations([Zotero.Items.get(asked.id)]);
+        await Zotero.Promise.delay(100);
+
+        // The paper the user just added, painted by the tree like any other
+        // row. Its own likes have nothing to do with the batch in flight.
+        assert.equal(
+          fromSortableValue(service.getCellData(added)),
+          CELL_LOADING,
+          "the new row shows that it is reading",
+        );
+        await Zotero.Promise.delay(500);
+
+        assert.equal(
+          fromSortableValue(service.getCellData(added)),
+          "321",
+          "the new paper's likes are read without waiting for the citations",
+        );
+        assert.deepEqual(
+          stub.served.filter((url) => url.includes("alphaxiv.org")),
+          ["https://www.alphaxiv.org/abs/2401.00102"],
+          "and the row being refreshed for citations is still left alone",
+        );
+
+        stub.holdScholar = false;
+        stub.releaseScholar?.();
+        await running;
+      } finally {
+        await discard(asked);
+        await discard(added);
+      }
+    });
+
+    it("reads the citations of a paper added while a likes batch is running", async function () {
+      // The same independence the other way round: a batch of like reads takes
+      // as long as it takes, and a paper added while it runs has nothing to do
+      // with it. Only the rows the batch named are left alone.
+      const previous = getPref("citationSourcePreferences");
+      const asked = await blankLikesItem(
+        "AlphaLikes independence probe (asked likes)",
+        "2401.00111",
+      );
+      const added = await blankLikesItem(
+        "AlphaLikes independence probe (added citations)",
+        "2401.00112",
+      );
+
+      try {
+        // A source that is read without a selection, so the test does not
+        // depend on what the UI happens to have selected.
+        setPref("citationSourcePreferences", "openAlex");
+        stub = stubRequester(service, 444, 5);
+        stub.hold = true;
+
+        const running = service.refreshItems([Zotero.Items.get(asked.id)]);
+        await Zotero.Promise.delay(100);
+
+        const value = service.getCitationCellData(added);
+        await Zotero.Promise.delay(300);
+
+        assert.equal(
+          value,
+          CELL_LOADING,
+          "the added paper's citation read starts, so its cell says it is reading",
+        );
+        assert.isTrue(
+          stub.served.some((url) => url.includes("openalex.org")),
+          "and the read is asked for without waiting for the likes",
+        );
+        assert.deepEqual(
+          stub.served.filter((url) => url.includes("alphaxiv.org")),
+          ["https://www.alphaxiv.org/abs/2401.00111"],
+          "while the row the likes batch named is still left alone",
+        );
+
+        stub.hold = false;
+        stub.releaseAll();
+        await running;
+      } finally {
+        setPref("citationSourcePreferences", previous);
+        await discard(asked);
+        await discard(added);
       }
     });
 
