@@ -916,24 +916,32 @@
 
     /** One entry per paper, in the order the service reports them. */
     function entry(item, autoPaused) {
+      var title = shortTitle(item.title);
+      // A paper with another one ahead of it has no moment to name: the queue
+      // decides when its turn comes, and borrowing the deadline of the paper
+      // it is waiting behind is what made two different papers show the same
+      // five minutes.
+      if (!item.reading && item.ahead > 0) {
+        return title + " 排队等待读取（前面还有 " + item.ahead + " 条）";
+      }
       if (item.reading) {
-        return (
-          shortTitle(item.title) +
-          " 正在读取（本条已请求 " +
-          item.attempts +
-          " 次）"
-        );
+        return title + " 正在读取（本条已请求 " + item.attempts + " 次）";
       }
       if (autoPaused) {
-        return (
-          shortTitle(item.title) +
-          " 自动重试已暂停（本条已请求 " +
-          item.attempts +
-          " 次）"
-        );
+        return title + " 自动重试已暂停（本条已请求 " + item.attempts + " 次）";
+      }
+      // Nothing has been asked about this paper yet: it is at the head of the
+      // queue, waiting for the reading rhythm, not for a retry.
+      if (!item.attempts) {
+        return item.nextInMs <= 1_000
+          ? title + " 排在下一个，马上开始读取"
+          : title +
+              " 排在下一个，约 " +
+              minutes(item.nextInMs) +
+              " 分钟后开始读取";
       }
       return (
-        shortTitle(item.title) +
+        title +
         " 约 " +
         minutes(item.nextInMs) +
         " 分钟后重试（本条已请求 " +

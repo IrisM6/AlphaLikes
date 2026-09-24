@@ -85,6 +85,15 @@ export function bindTransport(host: { request: HttpTransport }): HttpTransport {
 
 interface PacingState {
   lastStartedAt: number;
+  /**
+   * When the next read of this host may start.
+   *
+   * Drawn once, when a read starts, and then left alone: the wait a caller is
+   * told about and the wait the next read actually serves are the same number,
+   * so a line that says "about 20 seconds" is not reading one draw of the
+   * rhythm while the queue waits out another.
+   */
+  nextAllowedAt: number;
 }
 
 /** How a Scholar page was fetched. */
@@ -860,14 +869,11 @@ export class PacedRequester {
   } {
     const now = Date.now();
     const state = this.scholarBurst;
-    const last = this.pacing.get("scholar.google.com")?.lastStartedAt ?? 0;
+    const until = this.pacing.get("scholar.google.com")?.nextAllowedAt ?? 0;
 
     // The queue makes the next read wait for whichever comes later: the rest
     // between two searches, or the pause that follows a burst.
-    const intervalWait = Math.max(
-      0,
-      this.intervalFor("scholar.google.com") - (now - last),
-    );
+    const intervalWait = Math.max(0, until - now);
     const pauseWait = Math.max(0, state.pausedUntil - now);
 
     return {
@@ -943,14 +949,18 @@ export class PacedRequester {
         if (pause.waitMs > 0) await Zotero.Promise.delay(pause.waitMs);
       }
 
-      const state = this.pacing.get(host) ?? { lastStartedAt: 0 };
-      const wait = Math.max(
-        0,
-        this.intervalFor(host) - (Date.now() - state.lastStartedAt),
-      );
+      const state = this.pacing.get(host) ?? {
+        lastStartedAt: 0,
+        nextAllowedAt: 0,
+      };
+      const wait = Math.max(0, state.nextAllowedAt - Date.now());
       if (wait) await Zotero.Promise.delay(wait);
 
       state.lastStartedAt = Date.now();
+      // A new point in the range for every read, drawn here and not a moment
+      // before, so that whoever asks "how long until the next one?" is told the
+      // wait this read has just set.
+      state.nextAllowedAt = state.lastStartedAt + this.intervalFor(host);
       this.pacing.set(host, state);
 
       if (scholar) this.noteScholarSearch();

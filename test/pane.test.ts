@@ -10,7 +10,6 @@
  */
 
 import { assert } from "chai";
-import { getService } from "../src/modules/column";
 import { getScholarPacing } from "../src/modules/prefs";
 import { config } from "../package.json";
 
@@ -378,58 +377,63 @@ describe("AlphaLikes settings pane", function () {
     // each paper is doing right now. Reported: one line for the whole session
     // ("asked 2 times, next in about now") while one paper was stuck behind
     // Google's check - so the line names the paper, carries that paper's own
-    // count, and counts the wait the way every other surface does.
+    // count, and says what that paper is waiting for.
     const line = doc.getElementById("alphalikes-scholar-activity");
     assert.isOk(line, "the pane does not say what the reading is doing");
 
-    await Zotero.Promise.delay(200);
-    const text = (line?.textContent ?? "").replace(/\s+/g, " ");
-    // The sentence is the interface's, so it follows the window's language:
-    // the test asks what it has to say, not which words it says it in.
-    assert.match(
-      text,
-      /(没有正在读取或等待重试的条目|Nothing is being read or waiting to be retried)/,
-      "an idle session says so instead of describing a wait that is not there",
-    );
-    // Reported: the line led with 「本会话已请求 N 次」, a count for the whole
-    // run of Zotero. The reading is sequential, so that number describes no
-    // paper in particular; the pane shows per-paper progress and nothing else.
-    assert.notMatch(
-      text,
-      /(本次会话已请求|本会话已请求|has asked Scholar\s*\d)/,
-      "the session's own request count does not belong in the pane",
-    );
-
-    // With a paper in flight the line has to name it: that is the difference
-    // between this and a session total.
-    const service = getService();
-    const item = new Zotero.Item("journalArticle");
-    item.libraryID = Zotero.Libraries.userLibraryID;
-    item.setField("title", "AlphaPulse pane activity probe");
-    item.setField("date", "2026-09-23");
-    item.setField("DOI", "10.1234/alphalikes.pane.activity");
-    await item.saveTx();
-    const internals = service as unknown as {
-      scholarItems: Map<
-        number,
-        {
-          attempts: number;
-          reading: boolean;
-          nextAttemptAt: number | null;
-          onBlock: boolean;
-          reason: string;
-        }
-      >;
+    // The pane asks `Zotero.AlphaPulse.api` for the reading. The tests run in
+    // a second copy of the plugin, whose own service is a different instance,
+    // so the reading is handed over the way the add-on hands it over and what
+    // is checked here is the rendering. What the payload itself says is
+    // asserted where it is made, in the reading tests.
+    const instance = (
+      Zotero as unknown as {
+        AlphaPulse?: { api: { scholarActivity: () => unknown } };
+      }
+    ).AlphaPulse;
+    assert.isOk(instance, "the pane's window carries the add-on instance");
+    const api = instance.api;
+    const original = api.scholarActivity;
+    let activity: unknown = {
+      requests: 0,
+      nextInMs: 0,
+      paused: false,
+      burstLeft: 1,
+      autoPaused: false,
+      items: [],
     };
-    internals.scholarItems.set(item.id, {
-      attempts: 2,
-      reading: false,
-      nextAttemptAt: Date.now() + 5 * 60_000,
-      onBlock: true,
-      reason: "http-429",
-    });
+    api.scholarActivity = () => activity;
 
     try {
+      // Two papers, as the service reports them: one whose turn it is, waiting
+      // out Google's check, and one behind it that has a place in the list
+      // rather than a time of its own.
+      activity = {
+        requests: 4,
+        nextInMs: 0,
+        paused: false,
+        burstLeft: 1,
+        autoPaused: false,
+        items: [
+          {
+            itemID: 1,
+            title: "AlphaPulse pane activity probe",
+            attempts: 2,
+            reading: false,
+            ahead: 0,
+            nextInMs: 5 * 60_000,
+          },
+          {
+            itemID: 2,
+            title: "AlphaPulse pane queued probe",
+            attempts: 0,
+            reading: false,
+            ahead: 1,
+            nextInMs: 0,
+          },
+        ],
+      };
+
       await Zotero.Promise.delay(2_400);
       const waiting = (line?.textContent ?? "").replace(/\s+/g, " ");
       assert.include(
@@ -443,18 +447,37 @@ describe("AlphaLikes settings pane", function () {
         "and how many searches that paper has cost",
       );
       assert.match(waiting, /(5|约 5)/, "and when that paper is tried again");
+      assert.include(
+        waiting,
+        "pane queued probe",
+        "the paper behind it is named too",
+      );
+      assert.match(
+        waiting,
+        /(前面还有|ahead of it)/,
+        "and is described by its place in the queue, not by a borrowed time",
+      );
+      // Reported: the line led with 「本会话已请求 N 次」, a count for the whole
+      // run of Zotero. The reading is sequential, so that number describes no
+      // paper in particular; the pane shows per-paper progress and nothing
+      // else.
       assert.notMatch(
         waiting,
         /(本次会话已请求|本会话已请求|has asked Scholar\s*\d)/,
-        "still no session total, now that there is something to report",
+        "the session's own request count does not belong in the pane",
+      );
+
+      // A session with nothing in the list says so instead of describing a
+      // wait that is not there.
+      activity = { ...(activity as Record<string, unknown>), items: [] };
+      await Zotero.Promise.delay(2_400);
+      assert.include(
+        (line?.textContent ?? "").replace(/\s+/g, " "),
+        "没有正在读取或等待重试的条目",
+        "an idle session says so",
       );
     } finally {
-      internals.scholarItems.delete(item.id);
-      try {
-        await item.eraseTx();
-      } catch {
-        // The run may have taken the library already.
-      }
+      api.scholarActivity = original;
     }
   });
 

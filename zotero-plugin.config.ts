@@ -43,6 +43,13 @@ export default defineConfig({
 
   test: {
     waitForPlugin: `() => Zotero.${pkg.config.addonInstance}.data.initialized`,
+    // The whole suite is what ships, but a run that watches one area is worth
+    // having while it is being written: point this at a directory holding
+    // links to the files you want and the rest of the suite stays out of the
+    // way. Unset, nothing changes.
+    entries: process.env.ALPHAPULSE_TEST_ENTRIES
+      ? process.env.ALPHAPULSE_TEST_ENTRIES.split(",")
+      : undefined,
   },
 
   release: {

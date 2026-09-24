@@ -46,9 +46,11 @@ import {
 } from "./citations";
 import {
   CITATION_SOURCE_LABELS,
+  CITATION_TITLE_MIN_LENGTH,
   CITATIONS_BLOCKED_MARKER,
   citationProviderOrder,
   GOOGLE_SCHOLAR_HOME,
+  isGoogleScholarResultsPage,
   minutesUntil,
   scholarRetryDelayMs,
   type CitationSourceKey,
@@ -150,7 +152,14 @@ type ItemState =
 type CitationState =
   | { kind: "loading" }
   | { kind: "success"; counts: CitationCounts }
-  | { kind: "failed"; retryAfter: number; reason: FailureReason };
+  | { kind: "failed"; retryAfter: number; reason: FailureReason }
+  /**
+   * Google Scholar was asked and has no paper with this title.
+   *
+   * An answer, not a failure: there is no wait to keep and nothing to retry,
+   * so the cell says so and stays that way until the user asks again.
+   */
+  | { kind: "absent" };
 
 interface ResolutionCacheEntry {
   candidates: ArxivCandidate[];
@@ -188,6 +197,14 @@ const SCHOLAR_ANNOUNCE_AFTER = 3;
  */
 const SCHOLAR_MAX_ATTEMPTS = 4;
 
+/**
+ * The shortest wait the queue's timer may be set for.
+ *
+ * A deadline that has just passed must not turn into a timer that fires in a
+ * tight loop; a second is below anything a person can tell apart from "now".
+ */
+const SCHOLAR_QUEUE_MIN_WAIT_MS = 1_000;
+
 /** Bounds on the population sample, so a huge library stays responsive. */
 const MIN_QUANTILE_VALUES = 5;
 
@@ -223,6 +240,14 @@ export interface RefreshSummary {
   /** Items whose count could not be read; their old value is kept. */
   failed: number;
   /**
+   * Items Google Scholar answered about, and has no paper for.
+   *
+   * A number of its own because it is neither a success nor a failure: the
+   * read happened, the answer is real, and the user is told what it was
+   * instead of being left waiting for a retry.
+   */
+  missing?: number;
+  /**
    * Minutes until the earliest automatic retry among the failed items, when
    * there is one.
    *
@@ -254,8 +279,75 @@ export interface ScholarItemActivity {
   attempts: number;
   /** True while a search for this item is on its way. */
   reading: boolean;
-  /** Milliseconds until this item's next attempt; 0 when it is due now. */
+  /**
+   * How many papers will be read before this one; 0 means it is next in line.
+   *
+   * A paper with someone ahead of it cannot be given a time - the queue in
+   * front of it decides, not a clock - and the line says so instead of naming
+   * a moment it would borrow from the paper that is actually waiting. That
+   * borrowing is what the reported bug looked like from the user's side: a
+   * newly added paper showing the same "in about 5 minutes" as the old one it
+   * was queued behind, and neither of them being read.
+   */
+  ahead: number;
+  /**
+   * Milliseconds until this item's own next moment.
+   *
+   * Meaningful only for the paper at the head of the queue (`ahead === 0`):
+   * there it is the later of its own retry deadline and the rhythm the next
+   * request has to wait for. For a paper behind another one it is 0, because
+   * there is no moment to name - only a place in the queue.
+   */
   nextInMs: number;
+}
+
+/**
+ * Why a paper is in the waiting list.
+ *
+ * `auto` is a row with no count yet whose cell asked for a read: it is read
+ * only while the row is one the user is looking at, which is the rule that
+ * keeps Google Scholar from being asked about rows nobody selected. `stale` is
+ * a cached count whose age passed the configured lifetime - the user asked for
+ * those to keep themselves fresh, so no selection is involved. `user` is an
+ * explicit refresh: it goes to the head of the list and is never dropped.
+ */
+type ScholarReadKind = "auto" | "stale" | "user";
+
+/** What became of a paper's turn in the waiting list. */
+type ScholarQueueResult = "read" | "failed" | "skipped" | "missing";
+
+/**
+ * What one Google Scholar read answered.
+ *
+ * A count is a count - zero included, because a paper nobody has cited is a
+ * paper with no citations, not a paper that could not be read. `no-match` is
+ * an answer too: the results page came back, the titles on it were read, and
+ * none of them is this paper - so the user is told that, instead of being
+ * promised a retry that would find the same nothing. `null` is the only
+ * outcome worth asking about again: a refusal, a page that never arrived, an
+ * answer that could not be read.
+ */
+type ScholarCitationRead =
+  { kind: "count"; count: number } | { kind: "no-match" } | null;
+
+/** One paper's place in the waiting list. */
+interface ScholarQueueEntry {
+  itemID: number;
+  kind: ScholarReadKind;
+  /**
+   * The earliest moment this paper may be read, or null for "when its turn
+   * comes". Set by a failed attempt to the moment the user is told to expect
+   * a retry; the pump's timer fires on exactly that moment, so the wait the
+   * cell, the tooltip and the menu name is the wait that happens.
+   */
+  notBefore: number | null;
+  /** True while that deadline is Google's block rather than the paper's own. */
+  onBlock: boolean;
+  /**
+   * Resolved when this paper's turn is over, with what came of it. Only an
+   * explicit refresh waits on it; an automatic read has nobody to tell.
+   */
+  done: ((result: ScholarQueueResult) => void) | null;
 }
 
 export interface ItemTrend {
@@ -474,7 +566,10 @@ export class AlphaLikesService {
   private disposed = false;
 
   private citationStates = new Map<number, CitationState>();
-  private inFlightCitations = new Map<string, Promise<CitationCounts | null>>();
+  private inFlightCitations = new Map<
+    string,
+    Promise<{ counts: CitationCounts | null; noMatch: boolean }>
+  >();
 
   /**
    * Google Scholar's human check, while it is in force.
@@ -519,6 +614,33 @@ export class AlphaLikesService {
   } | null = null;
   private scholarRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private scholarBlockedItems = new Set<number>();
+  /**
+   * The waiting list for citation reads: one list for the whole library.
+   *
+   * There is one Google Scholar and one pace to read it at, so there is one
+   * queue. Everything that wants a count goes into it - a row that has never
+   * been read, a cached row whose value has aged out, the papers an explicit
+   * refresh named, and the retries of papers that were refused - and the queue
+   * serves them one at a time, out of the front, with the rhythm the requester
+   * enforces between requests.
+   *
+   * Reported (1.3.7): adding a paper started its read while an older paper was
+   * still waiting to be retried. The new paper showed 0 attempts and the *old
+   * paper's* deadline - the two lines said the same five minutes - the older
+   * paper was pushed back by the block the new read provoked, and a third,
+   * even older paper sat on "retrying now" without anything ever retrying it.
+   * One list, read in the order the reads were asked for, is what makes all
+   * three of those statements true or absent.
+   */
+  private scholarQueue: ScholarQueueEntry[] = [];
+  /** Item ids in the list, so a repaint cannot queue the same paper twice. */
+  private scholarQueued = new Set<number>();
+  /** The paper whose search is on its way, if any. */
+  private scholarReading: number | null = null;
+  /** True while the list is being served. */
+  private scholarPumping = false;
+  /** Wakes the pump when the paper at the head of the queue comes due. */
+  private scholarQueueTimer: ReturnType<typeof setTimeout> | null = null;
   /** One notification per block episode, not one per paper. */
   private scholarBlockAnnounced = false;
   /** True once the automatic retries have been given up on, per episode. */
@@ -841,37 +963,56 @@ export class AlphaLikesService {
     const now = Date.now();
     const items: ScholarItemActivity[] = [];
 
-    for (const [itemID, state] of [...this.scholarItems]) {
-      let item: Zotero.Item | false;
-      try {
-        item = Zotero.Items.get(itemID);
-      } catch {
-        item = false;
-      }
+    // The list is the report, and it is reported in the order it is written:
+    // the paper whose turn it is first, then the ones behind it. A paper is
+    // named while it is waiting to be read or being read; a paper that has
+    // been read, or has left the list, is not a line - there is nothing left
+    // to promise about it.
+    let rowsAhead = 0;
+    let usersAhead = 0;
+    for (const entry of [...this.scholarQueue]) {
+      const item = this.itemForID(entry.itemID);
       // An item that went away takes its reading with it: a line about a
       // deleted paper is a line about nothing.
       if (!item) {
-        this.scholarItems.delete(itemID);
+        this.scholarItems.delete(entry.itemID);
         continue;
       }
-      items.push({
-        itemID,
-        title: String(safeGetField(item, "title") ?? "").trim(),
-        attempts: state.attempts,
-        reading: state.reading,
-        nextInMs:
-          state.reading || state.nextAttemptAt === null
-            ? 0
-            : Math.max(0, state.nextAttemptAt - now),
-      });
-    }
 
-    // The paper being read now, then whichever is due soonest: the order a
-    // reader looks for an answer in.
-    items.sort((a, b) => {
-      if (a.reading !== b.reading) return a.reading ? -1 : 1;
-      return a.nextInMs - b.nextInMs;
-    });
+      const state = this.scholarItems.get(entry.itemID);
+      const reading = this.scholarReading === entry.itemID;
+      // How many papers are read before this one. The list is served in
+      // order, so for an automatic read that is everything in front of it -
+      // which is how a paper that has just been added says who it is waiting
+      // behind instead of borrowing that paper's deadline. A paper the user
+      // asked for is served as soon as the rhythm allows, so only the user's
+      // own earlier asks are counted in front of it.
+      const ahead = entry.kind === "user" ? usersAhead : rowsAhead;
+
+      items.push({
+        itemID: entry.itemID,
+        title: String(safeGetField(item, "title") ?? "").trim(),
+        attempts: state?.attempts ?? 0,
+        reading,
+        ahead,
+        // Only the paper whose turn it is has a moment to name: its own retry
+        // deadline, or the rhythm the next request has to wait out. It waits
+        // for the later of the two, because a request cannot leave before the
+        // rhythm allows it. A paper behind it waits for a turn, not a clock.
+        nextInMs:
+          reading || ahead > 0
+            ? 0
+            : Math.max(
+                entry.notBefore === null
+                  ? 0
+                  : Math.max(0, entry.notBefore - now),
+                session.nextInMs,
+              ),
+      });
+
+      rowsAhead += 1;
+      if (entry.kind === "user") usersAhead += 1;
+    }
 
     return {
       ...session,
@@ -1115,17 +1256,21 @@ export class AlphaLikesService {
     if (this.disposed) return;
     this.scholarBlock = null;
     this.scholarBlockAnnounced = false;
-
-    const items = [...this.scholarBlockedItems]
-      .map((id) => Zotero.Items.get(id))
-      .filter((item): item is Zotero.Item => Boolean(item));
     this.scholarBlockedItems.clear();
-    if (!items.length) return;
 
-    // Deliberately not `refreshCitations`: that one treats the attempt as the
-    // user's and starts the episode over, which would leave the retry counter
-    // permanently at one.
-    await this.readCitations(items);
+    // The refused papers never left the waiting list - the block only decided
+    // when they may be tried again - so ending the block is letting their
+    // deadlines go and carrying on with the same list, in the same order. This
+    // used to re-read a set of its own, which is how a paper could sit on
+    // "retrying now" while the retry went to somebody else.
+    const now = Date.now();
+    for (const entry of this.scholarQueue) {
+      if (!entry.onBlock) continue;
+      entry.onBlock = false;
+      entry.notBefore = now;
+    }
+
+    await this.pumpScholarQueue();
   }
 
   /**
@@ -1150,6 +1295,406 @@ export class AlphaLikesService {
       if (!state.onBlock) continue;
       state.onBlock = false;
       state.nextAttemptAt = now;
+    }
+    // The papers in the list are waiting on the same deadline, and it has just
+    // been taken away: they are due again, and the pump below is what will
+    // notice when it next looks.
+    for (const entry of this.scholarQueue) {
+      if (!entry.onBlock) continue;
+      entry.onBlock = false;
+      entry.notBefore = now;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // The waiting list
+  // -------------------------------------------------------------------------
+
+  /**
+   * Puts a paper in the waiting list, or hands back the place it already has.
+   *
+   * A repaint asks for the same read over and over, and the second ask is the
+   * same ask: a paper already in the list keeps its place, and a paper already
+   * being read keeps it too - the read that is on its way *is* the read. The
+   * user's own refresh is the one exception. It becomes the newest ask and
+   * goes to the head of the list, because that is where a person who has just
+   * pressed the button expects their paper to be read, and it stops being an
+   * entry that can be dropped for not being selected.
+   */
+  private queueScholarRead(
+    item: Zotero.Item,
+    kind: ScholarReadKind,
+  ): ScholarQueueEntry | null {
+    if (this.disposed) return null;
+
+    const existing = this.scholarQueued.has(item.id)
+      ? this.scholarQueue.find((entry) => entry.itemID === item.id)
+      : undefined;
+    if (existing) {
+      if (kind === "user") {
+        // The user asking again is a new ask, not a place in the list: a paper
+        // waiting out a retry is tried when its owner presses refresh, not
+        // when its deadline happens to pass. Both halves matter - the second
+        // press of refresh used to be answered minutes later, by a notice the
+        // user had stopped waiting for.
+        existing.notBefore = null;
+        existing.onBlock = false;
+        // A paper that was queued on its own moves up to where the user's own
+        // papers are read, behind the ones asked for before it.
+        if (existing.kind !== "user") {
+          existing.kind = "user";
+          this.scholarQueue = this.scholarQueue.filter(
+            (entry) => entry !== existing,
+          );
+          this.insertScholarEntry(existing);
+        }
+      }
+      return existing;
+    }
+
+    const entry: ScholarQueueEntry = {
+      itemID: item.id,
+      kind,
+      notBefore: null,
+      onBlock: false,
+      done: null,
+    };
+    // The user's papers line up ahead of the automatic reads and *behind* any
+    // paper the user asked about a moment earlier: a batch is read in the order
+    // it was named, which is the order the user is watching for.
+    if (kind === "user") this.insertScholarEntry(entry);
+    else this.scholarQueue.push(entry);
+    this.scholarQueued.add(item.id);
+    return entry;
+  }
+
+  /** Puts a user's paper at the end of the user's own run, ahead of the rest. */
+  private insertScholarEntry(entry: ScholarQueueEntry): void {
+    const firstAutomatic = this.scholarQueue.findIndex(
+      (other) => other.kind !== "user",
+    );
+    if (firstAutomatic < 0) this.scholarQueue.push(entry);
+    else this.scholarQueue.splice(firstAutomatic, 0, entry);
+  }
+
+  /** A repaint asking for a read: it joins the queue and waits its turn. */
+  private queueAutomaticCitationRead(
+    item: Zotero.Item,
+    kind: "auto" | "stale",
+  ): void {
+    if (!this.queueScholarRead(item, kind)) return;
+    void this.pumpScholarQueue();
+  }
+
+  /**
+   * The user's own refresh, as the list sees it.
+   *
+   * The papers go to the head in the order they were named, and the promise
+   * settles when each of them has had its turn - so the summary the menu shows
+   * is written about reads that have actually happened.
+   */
+  private readCitationsThroughQueue(
+    items: Zotero.Item[],
+  ): Promise<Map<number, ScholarQueueResult>> {
+    const results = new Map<number, ScholarQueueResult>();
+
+    const waits = items.map(
+      (item) =>
+        new Promise<void>((resolve) => {
+          const settle = (result: ScholarQueueResult): void => {
+            results.set(item.id, result);
+            resolve();
+          };
+          const entry = this.queueScholarRead(item, "user");
+          if (!entry) {
+            settle("skipped");
+            return;
+          }
+          // A second ask for the same paper (the user pressing refresh twice)
+          // must not silence the first one's answer.
+          const previous = entry.done;
+          entry.done = (result) => {
+            previous?.(result);
+            settle(result);
+          };
+        }),
+    );
+
+    void this.pumpScholarQueue();
+    return Promise.all(waits).then(() => results);
+  }
+
+  /**
+   * Serves the waiting list, one paper at a time.
+   *
+   * Single-flight: whoever calls it first walks the list, and the calls that
+   * arrive while it does - a repaint, a timer, a block ending - are asking for
+   * the same walk. Only one search is ever in the air, which is what "one list"
+   * means to Google: the pace between two requests is the requester's, and it
+   * starts counting from the last search.
+   */
+  private async pumpScholarQueue(): Promise<void> {
+    if (this.scholarPumping || this.disposed) return;
+    if (this.scholarQueueTimer !== null) {
+      clearTimeout(this.scholarQueueTimer);
+      this.scholarQueueTimer = null;
+    }
+    this.scholarPumping = true;
+
+    try {
+      for (;;) {
+        if (this.disposed) break;
+
+        const entry = this.nextScholarRead();
+        if (!entry) {
+          // Nothing is due: sleep until the earliest of the deadlines the
+          // lines are showing. Sleeping on the papers' own clock is what makes
+          // "retrying in about 5 minutes" true without a repaint. While Google
+          // is refusing, nothing is due whatever the papers' own deadlines say,
+          // and the block's own timer is the one that ends it.
+          if (this.isScholarBlocked()) {
+            this.settleScholarBatchForBlock();
+            break;
+          }
+          const wake = this.nextScholarWakeMs();
+          if (wake !== null) this.scheduleScholarQueueWake(wake);
+          break;
+        }
+
+        // The rhythm comes before the read, not inside it. A request would
+        // wait the same time inside the requester's own queue, but the paper
+        // would sit under a "reading" label the whole while - and it is the
+        // wait, not the read, that is happening.
+        const rhythm = this.scholarRhythmMs();
+        if (rhythm > 0) {
+          this.scheduleScholarQueueWake(rhythm);
+          break;
+        }
+
+        const item = this.itemForID(entry.itemID);
+        if (!item) {
+          this.dropScholarEntry(entry, "skipped");
+          continue;
+        }
+
+        this.scholarReading = entry.itemID;
+        const state = this.scholarItemState(entry.itemID);
+        state.reading = true;
+        let result: ScholarQueueResult = "failed";
+        try {
+          result = await this.populateCitations(item);
+        } catch (error) {
+          this.debug(
+            `citation lookup failed for item ${entry.itemID}: ${error}`,
+          );
+        } finally {
+          state.reading = false;
+          this.scholarReading = null;
+        }
+
+        this.finishScholarEntry(entry, result);
+      }
+    } finally {
+      this.scholarPumping = false;
+    }
+  }
+
+  /**
+   * The paper whose turn it is: the first in the list that can be read now.
+   *
+   * A paper waiting out its own retry keeps its place and is passed over - it
+   * must not hold up one that has never been tried, and the paper behind it
+   * must not overtake anything that *is* ready, which is the rule the user
+   * asked for: while anything is being read, nothing new starts. Entries that
+   * no longer want a read at all leave the list here: the item is gone, its
+   * records were cleared, it has nothing to look a count up with, or it was an
+   * automatic read for a row the user is no longer on - that one comes back
+   * the next time the row is painted while selected.
+   */
+  private nextScholarRead(): ScholarQueueEntry | null {
+    const now = Date.now();
+    if (this.isScholarBlocked()) return null;
+
+    // Papers nobody wants any more leave the list wherever they stand. A
+    // refresh waiting its turn must not wait behind one of them.
+    for (const entry of [...this.scholarQueue]) {
+      const item = this.itemForID(entry.itemID);
+      if (!item || !this.scholarReadWanted(item, entry)) {
+        this.dropScholarEntry(entry, "skipped");
+      }
+    }
+
+    for (const entry of this.scholarQueue) {
+      const due = entry.notBefore === null || entry.notBefore <= now;
+      // One list, served in order, with one exception. A paper the user asked
+      // for is read as soon as the rhythm allows, wherever it stands: the
+      // press is the newest ask, and the row the user is watching is the one
+      // that has to move. An automatic read waits for every paper in front of
+      // it - the ones the user asked for, and the older ones waiting out a
+      // retry - because that is what was asked for: a paper added while an
+      // older one is waiting is read after that older paper has had its turn,
+      // not beside it and not on the older paper's deadline.
+      if (due && (entry.kind === "user" || entry === this.scholarQueue[0])) {
+        return entry;
+      }
+    }
+
+    return null;
+  }
+
+  /** Whether a paper in the list still wants the read it was queued for. */
+  private scholarReadWanted(
+    item: Zotero.Item,
+    entry: ScholarQueueEntry,
+  ): boolean {
+    if (this.disposed) return false;
+    // A cleared item is neutral, not empty: the user emptied it and nothing is
+    // written back until they ask for the numbers again.
+    if (this.isCleared(item)) return false;
+    if (!this.hasCitationKey(item)) return false;
+    // The rule that keeps Google Scholar out of rows nobody is reading: an
+    // automatic read belongs to a selected row, and while that is not true
+    // there is nothing worth asking about.
+    if (entry.kind === "auto" && !this.scholarReadAllowed(item)) return false;
+    return true;
+  }
+
+  /**
+   * What became of a paper's turn.
+   *
+   * A read that produced a number is finished with the list. A failed one
+   * stays - with its place and with the deadline every surface is already
+   * showing - and the list's own timer comes back for it, so "自动重试" is a
+   * thing that happens rather than a thing the line says.
+   */
+  private finishScholarEntry(
+    entry: ScholarQueueEntry,
+    result: ScholarQueueResult,
+  ): void {
+    const state = this.citationStates.get(entry.itemID);
+    if (result === "read" || state?.kind !== "failed") {
+      this.dropScholarEntry(entry, result);
+      return;
+    }
+
+    entry.notBefore = state.retryAfter;
+    entry.onBlock = this.isScholarBlocked();
+    const done = entry.done;
+    entry.done = null;
+    done?.(result);
+  }
+
+  /** Takes a paper out of the list and answers whoever was waiting for it. */
+  private dropScholarEntry(
+    entry: ScholarQueueEntry,
+    result: ScholarQueueResult,
+  ): void {
+    this.scholarQueue = this.scholarQueue.filter((item) => item !== entry);
+    this.scholarQueued.delete(entry.itemID);
+
+    // Nothing is coming for a paper that left the list, so a loading marker on
+    // its row would be a spinner that never stops turning.
+    if (this.citationStates.get(entry.itemID)?.kind === "loading") {
+      this.citationStates.delete(entry.itemID);
+    }
+    if (!this.disposed) repaintRows([entry.itemID]);
+
+    const done = entry.done;
+    entry.done = null;
+    done?.(result);
+  }
+
+  /**
+   * Answers an explicit refresh whose remaining papers are waiting out a block.
+   *
+   * The papers keep their place in the list and are read the moment the check
+   * clears - what settles here is the promise the refresh action is waiting on,
+   * so the notice can say "3 could not be read, retrying in about 5 minutes"
+   * rather than leaving the user with a menu that never comes back. Nothing was
+   * asked of Google for these papers, and the wait the notice names is the one
+   * the list will keep.
+   */
+  private settleScholarBatchForBlock(): void {
+    const block = this.scholarBlock;
+    if (!block) return;
+
+    const retryAfter = Math.max(
+      block.until,
+      Date.now() + SCHOLAR_QUEUE_MIN_WAIT_MS,
+    );
+    const reason: FailureReason = block.rateLimited ? "http-429" : "http-403";
+
+    for (const entry of this.scholarQueue) {
+      if (entry.kind !== "user" || !entry.done) continue;
+      this.citationStates.set(entry.itemID, {
+        kind: "failed",
+        retryAfter,
+        reason,
+      });
+      entry.onBlock = true;
+      entry.notBefore = Math.max(entry.notBefore ?? 0, retryAfter);
+      const done = entry.done;
+      entry.done = null;
+      done("failed");
+    }
+  }
+
+  /**
+   * Milliseconds until the list has something to do, or null.
+   *
+   * Two kinds of moment matter: the deadline of the paper at the front, since
+   * the list is served in order, and the deadline of any paper the user asked
+   * for, since those are read as soon as the rhythm allows wherever they
+   * stand. Everything behind the front paper waits for it, so its moment is
+   * not one this method has to wake for.
+   */
+  private nextScholarWakeMs(): number | null {
+    const now = Date.now();
+    const front = this.scholarQueue[0];
+    let soonest: number | null = null;
+    for (const entry of this.scholarQueue) {
+      const item = this.itemForID(entry.itemID);
+      if (!item || !this.scholarReadWanted(item, entry)) continue;
+      if (entry.notBefore === null) continue;
+      if (entry !== front && entry.kind !== "user") continue;
+      const wait = Math.max(0, entry.notBefore - now);
+      if (soonest === null || wait < soonest) soonest = wait;
+    }
+    return soonest;
+  }
+
+  /**
+   * How long the next request has to wait for the reading rhythm: the spacing
+   * between two searches and the pause after a burst of them, whichever is
+   * longer.
+   *
+   * Read from the requester, which is where the rhythm is enforced, so the
+   * pump and the lines in the menu cannot disagree about when a paper's turn
+   * comes.
+   */
+  private scholarRhythmMs(): number {
+    return Math.max(0, this.requester.scholarActivity().nextInMs);
+  }
+
+  /** Wakes the pump when a deadline passes, and not a moment before. */
+  private scheduleScholarQueueWake(delayMs: number): void {
+    if (this.disposed) return;
+    if (this.scholarQueueTimer !== null) clearTimeout(this.scholarQueueTimer);
+    this.scholarQueueTimer = setTimeout(
+      () => {
+        this.scholarQueueTimer = null;
+        void this.pumpScholarQueue();
+      },
+      Math.max(SCHOLAR_QUEUE_MIN_WAIT_MS, delayMs),
+    );
+  }
+
+  /** The item behind an id, or null once it is gone. */
+  private itemForID(itemID: number): Zotero.Item | null {
+    try {
+      return Zotero.Items.get(itemID) || null;
+    } catch {
+      return null;
     }
   }
 
@@ -1292,6 +1837,19 @@ export class AlphaLikesService {
           source: null,
         };
       }
+      if (state.kind === "absent") {
+        // Scholar answered and has no paper with this title. That is the
+        // answer, so the cell states it - no wait, no retry, and no request
+        // spent again on the next repaint. A refresh clears it, which is how
+        // the user asks again.
+        return {
+          value: withValueDecorations(CELL_UNAVAILABLE, ["no-match"]),
+          text: CELL_UNAVAILABLE,
+          count: null,
+          highImpact: false,
+          source: null,
+        };
+      }
       if (state.retryAfter > Date.now()) {
         // A failed citation read used to blank the cell, which is
         // indistinguishable from a paper with no citations anywhere: it says
@@ -1323,7 +1881,10 @@ export class AlphaLikesService {
       }
 
       this.citationStates.set(item.id, { kind: "loading" });
-      void this.populateCitations(item);
+      // The queue, not a read of its own: this row's turn may be behind the
+      // papers already waiting, which is exactly what a newly added paper must
+      // not be allowed to jump.
+      this.queueAutomaticCitationRead(item, "auto");
       return {
         value: CELL_LOADING,
         text: CELL_LOADING,
@@ -1375,10 +1936,21 @@ export class AlphaLikesService {
     };
   }
 
-  /** Whether we hold an identifier precise enough to look citations up. */
+  /**
+   * Whether there is anything to look this paper's citations up with.
+   *
+   * An identifier is the sure way: it names one paper exactly. A title is the
+   * other way, and the one Google Scholar is read with in the first place - so
+   * a paper the user added by hand, with nothing but its title on it, is read
+   * like any other. Reported: a paper with no DOI, no arXiv ID and no URL,
+   * whose count was looked up by title, and whose answer came back as "1 item
+   * is missing a DOI/arXiv ID".
+   */
   private hasCitationKey(item: Zotero.Item): boolean {
     if (safeGetField(item, "DOI").trim()) return true;
-    return this.getItemArxivID(item) !== null;
+    if (this.getItemArxivID(item) !== null) return true;
+    const title = safeGetField(item, "title")?.trim() ?? "";
+    return title.length >= CITATION_TITLE_MIN_LENGTH;
   }
 
   private isCitationCacheStale(extra: string, ttlDays: number): boolean {
@@ -1394,10 +1966,12 @@ export class AlphaLikesService {
     if (this.citationStates.get(item.id)?.kind === "loading") return;
 
     this.citationStates.set(item.id, { kind: "loading" });
-    void this.populateCitations(item).catch(() => undefined);
+    this.queueAutomaticCitationRead(item, "stale");
   }
 
-  private async populateCitations(item: Zotero.Item): Promise<boolean> {
+  private async populateCitations(
+    item: Zotero.Item,
+  ): Promise<Exclude<ScholarQueueResult, "skipped">> {
     const arxivID = this.getItemArxivID(item);
     // The user typed this item's score by hand, which they did because the
     // plugin could not get it. Asking Google Scholar anyway would spend a
@@ -1405,8 +1979,27 @@ export class AlphaLikesService {
     const manual = readCitations(safeGetField(item, "extra"))?.manual === true;
 
     try {
-      const counts = await this.fetchCitations(item, arxivID, manual);
-      if (this.disposed) return false;
+      const { counts, noMatch } = await this.fetchCitations(
+        item,
+        arxivID,
+        manual,
+      );
+      if (this.disposed) return "failed";
+
+      // Scholar answered that it has no paper with this title. Nothing is
+      // booked for later and nothing is written: asking again would find the
+      // same nothing, and the user is told what was found instead - which is
+      // what they asked for.
+      if (counts === null && noMatch && !this.isScholarBlocked()) {
+        this.citationStates.set(item.id, { kind: "absent" });
+        this.noteScholarOutcome(item.id, { ok: true });
+        this.debug(
+          `[AlphaPulse] Google Scholar has no paper like ${JSON.stringify(
+            safeGetField(item, "title"),
+          )}; the cell says so instead of promising a retry`,
+        );
+        return "missing";
+      }
 
       if (counts === null) {
         const blocked = this.isScholarBlocked();
@@ -1436,14 +2029,14 @@ export class AlphaLikesService {
           retryAfter,
           onBlock: blocked,
         });
-        return false;
+        return "failed";
       }
 
       this.citationStates.set(item.id, { kind: "success", counts });
       // The paper has its number, so its count starts over from nothing.
       this.noteScholarOutcome(item.id, { ok: true });
       await this.writeExtra(item, (extra) => upsertCitations(extra, counts));
-      return true;
+      return "read";
     } catch (error) {
       if (!this.disposed) {
         const reason = failureReasonFrom(error);
@@ -1461,7 +2054,7 @@ export class AlphaLikesService {
         });
         this.debug(`citation lookup failed for item ${item.id}: ${error}`);
       }
-      return false;
+      return "failed";
     } finally {
       // Same as the like column: this item's answer is shown the moment it is
       // read, while the items still being read keep their loading marker.
@@ -1483,7 +2076,7 @@ export class AlphaLikesService {
     item: Zotero.Item,
     arxivID: string | null,
     manual = false,
-  ): Promise<CitationCounts | null> {
+  ): Promise<{ counts: CitationCounts | null; noMatch: boolean }> {
     const paper = this.readPaperMetadata(item);
     const key = `${paper.doi || ""}|${arxivID || ""}|${normalizeText(paper.title)}`;
 
@@ -1512,7 +2105,7 @@ export class AlphaLikesService {
     arxivID: string | null,
     scholarTitle: string | null,
     manual = false,
-  ): Promise<CitationCounts | null> {
+  ): Promise<{ counts: CitationCounts | null; noMatch: boolean }> {
     const prefs = getResolverPrefs();
 
     // Every selected provider is asked; the column then shows the largest
@@ -1525,6 +2118,11 @@ export class AlphaLikesService {
     // that books a wait nobody wants to sit through twice). Asking in turn
     // made OpenAlex and Semantic Scholar - which answer in a moment - wait
     // behind it for no reason at all.
+    // Whether Google Scholar answered that it has no paper like this one. It is
+    // not a failure and not a count: it is what the user is told, and it only
+    // stands while no other provider found the paper.
+    let noMatch = false;
+
     const tasks = citationOrder().map(async (source) => {
       if (source === "googleScholar") {
         // The item carries a number the user typed; Scholar is not asked, and
@@ -1535,7 +2133,12 @@ export class AlphaLikesService {
           paper,
           scholarTitle,
         );
-        return scholar === null ? null : { googleScholar: scholar };
+        if (scholar === null) return null;
+        if (scholar.kind === "no-match") {
+          noMatch = true;
+          return null;
+        }
+        return { googleScholar: scholar.count };
       }
 
       if (source === "semanticScholar") {
@@ -1562,7 +2165,10 @@ export class AlphaLikesService {
       answered = true;
     }
 
-    return answered ? merged : null;
+    return {
+      counts: answered ? merged : null,
+      noMatch: answered ? false : noMatch,
+    };
   }
 
   /**
@@ -1579,9 +2185,9 @@ export class AlphaLikesService {
     itemID: number,
     paper: PaperMetadata,
     pinnedTitle: string | null,
-  ): Promise<number | null> {
+  ): Promise<ScholarCitationRead> {
     const expected = (pinnedTitle || paper.title || "").trim();
-    if (expected.length < 10) return null;
+    if (expected.length < CITATION_TITLE_MIN_LENGTH) return null;
     if (this.isScholarBlocked()) return null;
 
     const url = googleScholarCitationSearchURL(expected);
@@ -1624,24 +2230,44 @@ export class AlphaLikesService {
       this.noteScholarBlock(url);
       return null;
     }
-    if (verdict === null) {
+
+    // The page is not a results page at all: an interstitial that slipped past
+    // the check above, a captcha, or something Google felt like sending. That
+    // is a read to try again, not an answer about the paper.
+    if (verdict === null && !isGoogleScholarResultsPage(page.body)) {
       if (isGoogleInterstitial(page.body)) this.noteScholarBlock(url);
       return null;
     }
 
-    // The count belongs to the first result, so the title has to agree before
-    // it is attributed to this item.
+    this.clearScholarBlock();
+
+    // The count belongs to the result whose title agrees with the item's, so
+    // the titles are read before the number is attributed to anything. A
+    // results page with nothing on it, or with papers that are not this one,
+    // is Scholar saying it has no paper like this - which the user is told
+    // rather than being left waiting for a retry that would find the same
+    // nothing.
     const titles = googleScholarResultBlocks(page.body)
       .map((block) => googleScholarResultTitle(block))
       .filter(Boolean);
-    if (!titles.length) return verdict;
-
-    this.clearScholarBlock();
+    if (!titles.length) {
+      return verdict === null
+        ? { kind: "no-match" }
+        : { kind: "count", count: verdict };
+    }
 
     const similarity = Math.max(
       ...titles.map((title) => titleSimilarity(expected, title)),
     );
-    return similarity >= CITATION_TITLE_MATCH_MIN ? verdict : null;
+    if (similarity < CITATION_TITLE_MATCH_MIN) {
+      return { kind: "no-match" };
+    }
+
+    // A result with no "Cited by" link is a paper nobody has cited yet. Zero
+    // is a count like any other - the same rule the like count follows, and
+    // the reported case was a paper found by its title alone whose count of
+    // zero came back as "no number on the page".
+    return { kind: "count", count: verdict ?? 0 };
   }
 
   private async collectOpenAlexCitations(
@@ -1660,7 +2286,9 @@ export class AlphaLikesService {
     }
 
     // No DOI, or the DOI is not indexed: fall back to a verified title search.
-    if (!paper.title || paper.title.length < 10) return null;
+    if (!paper.title || paper.title.length < CITATION_TITLE_MIN_LENGTH) {
+      return null;
+    }
 
     const payload = await this.safeJSON(
       "OpenAlex citation search",
@@ -1760,6 +2388,7 @@ export class AlphaLikesService {
       updated: 0,
       failed: 0,
       skipped: 0,
+      missing: 0,
     };
     if (!targets.length) return summary;
 
@@ -1773,15 +2402,18 @@ export class AlphaLikesService {
     repaintRows(targets.map((item) => item.id));
 
     try {
+      // Through the one waiting list, at the head of it: the papers the user
+      // named are read as soon as the search that is in the air is done and
+      // the rhythm allows another, and not one moment before - the pace is
+      // Google's, not the button's.
+      const results = await this.readCitationsThroughQueue(targets);
       for (const item of targets) {
         if (this.disposed) break;
-        if (!this.hasCitationKey(item)) {
-          summary.skipped += 1;
-          continue;
-        }
-
-        const updated = await this.populateCitations(item);
-        if (updated) summary.updated += 1;
+        const result = results.get(item.id);
+        if (result === "read") summary.updated += 1;
+        else if (result === "missing") {
+          summary.missing = (summary.missing ?? 0) + 1;
+        } else if (result === "skipped") summary.skipped += 1;
         else {
           summary.failed += 1;
           const retry = this.retryMinutesFor(item);
@@ -2928,6 +3560,18 @@ export class AlphaLikesService {
     this.observedCitations.clear();
     this.quantileCache = null;
     this.citationQuantileCache = null;
+
+    // The waiting list goes with the plugin. Whoever is waiting on a turn in
+    // it is answered, because a refresh that never comes back is worse than
+    // one that says the reading was dropped.
+    if (this.scholarQueueTimer !== null) {
+      clearTimeout(this.scholarQueueTimer);
+      this.scholarQueueTimer = null;
+    }
+    for (const entry of [...this.scholarQueue]) {
+      this.dropScholarEntry(entry, "skipped");
+    }
+    this.scholarQueued.clear();
 
     this.clearScholarBlock();
     this.scholarBlockedItems.clear();

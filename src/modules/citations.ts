@@ -528,6 +528,27 @@ export function isRateLimitStatus(status: number): boolean {
   return status === 429 || status === 503;
 }
 
+/**
+ * Shortest title a provider's title search is asked about.
+ *
+ * A couple of words match everything and nothing, so the providers are not
+ * asked at all - and that, not a missing identifier, is the case the user is
+ * told about: a paper added by hand usually has nothing but its title left,
+ * and the title search is what Google Scholar is read with in the first place.
+ */
+export const CITATION_TITLE_MIN_LENGTH = 10;
+
+/**
+ * True when the page is a Scholar results page.
+ *
+ * This is what tells "Scholar has no paper with this title" - an answer, and
+ * one worth showing - from "Google did not answer with a results page at all",
+ * which is a failure to ask again about.
+ */
+export function isGoogleScholarResultsPage(page: string): boolean {
+  return /class="gs_r|class="gs_ri|id="gs_res_ccl_mid"/.test(page || "");
+}
+
 /** True when the page is one of Google's block or consent interstitials. */
 export function isGoogleInterstitial(page: string): boolean {
   return /sorry|consent|before you continue|unusual traffic|automated queries|captcha/i.test(
@@ -588,10 +609,16 @@ export function googleScholarResultTitle(block: string): string {
 
 /** Splits a Scholar results page into its per-result blocks. */
 export function googleScholarResultBlocks(html: string): string[] {
+  // A page is split at every result block that starts it. The first chunk is
+  // the page's preamble and is dropped by the filter below rather than by its
+  // position: a page that *begins* with a result - a fragment, or a body whose
+  // header never arrived - has no preamble to drop, and slicing it away would
+  // read a page full of results as a page with nothing on it.
   return (html || "")
     .split(/(?=<div[^>]*class="[^"]*\bgs_r\b)/i)
-    .slice(1)
-    .filter((block) => /gs_ri/.test(block));
+    .filter(
+      (chunk) => /class="[^"]*\bgs_r\b/i.test(chunk) && /gs_ri/.test(chunk),
+    );
 }
 
 /** One entry of a Scholar results page, as the picker dialog needs it. */

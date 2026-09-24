@@ -512,6 +512,11 @@ export function renderCitationCell(
       ? t("cell-scholar-rate-limited", { minutes })
       : t("cell-scholar-blocked", { minutes });
     cell.classList.add("alphalikes-citation-blocked");
+  } else if (decorations.includes("no-match")) {
+    // Not a failure and not a wait: Google Scholar answered, and has no paper
+    // with this title. Saying "read failed, retrying in 5 minutes" would send
+    // the user away to wait for something that is not coming.
+    cell.title = t("cell-citations-not-found");
   } else if (text === CELL_UNAVAILABLE) {
     cell.title = failureTooltip(decorations, "cell-citations-unavailable");
   }

@@ -41,6 +41,8 @@ export const MESSAGES = {
   "cell-citations-unavailable": "No citation count found",
   "cell-unavailable-reason": "Read failed: {reason} · {retry}",
   "cell-citations-unavailable-reason": "Read failed: {reason} · {retry}",
+  "cell-citations-not-found":
+    "No high-confidence match in Google Scholar (the title was searched)",
   "failure-http-403": "the site refused the request (HTTP 403)",
   "failure-http-429": "the request was rate limited (HTTP 429)",
   "failure-http-4xx": "the request was refused (HTTP 4xx)",
@@ -77,7 +79,9 @@ export const MESSAGES = {
   "refresh-failed": "{failed} could not be read (the old value is kept)",
   "refresh-failed-retry":
     "{failed} could not be read (the old value is kept; retrying automatically in about {minutes} minutes)",
-  "refresh-skipped": "{skipped} have no DOI / arXiv ID",
+  "refresh-missing":
+    "{missing} have no high-confidence match in Google Scholar",
+  "refresh-skipped": "{skipped} have a title too short to search for",
   "refresh-nothing": "Nothing to refresh.",
   "refresh-joining": "; ",
 
@@ -100,6 +104,10 @@ export const MESSAGES = {
     "{title}: {count} request(s) for this item · retrying automatically in about {wait}",
   "menu-activity-item-retry-now":
     "{title}: {count} request(s) for this item · retrying right away",
+  "menu-activity-item-queued":
+    "{title}: waiting its turn ({ahead} ahead of it, {count} request(s) for this item)",
+  "menu-activity-item-next": "{title}: next to be read, in about {wait}",
+  "menu-activity-item-starting": "{title}: next to be read",
   "menu-activity-item-paused":
     "{title}: {count} request(s) for this item · automatic retries are paused",
   "menu-activity-overflow": "and {count} more, each with its own wait",

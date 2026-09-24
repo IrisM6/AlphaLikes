@@ -108,6 +108,15 @@ function stubRequester(service: unknown, likes: number, scholar = 0): Stub {
     // The service asks what the session's opening Google request answered; a
     // stub has no such history.
     sessionWarmup: () => null,
+    // It also asks the requester how long the reading rhythm has left to run -
+    // the waiting list paces itself on the same clock the requests use - and
+    // spreading an instance does not carry its methods across.
+    scholarActivity: () => ({
+      requests: 0,
+      nextInMs: 0,
+      paused: false,
+      burstLeft: 1,
+    }),
     requestHTML: async (url: string) => {
       state.served.push(url);
       await gate();
@@ -540,9 +549,12 @@ describe("AlphaLikes refresh", function () {
     });
 
     it("counts an item with nothing to look up as skipped", async function () {
+      // A title is a key of its own - a paper with no DOI, no arXiv id and no
+      // URL is looked up by its name - so what is left with nothing to look up
+      // is a name too short to be searched for at all.
       const bare = new Zotero.Item("journalArticle");
       bare.libraryID = Zotero.Libraries.userLibraryID;
-      bare.setField("title", "An item with no identifier at all");
+      bare.setField("title", "N/A");
       await bare.saveTx();
 
       try {
@@ -551,6 +563,37 @@ describe("AlphaLikes refresh", function () {
 
         assert.equal(summary.skipped, 1);
         assert.equal(summary.updated, 0);
+      } finally {
+        await bare.eraseTx();
+      }
+    });
+
+    it("reads an item whose title is the only thing to look it up with", async function () {
+      // Reported: a paper with no DOI, no arXiv id and no URL was found in
+      // Scholar by its title alone; its count of zero came back as "1 without
+      // a DOI/arXiv ID" and the paper was never read. The title is the key,
+      // and a zero is a count.
+      const bare = new Zotero.Item("journalArticle");
+      bare.libraryID = Zotero.Libraries.userLibraryID;
+      bare.setField("title", "AlphaLikes refresh probe paper");
+      await bare.saveTx();
+
+      try {
+        stub = stubRequester(service, 0, 0);
+        const summary = await service.refreshCitations([bare]);
+
+        assert.equal(summary.updated, 1, "the title was searched for");
+        assert.equal(
+          summary.skipped,
+          0,
+          "and the paper is not one without a key",
+        );
+        assert.equal(summary.missing, 0, "and it was found");
+        assert.equal(
+          service.planCitationCell(bare).text,
+          "0",
+          "the count Scholar gave is a number, even when it is nothing",
+        );
       } finally {
         await bare.eraseTx();
       }

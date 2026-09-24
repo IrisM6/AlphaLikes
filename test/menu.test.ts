@@ -269,6 +269,7 @@ describe("the plugin menu", function () {
           title: "Attention Is All You Need",
           attempts: 2,
           reading: false,
+          ahead: 0,
           nextInMs: 5 * 60_000,
         },
         {
@@ -276,6 +277,7 @@ describe("the plugin menu", function () {
           title: "DeepSeek-R1",
           attempts: 1,
           reading: false,
+          ahead: 0,
           nextInMs: 20 * 60_000,
         },
       ],
@@ -294,24 +296,71 @@ describe("the plugin menu", function () {
       "a line is about one paper, not about the selection",
     );
 
-    // A paper with no attempts of its own states zero rather than borrowing
-    // its neighbours' count: the reading is sequential, and the paper behind
-    // the block has not been asked yet.
-    const behind = activityLines(
+    // A paper nobody has asked about yet is not "retrying": it is next in the
+    // queue, waiting for the reading rhythm, and its line says that.
+    const next = activityLines(
       {
         autoPaused: false,
         items: [
           {
             ...activity.items[0],
             itemID: 3,
-            title: "Queued paper",
+            title: "Fresh paper",
             attempts: 0,
+            ahead: 0,
+            nextInMs: 20_000,
           },
         ],
       },
       [3],
     );
-    assert.include(behind[0], "0");
+    assert.equal(
+      next[0],
+      t("menu-activity-item-next", {
+        title: "Fresh paper",
+        wait: t("menu-activity-wait-seconds", { seconds: "20" }),
+      }),
+      "a paper that has not been asked about is next in line, not retrying",
+    );
+
+    // Reported (1.3.7): a newly added paper, queued behind one that was
+    // waiting out a retry, was given the *older* paper's deadline - two lines
+    // reading "in about 5 minutes" for two different papers. A paper with
+    // someone ahead of it has a place in the queue, not a time, and says so.
+    const behind = activityLines(
+      {
+        autoPaused: false,
+        items: [
+          {
+            ...activity.items[0],
+            itemID: 4,
+            title: "Queued paper",
+            attempts: 0,
+            ahead: 2,
+            nextInMs: 0,
+          },
+        ],
+      },
+      [4],
+    );
+    assert.include(
+      behind[0],
+      t("menu-activity-item-queued", {
+        title: "Queued paper",
+        count: "0",
+        ahead: "2",
+      }),
+    );
+    assert.include(
+      behind[0],
+      "0",
+      "a paper that has not been asked about yet states zero of its own",
+    );
+    assert.notInclude(
+      behind[0],
+      "5",
+      "and never borrows the waiting paper's five minutes",
+    );
 
     // Reading now needs no countdown, and a paused episode says so instead of
     // promising a time nothing will happen at.

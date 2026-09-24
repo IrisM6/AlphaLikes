@@ -265,6 +265,12 @@ export function shortenTitle(title: string, limit = 28): string {
  * one search at a time, spaced out, and a refusal stops the ones behind it -
  * so the honest picture is per paper: how many searches this paper has cost,
  * and when *this* paper is tried again.
+ *
+ * Reported again (1.3.7): a newly added paper, queued behind an older one that
+ * was waiting out a retry, was given the *older* paper's deadline - the same
+ * "in about 5 minutes" twice over, for a paper that had not been asked about
+ * once. A paper with someone ahead of it has no moment to name, only a place
+ * in the queue, and its line now says that place instead of a borrowed time.
  */
 export function activityLines(
   activity: {
@@ -274,6 +280,7 @@ export function activityLines(
       title: string;
       attempts: number;
       reading: boolean;
+      ahead: number;
       nextInMs: number;
     }>;
   },
@@ -297,9 +304,29 @@ export function activityLines(
     if (item.reading) {
       return t("menu-activity-item-reading", { title });
     }
+    if (item.ahead > 0) {
+      // Nothing to count down to: the papers in front of it decide when its
+      // turn comes, and naming a time here is how the two papers came to show
+      // the same five minutes.
+      return t("menu-activity-item-queued", {
+        title,
+        count: String(item.attempts),
+        ahead: String(item.ahead),
+      });
+    }
     const count = String(item.attempts);
     if (activity.autoPaused) {
       return t("menu-activity-item-paused", { title, count });
+    }
+    if (item.attempts === 0) {
+      // A paper that has not been asked about yet is not "retrying"; it is
+      // waiting its turn at the head of the queue, and says so.
+      return item.nextInMs <= 1_000
+        ? t("menu-activity-item-starting", { title })
+        : t("menu-activity-item-next", {
+            title,
+            wait: describeWait(item.nextInMs),
+          });
     }
     if (item.nextInMs <= 1_000) {
       return t("menu-activity-item-retry-now", { title, count });
@@ -376,6 +403,11 @@ export function refreshSummaryText(
             minutes: summary.retryMinutes,
           }),
     );
+  }
+  if (summary.missing) {
+    // Google Scholar answered about these, and has no paper for them. That is
+    // a thing to be told, not a thing to wait for: no retry time follows it.
+    parts.push(t("refresh-missing", { missing: summary.missing }));
   }
   if (summary.skipped) {
     parts.push(t("refresh-skipped", { skipped: summary.skipped }));
